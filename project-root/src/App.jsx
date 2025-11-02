@@ -1,8 +1,8 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Splash from "./components/splash";
+import Splash from "./components/Splash";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -11,20 +11,28 @@ export default function App() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
-  if (loading) return <Splash />; // shows splash while checking auth
+  if (loading) return <Splash />;
 
   return (
-    <Routes>
-      <Route path="/" element={user ? <Dashboard /> : <Navigate to="/login" />} />
-      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={user ? <Dashboard user={user} /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/login"
+          element={user ? <Navigate to="/" replace /> : <Login />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
