@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+Splash React, { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import Splash from "./components/Splash";
+import Splash from "./components/splash";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 
