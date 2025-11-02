@@ -10,18 +10,19 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
+  // Show splash for 2.5s
   useEffect(() => {
-    // simple splash timeout -> 2.5s then show login
-    const t = setTimeout(() => setShowSplash(false), 2500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShowSplash(false), 2500);
+    return () => clearTimeout(timer);
   }, []);
 
+  // Firebase auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthReady(true);
     });
-    return unsub;
+    return unsubscribe;
   }, []);
 
   if (showSplash) return <Splash />;
