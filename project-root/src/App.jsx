@@ -1,32 +1,30 @@
-import React, { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase";
-import Splash from "./components/splash";
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Splash from "./components/splash";
+import { auth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
-  const [user, setUser] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
 
-  // Show splash for 2.5s
-  useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 2500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Firebase auth listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setAuthReady(true);
+  React.useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
     });
-    return unsubscribe;
+    return () => unsub();
   }, []);
 
-  if (showSplash) return <Splash />;
-  if (!authReady) return <div className="center">Loading…</div>;
+  if (loading) return <Splash />; // shows splash while checking auth
 
-  return user ? <Dashboard user={user} /> : <Login />;
+  return (
+    <Routes>
+      <Route path="/" element={user ? <Dashboard /> : <Navigate to="/login" />} />
+      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
 }
