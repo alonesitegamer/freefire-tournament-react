@@ -1,48 +1,37 @@
 import React from "react";
 import { motion } from "framer-motion";
 
-/*
-  Splash screen – plays bg video behind and a centered logo animation.
-*/
 export default function Splash() {
   return (
-    <div className="splash-root" style={styles.root}>
+    <div style={styles.root}>
       {/* Background Video */}
       <video
-        className="bg-video"
+        style={styles.video}
         autoPlay
         loop
         muted
         playsInline
-        style={styles.video}
       >
         <source src="/bg.mp4" type="video/mp4" />
       </video>
 
       {/* Overlay */}
-      <div className="splash-overlay" style={styles.overlay} />
+      <div style={styles.overlay}></div>
 
       {/* Animated Logo Section */}
       <motion.div
-        className="splash-card"
         style={styles.card}
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.9 }}
       >
-        <img
-          src="/icon.jpg"
-          alt="logo"
-          className="splash-logo"
-          style={styles.logo}
-        />
+        <img src="/icon.jpg" alt="logo" style={styles.logo} />
         <h1 style={styles.title}>Imperial X Esports</h1>
       </motion.div>
     </div>
   );
 }
 
-/* Inline fallback styles (in case your CSS isn’t loading) */
 const styles = {
   root: {
     position: "relative",
