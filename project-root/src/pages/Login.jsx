@@ -2,10 +2,13 @@ import React, { useState } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup
+  signInWithPopup,
+  GoogleAuthProvider,
 } from "firebase/auth";
-import { auth, provider, db } from "../firebase";
+import { auth, db } from "../firebase"; // removed provider import (we'll define it)
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+
+const provider = new GoogleAuthProvider(); // ✅ explicitly define provider (prevents crash)
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -15,18 +18,23 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  // ✅ helper: save user doc safely
   async function saveInitialUser(uid, emailVal, displayName = "", referralCode = "") {
-    const ref = doc(db, "users", uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      await setDoc(ref, {
-        email: emailVal,
-        displayName,
-        coins: 0,
-        lastDaily: null,
-        referral: referralCode || null,
-        createdAt: serverTimestamp(),
-      });
+    try {
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, {
+          email: emailVal,
+          displayName,
+          coins: 0,
+          lastDaily: null,
+          referral: referralCode || null,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      console.error("Firestore user creation failed:", e);
     }
   }
 
@@ -40,14 +48,10 @@ export default function Login() {
         await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "");
       } else {
         const res = await createUserWithEmailAndPassword(auth, email, password);
-        await saveInitialUser(
-          res.user.uid,
-          res.user.email,
-          res.user.displayName || "",
-          referral
-        );
+        await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "", referral);
       }
     } catch (error) {
+      console.error("Auth error:", error);
       setErr(error.message);
     } finally {
       setLoading(false);
@@ -66,6 +70,7 @@ export default function Login() {
         referral
       );
     } catch (error) {
+      console.error("Google Sign-In error:", error);
       setErr(error.message);
     } finally {
       setLoading(false);
@@ -78,9 +83,15 @@ export default function Login() {
         <source src="/bg.mp4" type="video/mp4" />
       </video>
       <div className="auth-overlay" />
+
       <div className="auth-card">
-        <img src="/icon.jpg" className="logo-small" alt="logo" />
-        <h2>{mode === "login" ? "Sign in" : "Create account"}</h2>
+        <img
+          src="/icon.jpg"
+          className="logo-small"
+          alt="logo"
+          onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
+        />
+        <h2>{mode === "login" ? "Sign In" : "Create Account"}</h2>
 
         <form onSubmit={handleEmail} className="form-col">
           <input
@@ -99,17 +110,15 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-
           {mode === "register" && (
             <input
-              placeholder="Referral code (optional)"
+              placeholder="Referral Code (optional)"
               type="text"
               className="field"
               value={referral}
               onChange={(e) => setReferral(e.target.value)}
             />
           )}
-
           {err && <div className="error">{err}</div>}
 
           <button className="btn" type="submit" disabled={loading}>
