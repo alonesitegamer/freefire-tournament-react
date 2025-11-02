@@ -1,4 +1,4 @@
-Splash React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import Splash from "./components/splash";
