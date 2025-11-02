@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup
+  signInWithPopup,
 } from "firebase/auth";
 import { auth, provider, db } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -10,11 +10,12 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [referral, setReferral] = useState(""); // NEW: referral input
   const [mode, setMode] = useState("login"); // login | register
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  async function saveInitialUser(uid, emailVal, displayName = "") {
+  async function saveInitialUser(uid, emailVal, displayName = "", refCode = "") {
     const ref = doc(db, "users", uid);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
@@ -23,7 +24,8 @@ export default function Login() {
         displayName,
         coins: 0,
         lastDaily: null,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        referralCode: refCode || null, // 🔹 save referral code if provided
       });
     }
   }
@@ -35,10 +37,19 @@ export default function Login() {
     try {
       if (mode === "login") {
         const res = await signInWithEmailAndPassword(auth, email, password);
-        await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "");
+        await saveInitialUser(
+          res.user.uid,
+          res.user.email,
+          res.user.displayName || ""
+        );
       } else {
         const res = await createUserWithEmailAndPassword(auth, email, password);
-        await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "");
+        await saveInitialUser(
+          res.user.uid,
+          res.user.email,
+          res.user.displayName || "",
+          referral
+        );
       }
     } catch (error) {
       setErr(error.message);
@@ -52,7 +63,11 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
-      await saveInitialUser(res.user.uid, res.user.email || "", res.user.displayName || "");
+      await saveInitialUser(
+        res.user.uid,
+        res.user.email || "",
+        res.user.displayName || ""
+      );
     } catch (error) {
       setErr(error.message);
     } finally {
@@ -62,13 +77,17 @@ export default function Login() {
 
   return (
     <div className="auth-root">
+      {/* Background video */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/media/bg.mp4" type="video/mp4" />
       </video>
+
       <div className="auth-overlay" />
+
+      {/* Auth card */}
       <div className="auth-card">
         <img src="/media/icon.jpg" className="logo-small" alt="logo" />
-        <h2>{mode === "login" ? "Sign in" : "Create account"}</h2>
+        <h2>{mode === "login" ? "Sign in" : "Create Account"}</h2>
 
         <form onSubmit={handleEmail} className="form-col">
           <input
@@ -88,22 +107,48 @@ export default function Login() {
             required
           />
 
+          {/* 🔹 Show referral code only when registering */}
+          {mode === "register" && (
+            <input
+              placeholder="Referral Code (optional)"
+              type="text"
+              className="field"
+              value={referral}
+              onChange={(e) => setReferral(e.target.value)}
+            />
+          )}
+
           {err && <div className="error">{err}</div>}
 
           <button className="btn" type="submit" disabled={loading}>
-            {loading ? "Please wait…" : mode === "login" ? "Login" : "Register"}
+            {loading
+              ? "Please wait…"
+              : mode === "login"
+              ? "Login"
+              : "Register"}
           </button>
         </form>
 
         <div className="sep">OR</div>
 
-        <button className="btn google" onClick={handleGoogle} disabled={loading}>
+        <button
+          className="btn google"
+          onClick={handleGoogle}
+          disabled={loading}
+        >
           Sign in with Google
         </button>
 
         <p className="text-muted">
-          {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-          <span className="link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+          {mode === "login"
+            ? "Don't have an account?"
+            : "Already have an account?"}{" "}
+          <span
+            className="link"
+            onClick={() =>
+              setMode(mode === "login" ? "register" : "login")
+            }
+          >
             {mode === "login" ? "Register" : "Login"}
           </span>
         </p>
