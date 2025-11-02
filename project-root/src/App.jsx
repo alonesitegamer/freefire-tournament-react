@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Splash from "./components/Splash";
@@ -25,7 +25,7 @@ export default function App() {
     }
   }, []);
 
-  // ✅ 1️⃣ Error display instead of blank white screen
+  // Error display
   if (error) {
     return (
       <div
@@ -46,29 +46,27 @@ export default function App() {
     );
   }
 
-  // ✅ 2️⃣ Loading state
+  // Loading state
   if (loading) return <Splash />;
 
-  // ✅ 3️⃣ Safe routing
+  // Routing (no nested BrowserRouter!)
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            user ? (
-              <Dashboard user={user} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" replace /> : <Login />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route
+        path="/"
+        element={
+          user ? (
+            <Dashboard user={user} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/" replace /> : <Login />}
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
