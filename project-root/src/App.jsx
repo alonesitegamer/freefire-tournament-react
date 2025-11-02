@@ -1,8 +1,8 @@
-import React from "react";
+Splash React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Splash from "./components/Splash";
+import Splash from "./components/splash";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
