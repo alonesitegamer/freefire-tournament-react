@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Splash from "./components/Splash";
+import MatchHistoryPage from "./pages/MatchHistoryPage"; // NEW IMPORT
+import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage"; // NEW IMPORT
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -62,6 +64,17 @@ export default function App() {
           )
         }
       />
+      {/* NEW ROUTES FOR HISTORY PAGES (Require Authentication) */}
+      <Route
+        path="/match-history" 
+        element={user ? <MatchHistoryPage /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/withdrawal-history" 
+        element={user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />}
+      />
+      {/* END NEW ROUTES */}
+      
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <Login />}
