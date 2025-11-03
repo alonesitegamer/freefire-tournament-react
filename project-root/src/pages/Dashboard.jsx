@@ -7,12 +7,6 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
-  collection, // NEW: For querying collections
-  query, // NEW: For building queries
-  where, // NEW: For filtering data
-  getDocs, // NEW: For fetching multiple documents
-  orderBy, // NEW: For sorting results
-  limit, // NEW: For limiting results
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -23,12 +17,6 @@ export default function Dashboard({ user }) {
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
-  // NEW: State for history data
-  const [matchHistory, setMatchHistory] = useState([]);
-  const [withdrawalHistory, setWithdrawalHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  // Initial Profile Load Effect
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -58,54 +46,6 @@ export default function Dashboard({ user }) {
     load();
     return () => (mounted = false);
   }, [user.uid, user.email]);
-
-  // NEW: History Fetch Effect (Runs only when activeTab is "account")
-  useEffect(() => {
-    if (activeTab !== "account") return;
-
-    async function fetchHistory() {
-      setHistoryLoading(true);
-      setMatchHistory([]);
-      setWithdrawalHistory([]); 
-
-      try {
-        // --- Fetch Match History ---
-        const matchQuery = query(
-          collection(db, "match_history"), // Collection name assumption
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc"),
-          limit(10) // Get last 10
-        );
-        const matchSnap = await getDocs(matchQuery);
-        const matches = matchSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setMatchHistory(matches);
-
-        // --- Fetch Withdrawal History ---
-        const withdrawalQuery = query(
-          collection(db, "withdrawals"), // Collection name assumption
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc"),
-          limit(10) // Get last 10
-        );
-        const withdrawalSnap = await getDocs(withdrawalQuery);
-        const withdrawals = withdrawalSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setWithdrawalHistory(withdrawals);
-      } catch (err) {
-        console.error("Failed to fetch history:", err);
-        alert("Could not load history.");
-      } finally {
-        setHistoryLoading(false);
-      }
-    }
-
-    fetchHistory();
-  }, [activeTab, user.uid]); // Dependency array ensures it only runs on tab change
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -279,7 +219,7 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
-        {/* NEW/UPDATED: Account Tab with History */}
+        {/* UPDATED: Account Tab with Navigation Links */}
         {activeTab === "account" && (
           <section className="panel">
             <h3>Account</h3>
@@ -297,59 +237,29 @@ export default function Dashboard({ user }) {
               Logout
             </button>
 
-            {/* --- NEW HISTORY SECTIONS START --- */}
+            {/* --- NEW HISTORY LINKS --- */}
             <hr style={{ borderColor: "#444", margin: "20px 0" }} />
 
-            {/* Match History */}
-            <div className="history-section" style={{ marginTop: "20px" }}>
+            {/* Match History Link (Clickable) */}
+            <div 
+              className="history-link-panel" 
+              onClick={() => navigate('/match-history')} // <-- Redirects to new page
+              style={{ cursor: 'pointer', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
               <h4>Match History</h4>
-              {historyLoading ? (
-                <p>Loading match history...</p>
-              ) : matchHistory.length === 0 ? (
-                <p>No matches played yet.</p>
-              ) : (
-                <ul className="history-list">
-                  {matchHistory.map((match) => (
-                    <li key={match.id} className="history-item">
-                      <span>{match.matchName || "Unnamed Match"}</span>
-                      {/* Using your --accent color for results */}
-                      <span style={{ color: "var(--accent)" }}>
-                        {match.result || "N/A"}
-                      </span>
-                      <span className="muted-small">
-                        {match.createdAt?.toDate().toLocaleDateString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <span style={{ color: 'var(--muted)', fontSize: '1.2em', fontWeight: 'bold' }}>&gt;</span>
             </div>
 
-            {/* Withdrawal History */}
-            <div className="history-section" style={{ marginTop: "20px" }}>
+            {/* Withdrawal History Link (Clickable) */}
+            <div 
+              className="history-link-panel" 
+              onClick={() => navigate('/withdrawal-history')} // <-- Redirects to new page
+              style={{ cursor: 'pointer', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
               <h4>Withdrawal History</h4>
-              {historyLoading ? (
-                <p>Loading withdrawal history...</p>
-              ) : withdrawalHistory.length === 0 ? (
-                <p>No withdrawals made yet.</p>
-              ) : (
-                <ul className="history-list">
-                  {withdrawalHistory.map((wd) => (
-                    <li key={wd.id} className="history-item">
-                      <span>{wd.amount || 0} Coins</span>
-                      {/* Using your --accent2 color for status */}
-                      <span style={{ color: "var(--accent2)" }}>
-                        {wd.status || "Pending"}
-                      </span>
-                      <span className="muted-small">
-                        {wd.createdAt?.toDate().toLocaleDateString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <span style={{ color: 'var(--muted)', fontSize: '1.2em', fontWeight: 'bold' }}>&gt;</span>
             </div>
-            {/* --- NEW HISTORY SECTIONS END --- */}
+            {/* --- END OF NEW LINKS --- */}
           </section>
         )}
       </main>
