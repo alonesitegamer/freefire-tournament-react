@@ -7,19 +7,19 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
-  collection, // NEW
-  query, // NEW
-  where, // NEW
-  getDocs, // NEW
-  orderBy, // NEW
-  limit, // NEW
-} from "firebase/firestore"; // NEW: Added firestore query functions
+  collection, // NEW: For querying collections
+  query, // NEW: For building queries
+  where, // NEW: For filtering data
+  getDocs, // NEW: For fetching multiple documents
+  orderBy, // NEW: For sorting results
+  limit, // NEW: For limiting results
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("home"); 
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
@@ -28,6 +28,7 @@ export default function Dashboard({ user }) {
   const [withdrawalHistory, setWithdrawalHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Initial Profile Load Effect
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -58,21 +59,19 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email]);
 
-  // NEW: This effect runs when the activeTab changes
+  // NEW: History Fetch Effect (Runs only when activeTab is "account")
   useEffect(() => {
-    // We only fetch history if the user is on the account tab
     if (activeTab !== "account") return;
 
     async function fetchHistory() {
       setHistoryLoading(true);
-      setMatchHistory([]); // Clear old data on re-fetch
-      setWithdrawalHistory([]); // Clear old data on re-fetch
+      setMatchHistory([]);
+      setWithdrawalHistory([]); 
 
       try {
         // --- Fetch Match History ---
-        // IMPORTANT: Assumes you have a 'match_history' collection
         const matchQuery = query(
-          collection(db, "match_history"), // <-- ASSUMPTION 1
+          collection(db, "match_history"), // Collection name assumption
           where("userId", "==", user.uid),
           orderBy("createdAt", "desc"),
           limit(10) // Get last 10
@@ -85,9 +84,8 @@ export default function Dashboard({ user }) {
         setMatchHistory(matches);
 
         // --- Fetch Withdrawal History ---
-        // IMPORTANT: Assumes you have a 'withdrawals' collection
         const withdrawalQuery = query(
-          collection(db, "withdrawals"), // <-- ASSUMPTION 2
+          collection(db, "withdrawals"), // Collection name assumption
           where("userId", "==", user.uid),
           orderBy("createdAt", "desc"),
           limit(10) // Get last 10
@@ -107,11 +105,7 @@ export default function Dashboard({ user }) {
     }
 
     fetchHistory();
-    // This effect depends on the activeTab and the user's ID
-  }, [activeTab, user.uid]);
-
-  // ... (all your other functions like addCoin, claimDaily, etc. go here) ...
-  // ... (no changes needed to them) ...
+  }, [activeTab, user.uid]); // Dependency array ensures it only runs on tab change
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -176,10 +170,8 @@ export default function Dashboard({ user }) {
       </div>
     );
 
-  // This is the main JSX return
   return (
     <div className="dash-root">
-      {/* ... (your video, overlay, and header are all unchanged) ... */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -213,7 +205,6 @@ export default function Dashboard({ user }) {
 
       {/* Main section with navigation */}
       <main className="dash-main">
-        {/* ... (activeTab === "home" is unchanged) ... */}
         {activeTab === "home" && (
           <>
             <section className="panel">
@@ -280,8 +271,7 @@ export default function Dashboard({ user }) {
             </section>
           </>
         )}
-        
-        {/* ... (activeTab === "matches" is unchanged) ... */}
+
         {activeTab === "matches" && (
           <section className="panel">
             <h3>Matches</h3>
@@ -289,7 +279,7 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
-        {/* NEW: Updated Account Tab */}
+        {/* NEW/UPDATED: Account Tab with History */}
         {activeTab === "account" && (
           <section className="panel">
             <h3>Account</h3>
@@ -307,14 +297,14 @@ export default function Dashboard({ user }) {
               Logout
             </button>
 
-            {/* --- NEW HISTORY SECTION --- */}
-            <hr style={{ borderColor: "#444" }} />
+            {/* --- NEW HISTORY SECTIONS START --- */}
+            <hr style={{ borderColor: "#444", margin: "20px 0" }} />
 
             {/* Match History */}
             <div className="history-section" style={{ marginTop: "20px" }}>
               <h4>Match History</h4>
               {historyLoading ? (
-                <p>Loading history...</p>
+                <p>Loading match history...</p>
               ) : matchHistory.length === 0 ? (
                 <p>No matches played yet.</p>
               ) : (
@@ -322,7 +312,8 @@ export default function Dashboard({ user }) {
                   {matchHistory.map((match) => (
                     <li key={match.id} className="history-item">
                       <span>{match.matchName || "Unnamed Match"}</span>
-                      <span style={{ color: "lightgreen" }}>
+                      {/* Using your --accent color for results */}
+                      <span style={{ color: "var(--accent)" }}>
                         {match.result || "N/A"}
                       </span>
                       <span className="muted-small">
@@ -338,7 +329,7 @@ export default function Dashboard({ user }) {
             <div className="history-section" style={{ marginTop: "20px" }}>
               <h4>Withdrawal History</h4>
               {historyLoading ? (
-                <p>Loading history...</p>
+                <p>Loading withdrawal history...</p>
               ) : withdrawalHistory.length === 0 ? (
                 <p>No withdrawals made yet.</p>
               ) : (
@@ -346,7 +337,8 @@ export default function Dashboard({ user }) {
                   {withdrawalHistory.map((wd) => (
                     <li key={wd.id} className="history-item">
                       <span>{wd.amount || 0} Coins</span>
-                      <span style={{ color: "orange" }}>
+                      {/* Using your --accent2 color for status */}
+                      <span style={{ color: "var(--accent2)" }}>
                         {wd.status || "Pending"}
                       </span>
                       <span className="muted-small">
@@ -357,12 +349,11 @@ export default function Dashboard({ user }) {
                 </ul>
               )}
             </div>
-            {/* --- END OF NEW SECTION --- */}
+            {/* --- NEW HISTORY SECTIONS END --- */}
           </section>
         )}
       </main>
 
-      {/* ... (your footer is unchanged) ... */}
       <footer className="bottom-nav">
         <button
           className={`nav-btn ${activeTab === "home" ? "active" : ""}`}
@@ -385,4 +376,4 @@ export default function Dashboard({ user }) {
       </footer>
     </div>
   );
-        }
+}
