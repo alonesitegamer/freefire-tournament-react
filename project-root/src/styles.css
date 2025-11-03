@@ -71,3 +71,23 @@ html,body,#root{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,S
   .auth-card{padding:16px}
   .match-card img{height:100px}
 }
+
+/* 🪙 Coin Animation */
+.coin-img {
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: spinCoin 2s linear infinite;
+  transform-origin: center;
+  filter: drop-shadow(0 0 6px gold);
+}
+
+@keyframes spinCoin {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
