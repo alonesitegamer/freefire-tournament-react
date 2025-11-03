@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("home"); // 👈 for navigation
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
@@ -115,13 +122,18 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            <div className="subtitle">{profile.displayName || profile.email}</div>
+            <div className="subtitle">
+              {profile.displayName || profile.email}
+            </div>
           </div>
         </div>
 
         <div className="header-actions">
           {profile.email === adminEmail && (
-            <button className="btn small" onClick={() => alert("Admin: coming soon")}>
+            <button
+              className="btn small"
+              onClick={() => alert("Admin: coming soon")}
+            >
               Admin
             </button>
           )}
@@ -131,71 +143,117 @@ export default function Dashboard({ user }) {
         </div>
       </header>
 
+      {/* Main section with navigation */}
       <main className="dash-main">
-        <section className="panel">
-          <div className="panel-row">
-            <div>
-              <div className="muted">Coins</div>
-              <div
-                className="big"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <img
-                  src="/coin.jpg"
-                  alt="coin"
-                  className="coin-icon"
-                  style={{
-                    width: "28px",
-                    height: "28px",
-                    borderRadius: "50%",
-                  }}
-                />
-                <span>{profile.coins ?? 0}</span>
-              </div>
-            </div>
-            <div>
-              <button className="btn" onClick={claimDaily}>
-                Claim Daily (1 coin)
-              </button>
-              <button className="btn ghost" onClick={watchAd}>
-                Watch Ad (+1 coin)
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="panel">
-          <h3>Featured Matches</h3>
-          <div className="grid">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="match-card">
-                <img src="/bt.jpg" alt="bt" />
-                <div className="match-info">
-                  <div className="match-title">Battle Royale #{i}</div>
-                  <div className="match-meta">
-                    Start: 18:{10 + i} • Joined: {Math.floor(Math.random() * 12) + 1}/16
-                  </div>
-                  <button
-                    className="btn"
-                    onClick={() => alert("Join flow will be implemented soon")}
+        {activeTab === "home" && (
+          <>
+            <section className="panel">
+              <div className="panel-row">
+                <div>
+                  <div className="muted">Coins</div>
+                  <div
+                    className="big"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
                   >
-                    Join
+                    <img
+                      src="/coin.jpg"
+                      alt="coin"
+                      className="coin-icon"
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        animation: "spinCoin 3s linear infinite",
+                      }}
+                    />
+                    <span>{profile.coins ?? 0}</span>
+                  </div>
+                </div>
+                <div>
+                  <button className="btn" onClick={claimDaily}>
+                    Claim Daily (1 coin)
+                  </button>
+                  <button className="btn ghost" onClick={watchAd}>
+                    Watch Ad (+1 coin)
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
+
+            <section className="panel">
+              <h3>Featured Matches</h3>
+              <div className="grid">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="match-card">
+                    <img src="/bt.jpg" alt="bt" />
+                    <div className="match-info">
+                      <div className="match-title">Battle Royale #{i}</div>
+                      <div className="match-meta">
+                        Start: 18:{10 + i} • Joined:{" "}
+                        {Math.floor(Math.random() * 12) + 1}/16
+                      </div>
+                      <button
+                        className="btn"
+                        onClick={() =>
+                          alert("Join flow will be implemented soon")
+                        }
+                      >
+                        Join
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === "matches" && (
+          <section className="panel">
+            <h3>Matches</h3>
+            <p>Coming soon — tournaments list will appear here.</p>
+          </section>
+        )}
+
+        {activeTab === "account" && (
+          <section className="panel">
+            <h3>Account</h3>
+            <p>
+              <strong>Email:</strong> {profile.email}
+            </p>
+            <p>
+              <strong>Coins:</strong> {profile.coins}
+            </p>
+            <button className="btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </section>
+        )}
       </main>
 
       <footer className="bottom-nav">
-        <button className="nav-btn active">Home</button>
-        <button className="nav-btn">Matches</button>
-        <button className="nav-btn">Account</button>
+        <button
+          className={`nav-btn ${activeTab === "home" ? "active" : ""}`}
+          onClick={() => setActiveTab("home")}
+        >
+          Home
+        </button>
+        <button
+          className={`nav-btn ${activeTab === "matches" ? "active" : ""}`}
+          onClick={() => setActiveTab("matches")}
+        >
+          Matches
+        </button>
+        <button
+          className={`nav-btn ${activeTab === "account" ? "active" : ""}`}
+          onClick={() => setActiveTab("account")}
+        >
+          Account
+        </button>
       </footer>
     </div>
   );
