@@ -136,7 +136,14 @@ export default function Dashboard({ user }) {
           <div className="panel-row">
             <div>
               <div className="muted">Coins</div>
-              <div className="big">{profile.coins ?? 0} ₹</div>
+              <div className="big" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <img
+                  src="/coin.jpg"
+                  alt="coin"
+                  style={{ width: "28px", height: "28px", borderRadius: "50%" }}
+                />
+                {profile.coins ?? 0}
+              </div>
             </div>
             <div>
               <button className="btn" onClick={claimDaily}>
