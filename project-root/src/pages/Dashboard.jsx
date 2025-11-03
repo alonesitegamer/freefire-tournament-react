@@ -7,6 +7,9 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  addDoc,
+  collection,
+  getDocs,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -14,11 +17,18 @@ export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
-  const [adsWatched, setAdsWatched] = useState(0); // ✅ Track ads per day
+  const [topupAmount, setTopupAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const navigate = useNavigate();
-  const adminEmail = "esportsimperial50@gmail.com";
 
-  // Load user data
+  const adminEmail = "esportsimperial50@gmail.com";
+  const adminPassword = "imperialx"; // only used for admin login manually
+
+  // ------------------------------
+  // Load profile data
+  // ------------------------------
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -35,8 +45,6 @@ export default function Dashboard({ user }) {
             displayName: user.displayName || "",
             lastDaily: null,
             createdAt: serverTimestamp(),
-            adsWatchedDate: null,
-            adsWatchedCount: 0,
           });
           const s2 = await getDoc(ref);
           if (mounted) setProfile({ id: s2.id, ...s2.data() });
@@ -51,21 +59,20 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email]);
 
-  // --- Update Coins ---
+  // ------------------------------
+  // Add / update coin balance
+  // ------------------------------
   async function addCoin(n = 1) {
     if (!profile) return;
-    try {
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, { coins: (profile.coins || 0) + n });
-      const snap = await getDoc(ref);
-      setProfile({ id: snap.id, ...snap.data() });
-    } catch (err) {
-      console.error("addCoin error:", err);
-      alert("Failed to add coin.");
-    }
+    const ref = doc(db, "users", user.uid);
+    await updateDoc(ref, { coins: (profile.coins || 0) + n });
+    const snap = await getDoc(ref);
+    setProfile({ id: snap.id, ...snap.data() });
   }
 
-  // --- Claim Daily ---
+  // ------------------------------
+  // Claim daily bonus
+  // ------------------------------
   async function claimDaily() {
     if (!profile) return;
     const last =
@@ -76,48 +83,126 @@ export default function Dashboard({ user }) {
     const isSameDay = last && last.toDateString() === now.toDateString();
     if (isSameDay) return alert("You already claimed today's coin.");
 
-    try {
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, {
-        coins: (profile.coins || 0) + 1,
-        lastDaily: serverTimestamp(),
-      });
-      const snap = await getDoc(ref);
-      setProfile({ id: snap.id, ...snap.data() });
-      alert("+1 coin credited!");
-    } catch (err) {
-      console.error("claimDaily error:", err);
-    }
+    const ref = doc(db, "users", user.uid);
+    await updateDoc(ref, {
+      coins: (profile.coins || 0) + 1,
+      lastDaily: serverTimestamp(),
+    });
+    const snap = await getDoc(ref);
+    setProfile({ id: snap.id, ...snap.data() });
+    alert("+1 coin credited!");
   }
 
-  // --- Watch Ad (limit 3 per day) ---
+  // ------------------------------
+  // Ad watcher (demo)
+  // ------------------------------
   async function watchAd() {
-    if (!profile) return;
-    const today = new Date().toDateString();
-    const lastDate = profile.adsWatchedDate
-      ? new Date(profile.adsWatchedDate.seconds * 1000).toDateString()
-      : null;
+    await addCoin(1);
+    alert("+1 coin for watching ad (demo)");
+  }
 
-    let count = profile.adsWatchedCount || 0;
-    if (lastDate !== today) count = 0; // reset daily
-
-    if (count >= 3) return alert("You’ve reached today’s ad limit (3 per day).");
-
+  // ------------------------------
+  // Top-up request
+  // ------------------------------
+  async function handleTopup() {
+    const amt = parseInt(topupAmount);
+    if (!amt || amt < 20) return alert("Minimum top-up is ₹20.");
     try {
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, {
-        coins: (profile.coins || 0) + 1,
-        adsWatchedCount: count + 1,
-        adsWatchedDate: serverTimestamp(),
+      await addDoc(collection(db, "topupRequests"), {
+        userId: user.uid,
+        email: profile.email,
+        amount: amt,
+        coins: amt, // 1 ₹ = 1 coin
+        status: "pending",
+        createdAt: serverTimestamp(),
       });
-      const snap = await getDoc(ref);
-      setProfile({ id: snap.id, ...snap.data() });
-      alert(`+1 coin for watching ad! (${count + 1}/3 today)`);
+      alert("Top-up request submitted! Admin will verify it soon.");
+      setTopupAmount("");
     } catch (err) {
-      console.error("watchAd error:", err);
+      console.error("Top-up error:", err);
     }
   }
 
+  // ------------------------------
+  // Withdraw request
+  // ------------------------------
+  async function handleWithdraw() {
+    const amt = parseInt(withdrawAmount);
+    if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
+    if (!upiId) return alert("Please enter your UPI ID.");
+
+    // apply 10% commission
+    const totalCoins = Math.ceil(amt * 1.1);
+
+    if (profile.coins < totalCoins)
+      return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
+
+    try {
+      await addDoc(collection(db, "withdrawRequests"), {
+        userId: user.uid,
+        email: profile.email,
+        upiId,
+        amount: amt,
+        coinsDeducted: totalCoins,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, "users", user.uid), {
+        coins: profile.coins - totalCoins,
+      });
+
+      alert(
+        `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10 % commission).`
+      );
+      setWithdrawAmount("");
+      setUpiId("");
+      const snap = await getDoc(doc(db, "users", user.uid));
+      setProfile({ id: snap.id, ...snap.data() });
+    } catch (err) {
+      console.error("Withdraw error:", err);
+    }
+  }
+
+  // ------------------------------
+  // Admin data loader
+  // ------------------------------
+  useEffect(() => {
+    if (profile?.email !== adminEmail) return;
+    (async () => {
+      const topupSnap = await getDocs(collection(db, "topupRequests"));
+      const withdrawSnap = await getDocs(collection(db, "withdrawRequests"));
+      setRequests({
+        topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        withdraw: withdrawSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    })();
+  }, [profile?.email]);
+
+  // ------------------------------
+  // Admin approve/reject handlers
+  // ------------------------------
+  async function approveRequest(type, req) {
+    const ref = doc(db, `${type}Requests`, req.id);
+    await updateDoc(ref, { status: "approved" });
+
+    if (type === "topup") {
+      await updateDoc(doc(db, "users", req.userId), {
+        coins: (profile.coins || 0) + req.coins,
+      });
+    }
+    alert(`${type} approved.`);
+  }
+
+  async function rejectRequest(type, req) {
+    const ref = doc(db, `${type}Requests`, req.id);
+    await updateDoc(ref, { status: "rejected" });
+    alert(`${type} rejected.`);
+  }
+
+  // ------------------------------
+  // Logout
+  // ------------------------------
   async function handleLogout() {
     await signOut(auth);
     navigate("/login");
@@ -125,18 +210,7 @@ export default function Dashboard({ user }) {
 
   if (loading || !profile)
     return (
-      <div
-        style={{
-          height: "100vh",
-          background: "black",
-          color: "white",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        Loading Dashboard...
-      </div>
+      <div className="center-screen">Loading Dashboard...</div>
     );
 
   return (
@@ -161,9 +235,9 @@ export default function Dashboard({ user }) {
           {profile.email === adminEmail && (
             <button
               className="btn small"
-              onClick={() => alert("Admin: coming soon")}
+              onClick={() => setActiveTab("admin")}
             >
-              Admin
+              Admin Panel
             </button>
           )}
           <button className="btn small ghost" onClick={handleLogout}>
@@ -172,23 +246,14 @@ export default function Dashboard({ user }) {
         </div>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
       <main className="dash-main">
-        {/* Home */}
         {activeTab === "home" && (
           <>
             <section className="panel">
               <div className="panel-row">
                 <div>
                   <div className="muted">Coins</div>
-                  <div
-                    className="big"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
+                  <div className="big coin-row">
                     <img
                       src="/coin.jpg"
                       alt="coin"
@@ -205,10 +270,10 @@ export default function Dashboard({ user }) {
                 </div>
                 <div>
                   <button className="btn" onClick={claimDaily}>
-                    Claim Daily (1 coin)
+                    Claim Daily (+1)
                   </button>
                   <button className="btn ghost" onClick={watchAd}>
-                    Watch Ad (+1 coin)
+                    Watch Ad (+1)
                   </button>
                 </div>
               </div>
@@ -217,21 +282,12 @@ export default function Dashboard({ user }) {
             <section className="panel">
               <h3>Featured Matches</h3>
               <div className="grid">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
+                {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="match-card">
                     <img src="/bt.jpg" alt="bt" />
                     <div className="match-info">
                       <div className="match-title">Battle Royale #{i}</div>
-                      <div className="match-meta">
-                        Start: 18:{10 + i} • Joined:{" "}
-                        {Math.floor(Math.random() * 12) + 1}/16
-                      </div>
-                      <button
-                        className="btn"
-                        onClick={() =>
-                          alert("Join flow will be implemented soon")
-                        }
-                      >
+                      <button className="btn">
                         Join
                       </button>
                     </div>
@@ -242,194 +298,99 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* Matches */}
         {activeTab === "matches" && (
           <section className="panel">
             <h3>Matches</h3>
-            <p>Coming soon — tournaments list will appear here.</p>
+            <p>Coming soon — tournament list will appear here.</p>
           </section>
         )}
 
-        {/* Top-Up */}
-        {activeTab === "topup" && (
-          <section className="panel">
-            <h3>Top-Up Coins</h3>
-            <p>Select an amount to purchase:</p>
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                flexWrap: "wrap",
-                marginTop: "10px",
-              }}
-            >
-              {[20, 50, 100, 200].map((amt) => (
-                <button
-                  key={amt}
-                  className="btn"
-                  onClick={() =>
-                    alert(
-                      `Top-up request: ₹${amt} for ${amt} coins.\n(Payment processing by admin.)`
-                    )
-                  }
-                >
-                  ₹{amt} = {amt} coins
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Withdraw */}
-        {activeTab === "withdraw" && (
-          <section className="panel">
-            <h3>Withdraw Coins</h3>
-            <p>
-              Minimum: 50 coins&nbsp;|&nbsp;Maximum per day: 2000 coins
-            </p>
-            <div style={{ marginTop: "10px" }}>
-              <input
-                type="number"
-                id="withdrawAmount"
-                placeholder="Enter coins to withdraw"
-                className="field"
-                style={{ width: "100%", maxWidth: "220px" }}
-              />
-              <select
-                id="withdrawType"
-                className="field"
-                style={{ width: "100%", maxWidth: "220px" }}
-              >
-                <option value="upi">UPI</option>
-                <option value="redeem">Redeem Code</option>
-              </select>
-              <button
-                className="btn"
-                onClick={() => {
-                  const amt = document.getElementById("withdrawAmount").value;
-                  const type = document.getElementById("withdrawType").value;
-                  if (amt < 50) return alert("Minimum withdrawal is 50 coins.");
-                  if (amt > 2000)
-                    return alert(
-                      "You can withdraw up to 2000 coins per day only."
-                    );
-                  alert(
-                    `Withdrawal request for ${amt} coins via ${type.toUpperCase()} submitted.\nAdmin will process it manually.`
-                  );
-                }}
-              >
-                Request Withdrawal
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* Account */}
         {activeTab === "account" && (
           <section className="panel">
             <h3>Account</h3>
-            <p>
-              <strong>Email:</strong> {profile.email}
-            </p>
-            <p>
-              <strong>Coins:</strong> {profile.coins}
-            </p>
-            <button
-              className="btn"
-              onClick={handleLogout}
-              style={{ marginBottom: "20px" }}
-            >
+            <p><strong>Email:</strong> {profile.email}</p>
+            <p><strong>Coins:</strong> {profile.coins}</p>
+            <button className="btn" onClick={handleLogout}>
               Logout
             </button>
+          </section>
+        )}
 
-            <hr style={{ borderColor: "#444", margin: "20px 0" }} />
+        {activeTab === "topup" && (
+          <section className="panel">
+            <h3>Top-up Coins</h3>
+            <p>1 ₹ = 1 coin | Min ₹20</p>
+            <input
+              type="number"
+              placeholder="Enter amount ₹"
+              value={topupAmount}
+              onChange={(e) => setTopupAmount(e.target.value)}
+            />
+            <button className="btn" onClick={handleTopup}>
+              Submit Top-up Request
+            </button>
+          </section>
+        )}
 
-            <div
-              className="history-link-panel"
-              onClick={() => navigate("/match-history")}
-              style={{
-                cursor: "pointer",
-                padding: "12px",
-                background: "rgba(255,255,255,0.05)",
-                borderRadius: "10px",
-                marginBottom: "10px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <h4>Match History</h4>
-              <span
-                style={{
-                  color: "var(--muted)",
-                  fontSize: "1.2em",
-                  fontWeight: "bold",
-                }}
-              >
-                &gt;
-              </span>
-            </div>
+        {activeTab === "withdraw" && (
+          <section className="panel">
+            <h3>Withdraw Coins</h3>
+            <p>10 % commission | Min ₹50</p>
+            <input
+              type="number"
+              placeholder="Enter amount ₹"
+              value={withdrawAmount}
+              onChange={(e) => setWithdrawAmount(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Enter your UPI ID"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+            />
+            <button className="btn" onClick={handleWithdraw}>
+              Request Withdrawal
+            </button>
+          </section>
+        )}
 
-            <div
-              className="history-link-panel"
-              onClick={() => navigate("/withdrawal-history")}
-              style={{
-                cursor: "pointer",
-                padding: "12px",
-                background: "rgba(255,255,255,0.05)",
-                borderRadius: "10px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <h4>Withdrawal History</h4>
-              <span
-                style={{
-                  color: "var(--muted)",
-                  fontSize: "1.2em",
-                  fontWeight: "bold",
-                }}
-              >
-                &gt;
-              </span>
-            </div>
+        {activeTab === "admin" && profile.email === adminEmail && (
+          <section className="panel">
+            <h3>Admin Panel</h3>
+            <h4>Top-up Requests</h4>
+            {requests.topup.map((r) => (
+              <div key={r.id} className="admin-row">
+                <span>{r.email} | ₹{r.amount}</span>
+                <div>
+                  <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
+                  <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
+                </div>
+              </div>
+            ))}
+            <h4>Withdraw Requests</h4>
+            {requests.withdraw.map((r) => (
+              <div key={r.id} className="admin-row">
+                <span>{r.email} | ₹{r.amount} | UPI: {r.upiId}</span>
+                <div>
+                  <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
+                  <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
+                </div>
+              </div>
+            ))}
           </section>
         )}
       </main>
 
-      {/* --- Bottom Navigation --- */}
       <footer className="bottom-nav">
-        <button
-          className={`nav-btn ${activeTab === "home" ? "active" : ""}`}
-          onClick={() => setActiveTab("home")}
-        >
-          Home
-        </button>
-        <button
-          className={`nav-btn ${activeTab === "matches" ? "active" : ""}`}
-          onClick={() => setActiveTab("matches")}
-        >
-          Matches
-        </button>
-        <button
-          className={`nav-btn ${activeTab === "topup" ? "active" : ""}`}
-          onClick={() => setActiveTab("topup")}
-        >
-          Top-Up
-        </button>
-        <button
-          className={`nav-btn ${activeTab === "withdraw" ? "active" : ""}`}
-          onClick={() => setActiveTab("withdraw")}
-        >
-          Withdraw
-        </button>
-        <button
-          className={`nav-btn ${activeTab === "account" ? "active" : ""}`}
-          onClick={() => setActiveTab("account")}
-        >
-          Account
-        </button>
+        {["home", "matches", "topup", "withdraw", "account"].map((tab) => (
+          <button
+            key={tab}
+            className={`nav-btn ${activeTab === tab ? "active" : ""}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
       </footer>
     </div>
   );
