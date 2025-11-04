@@ -17,7 +17,7 @@ body,
   margin: 0;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto,
     'Helvetica Neue', Arial;
-  /* background: var(--bg); */ /* <-- 👈 HERE IS THE FIX */
+  /* background: var(--bg); */ /* <-- This is correct, leave it commented out */
   color: #fff;
 }
 .center {
@@ -193,6 +193,7 @@ body,
   flex: 1;
   overflow: auto;
   padding: 16px 18px;
+  padding-bottom: 80px; /* 👈 ADDED PADDING FOR NAV BAR */
 }
 .panel {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
@@ -225,7 +226,7 @@ body,
   margin-top: 12px;
 }
 .match-card {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.2); /* 👈 MADE MORE TRANSPARENT */
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -254,6 +255,12 @@ body,
 
 /* Bottom nav */
 .bottom-nav {
+  position: fixed; /* 👈 FIXED NAV BAR TO BOTTOM */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+
   display: flex;
   justify-content: space-around;
   padding: 10px;
