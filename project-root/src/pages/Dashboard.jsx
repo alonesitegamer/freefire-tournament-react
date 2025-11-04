@@ -10,6 +10,10 @@ import {
   addDoc,
   collection,
   getDocs,
+  query, // 👈 ADDED
+  where, // 👈 ADDED
+  orderBy, // 👈 ADDED
+  arrayUnion, // 👈 ADDED
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -22,6 +26,11 @@ export default function Dashboard({ user }) {
   const [upiId, setUpiId] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
+  
+  // 👇 ADDED STATE FOR MATCHES
+  const [matches, setMatches] = useState([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+
   const navigate = useNavigate();
 
   const adminEmail = "esportsimperial50@gmail.com";
@@ -57,6 +66,41 @@ export default function Dashboard({ user }) {
     load();
     return () => (mounted = false);
   }, [user.uid, user.email]);
+
+  // 👇 ADDED: useEffect TO LOAD MATCHES
+  useEffect(() => {
+    // Function to load matches
+    async function loadMatches() {
+      setLoadingMatches(true);
+      try {
+        const matchesRef = collection(db, 'matches');
+        // Create a query to get upcoming matches, ordered by newest
+        const q = query(
+          matchesRef,
+          where('status', '==', 'upcoming'),
+          orderBy('createdAt', 'desc')
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const matchesData = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        
+        setMatches(matchesData);
+      } catch (err) {
+        console.error("Error loading matches:", err);
+      } finally {
+        setLoadingMatches(false);
+      }
+    }
+
+    // Only load matches if the 'matches' tab is active
+    if (activeTab === 'matches') {
+      loadMatches();
+    }
+  }, [activeTab]); // This effect depends on activeTab
+
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -145,6 +189,79 @@ export default function Dashboard({ user }) {
       setProfile({ id: snap.id, ...snap.data() });
     } catch (err) {
       console.error("Withdraw error:", err);
+    }
+  }
+
+  // 👇 ADDED: FUNCTION TO JOIN A MATCH
+  async function handleJoinMatch(match) {
+    if (!profile) return; // Safety check
+
+    const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
+
+    // --- 1. Run Checks ---
+    if (playersJoined.includes(user.uid)) {
+      alert("You have already joined this match.");
+      return;
+    }
+    
+    if (playersJoined.length >= maxPlayers) {
+      alert("Sorry, this match is full.");
+      return;
+    }
+
+    if (profile.coins < entryFee) {
+      alert("You don't have enough coins to join this match.");
+      return;
+    }
+
+    // Confirmation dialog
+    if (!window.confirm(`Join this match for ${entryFee} coins?`)) {
+      return;
+    }
+
+    try {
+      // --- 2. Process Join ---
+      setLoading(true); // Show a general loading state
+
+      // Reference to the user's doc
+      const userDocRef = doc(db, 'users', user.uid);
+      
+      // Reference to the match doc
+      const matchDocRef = doc(db, 'matches', matchId);
+
+      // Step A: Deduct coins from user
+      await updateDoc(userDocRef, {
+        coins: profile.coins - entryFee,
+      });
+
+      // Step B: Add user's ID to the match's playersJoined array
+      await updateDoc(matchDocRef, {
+        playersJoined: arrayUnion(user.uid),
+      });
+
+      // --- 3. Update Local State ---
+      // Update the profile state with new coin balance
+      setProfile({
+        ...profile,
+        coins: profile.coins - entryFee,
+      });
+
+      // Update the specific match in the local matches state
+      setMatches((prevMatches) =>
+        prevMatches.map((m) =>
+          m.id === matchId
+            ? { ...m, playersJoined: [...m.playersJoined, user.uid] }
+            : m
+        )
+      );
+
+      alert("You have successfully joined the match!");
+
+    } catch (err) {
+      console.error("Error joining match:", err);
+      alert("An error occurred while joining. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -247,21 +364,53 @@ export default function Dashboard({ user }) {
               </div>
             </section>
 
+            {/* 👇 UPDATED: Removed hardcoded matches, replaced with welcome */}
             <section className="panel">
-              <h3>Featured Matches</h3>
-              <div className="grid">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="match-card">
-                    <img src="/bt.jpg" alt="bt" />
-                    <div className="match-info">
-                      <div className="match-title">Battle Royale #{i}</div>
-                      <button className="btn">Join</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <h3>Welcome!</h3>
+              <p>Check the matches tab to join a game.</p>
             </section>
           </>
+        )}
+
+        {/* 👇 ADDED: NEW "MATCHES" TAB SECTION */}
+        {activeTab === 'matches' && (
+          <section className="panel">
+            <h3>Available Matches</h3>
+            {loadingMatches && <p>Loading matches...</p>}
+            
+            {!loadingMatches && matches.length === 0 && (
+              <p>No upcoming matches right now. Check back soon!</p>
+            )}
+
+            <div className="grid">
+              {matches.map((match) => {
+                // Check if user is in the playersJoined array
+                const hasJoined = match.playersJoined?.includes(user.uid);
+                // Check if match is full
+                const isFull = match.playersJoined?.length >= match.maxPlayers;
+
+                return (
+                  <div key={match.id} className="match-card">
+                    <img src={match.imageUrl} alt={match.title} />
+                    <div className="match-info">
+                      <div className="match-title">{match.title}</div>
+                      <div className.match-meta">
+                        Entry: {match.entryFee} Coins | Joined: {match.playersJoined?.length || 0} / {match.maxPlayers}
+                      </div>
+                      
+                      <button
+                        className="btn"
+                        onClick={() => handleJoinMatch(match)}
+                        disabled={hasJoined || isFull}
+                      >
+                        {hasJoined ? 'Joined' : isFull ? 'Full' : 'Join'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {activeTab === "topup" && (
@@ -314,7 +463,7 @@ export default function Dashboard({ user }) {
                 className="modern-input"
                 placeholder="Enter your UPI ID"
                 value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
+                onChange={(e) => setUpiId(e.g.target.value)}
               />
               <button className="btn glow large" onClick={handleWithdraw}>
                 Request Withdrawal
@@ -360,7 +509,7 @@ export default function Dashboard({ user }) {
                     onClick={() => approveRequest("withdraw", r)}
                   >
                     Approve
-                  </button>
+                  </BUTTON>
                   <button
                     className="btn small ghost"
                     onClick={() => rejectRequest("withdraw", r)}
