@@ -26,7 +26,7 @@ export default function Dashboard({ user }) {
   const [upiId, setUpiId] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
-  
+
   // 👇 ADDED STATE FOR MATCHES
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
@@ -73,20 +73,20 @@ export default function Dashboard({ user }) {
     async function loadMatches() {
       setLoadingMatches(true);
       try {
-        const matchesRef = collection(db, 'matches');
+        const matchesRef = collection(db, "matches");
         // Create a query to get upcoming matches, ordered by newest
         const q = query(
           matchesRef,
-          where('status', '==', 'upcoming'),
-          orderBy('createdAt', 'desc')
+          where("status", "==", "upcoming"),
+          orderBy("createdAt", "desc")
         );
-        
+
         const querySnapshot = await getDocs(q);
         const matchesData = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-        
+
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -96,11 +96,10 @@ export default function Dashboard({ user }) {
     }
 
     // Only load matches if the 'matches' tab is active
-    if (activeTab === 'matches') {
+    if (activeTab === "matches") {
       loadMatches();
     }
   }, [activeTab]); // This effect depends on activeTab
-
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -203,7 +202,7 @@ export default function Dashboard({ user }) {
       alert("You have already joined this match.");
       return;
     }
-    
+
     if (playersJoined.length >= maxPlayers) {
       alert("Sorry, this match is full.");
       return;
@@ -224,10 +223,10 @@ export default function Dashboard({ user }) {
       setLoading(true); // Show a general loading state
 
       // Reference to the user's doc
-      const userDocRef = doc(db, 'users', user.uid);
-      
+      const userDocRef = doc(db, "users", user.uid);
+
       // Reference to the match doc
-      const matchDocRef = doc(db, 'matches', matchId);
+      const matchDocRef = doc(db, "matches", matchId);
 
       // Step A: Deduct coins from user
       await updateDoc(userDocRef, {
@@ -256,7 +255,6 @@ export default function Dashboard({ user }) {
       );
 
       alert("You have successfully joined the match!");
-
     } catch (err) {
       console.error("Error joining match:", err);
       alert("An error occurred while joining. Please try again.");
@@ -373,11 +371,11 @@ export default function Dashboard({ user }) {
         )}
 
         {/* 👇 ADDED: NEW "MATCHES" TAB SECTION */}
-        {activeTab === 'matches' && (
+        {activeTab === "matches" && (
           <section className="panel">
             <h3>Available Matches</h3>
             {loadingMatches && <p>Loading matches...</p>}
-            
+
             {!loadingMatches && matches.length === 0 && (
               <p>No upcoming matches right now. Check back soon!</p>
             )}
@@ -394,16 +392,18 @@ export default function Dashboard({ user }) {
                     <img src={match.imageUrl} alt={match.title} />
                     <div className="match-info">
                       <div className="match-title">{match.title}</div>
-                      <div className.match-meta">
-                        Entry: {match.entryFee} Coins | Joined: {match.playersJoined?.length || 0} / {match.maxPlayers}
+                      {/* 👇 THIS IS THE FIX 👇 */}
+                      <div className="match-meta">
+                        Entry: {match.entryFee} Coins | Joined:{" "}
+                        {match.playersJoined?.length || 0} / {match.maxPlayers}
                       </div>
-                      
+
                       <button
                         className="btn"
                         onClick={() => handleJoinMatch(match)}
                         disabled={hasJoined || isFull}
                       >
-                        {hasJoined ? 'Joined' : isFull ? 'Full' : 'Join'}
+                        {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
                       </button>
                     </div>
                   </div>
@@ -463,7 +463,7 @@ export default function Dashboard({ user }) {
                 className="modern-input"
                 placeholder="Enter your UPI ID"
                 value={upiId}
-                onChange={(e) => setUpiId(e.g.target.value)}
+                onChange={(e) => setUpiId(e.target.value)}
               />
               <button className="btn glow large" onClick={handleWithdraw}>
                 Request Withdrawal
@@ -509,7 +509,7 @@ export default function Dashboard({ user }) {
                     onClick={() => approveRequest("withdraw", r)}
                   >
                     Approve
-                  </BUTTON>
+                  </button>
                   <button
                     className="btn small ghost"
                     onClick={() => rejectRequest("withdraw", r)}
