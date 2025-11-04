@@ -21,14 +21,13 @@ export default function Dashboard({ user }) {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [upiId, setUpiId] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
+  const [selectedAmount, setSelectedAmount] = useState(null);
   const navigate = useNavigate();
 
   const adminEmail = "esportsimperial50@gmail.com";
-  const adminPassword = "imperialx"; // for manual admin login
+  const adminPassword = "imperialx";
 
-  // ------------------------------
-  // Load user profile
-  // ------------------------------
+  // Load profile
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -59,9 +58,6 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email]);
 
-  // ------------------------------
-  // Add coins
-  // ------------------------------
   async function addCoin(n = 1) {
     if (!profile) return;
     const ref = doc(db, "users", user.uid);
@@ -70,9 +66,6 @@ export default function Dashboard({ user }) {
     setProfile({ id: snap.id, ...snap.data() });
   }
 
-  // ------------------------------
-  // Claim daily
-  // ------------------------------
   async function claimDaily() {
     if (!profile) return;
     const last =
@@ -93,19 +86,13 @@ export default function Dashboard({ user }) {
     alert("+1 coin credited!");
   }
 
-  // ------------------------------
-  // Watch Ad
-  // ------------------------------
   async function watchAd() {
     await addCoin(1);
     alert("+1 coin for watching ad (demo)");
   }
 
-  // ------------------------------
-  // Top-up request
-  // ------------------------------
   async function handleTopup() {
-    const amt = parseInt(topupAmount);
+    const amt = parseInt(selectedAmount || topupAmount);
     if (!amt || amt < 20) return alert("Minimum top-up is ₹20.");
     try {
       await addDoc(collection(db, "topupRequests"), {
@@ -118,22 +105,21 @@ export default function Dashboard({ user }) {
       });
       alert("Top-up request submitted! Admin will verify it soon.");
       setTopupAmount("");
+      setSelectedAmount(null);
     } catch (err) {
       console.error("Top-up error:", err);
     }
   }
 
-  // ------------------------------
-  // Withdraw request (10% commission)
-  // ------------------------------
   async function handleWithdraw() {
     const amt = parseInt(withdrawAmount);
     if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
     if (!upiId) return alert("Please enter your UPI ID.");
 
     const totalCoins = Math.ceil(amt * 1.1);
+
     if (profile.coins < totalCoins)
-      return alert(`You need ${totalCoins} coins to withdraw ₹${amt} (10% fee).`);
+      return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
 
     try {
       await addDoc(collection(db, "withdrawRequests"), {
@@ -150,7 +136,9 @@ export default function Dashboard({ user }) {
         coins: profile.coins - totalCoins,
       });
 
-      alert(`Withdrawal request submitted! ₹${amt} (-${totalCoins} coins inc. 10%).`);
+      alert(
+        `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10% commission).`
+      );
       setWithdrawAmount("");
       setUpiId("");
       const snap = await getDoc(doc(db, "users", user.uid));
@@ -160,9 +148,7 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // ------------------------------
-  // Admin Data
-  // ------------------------------
+  // Admin fetch
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
@@ -192,9 +178,6 @@ export default function Dashboard({ user }) {
     alert(`${type} rejected.`);
   }
 
-  // ------------------------------
-  // Logout
-  // ------------------------------
   async function handleLogout() {
     await signOut(auth);
     navigate("/login");
@@ -281,97 +264,109 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {activeTab === "matches" && (
-          <section className="panel">
-            <h3>Matches</h3>
-            <p>Coming soon — tournament list will appear here.</p>
-          </section>
-        )}
-
-        {activeTab === "account" && (
-          <section className="panel">
-            <h3>Account</h3>
-            <p><strong>Email:</strong> {profile.email}</p>
-            <p><strong>Coins:</strong> {profile.coins}</p>
-            <button className="btn" onClick={handleLogout}>
-              Logout
-            </button>
-          </section>
-        )}
-
-        {/* --- Modern Top-up Section --- */}
         {activeTab === "topup" && (
-          <section className="panel modern-card">
-            <h3 className="modern-title">💰 Top-up Coins</h3>
-            <p className="modern-subtitle">Select a package — 1 ₹ = 1 Coin</p>
-
+          <section className="modern-card">
+            <h3 className="modern-title">Top-up Coins</h3>
+            <p className="modern-subtitle">1 ₹ = 1 Coin | Choose an amount</p>
             <div className="amount-options">
               {[20, 50, 100, 200].map((amt) => (
-                <button
+                <div
                   key={amt}
-                  className={`amount-btn ${topupAmount == amt ? "selected" : ""}`}
-                  onClick={() => setTopupAmount(amt)}
+                  className={`amount-btn ${
+                    selectedAmount === amt ? "selected" : ""
+                  }`}
+                  onClick={() => setSelectedAmount(amt)}
                 >
                   ₹{amt} = {amt} Coins
-                </button>
+                </div>
               ))}
             </div>
-
-            <button className="btn large glow" onClick={handleTopup}>
-              🚀 Submit Top-up Request
+            <input
+              type="number"
+              className="modern-input"
+              placeholder="Or enter custom amount ₹"
+              value={topupAmount}
+              onChange={(e) => {
+                setSelectedAmount(null);
+                setTopupAmount(e.target.value);
+              }}
+            />
+            <button className="btn glow large" onClick={handleTopup}>
+              Submit Top-up Request
             </button>
           </section>
         )}
 
-        {/* --- Modern Withdraw Section --- */}
         {activeTab === "withdraw" && (
-          <section className="panel modern-card">
-            <h3 className="modern-title">🏦 Withdraw Coins</h3>
-            <p className="modern-subtitle">10% Commission | Min ₹50</p>
-
+          <section className="modern-card">
+            <h3 className="modern-title">Withdraw Coins</h3>
+            <p className="modern-subtitle">10% commission | Minimum ₹50</p>
             <div className="withdraw-form">
               <input
                 type="number"
-                placeholder="Enter withdrawal amount ₹"
                 className="modern-input"
+                placeholder="Enter amount ₹"
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value)}
               />
               <input
                 type="text"
-                placeholder="Enter your UPI ID (example@upi)"
                 className="modern-input"
+                placeholder="Enter your UPI ID"
                 value={upiId}
                 onChange={(e) => setUpiId(e.target.value)}
               />
-              <button className="btn large glow" onClick={handleWithdraw}>
-                💸 Request Withdrawal
+              <button className="btn glow large" onClick={handleWithdraw}>
+                Request Withdrawal
               </button>
             </div>
           </section>
         )}
 
-        {/* --- Admin Section --- */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
             <h3>Admin Panel</h3>
             <h4>Top-up Requests</h4>
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>{r.email} | ₹{r.amount}</span>
+                <span>
+                  {r.email} | ₹{r.amount}
+                </span>
                 <div>
-                  <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
-                  <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("topup", r)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("topup", r)}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))}
             <h4>Withdraw Requests</h4>
             {requests.withdraw.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>{r.email} | ₹{r.amount} | UPI: {r.upiId}</span>
+                <span>
+                  {r.email} | ₹{r.amount} | UPI: {r.upiId}
+                </span>
                 <div>
-                  <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
-                  <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("withdraw", r)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("withdraw", r)}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))}
