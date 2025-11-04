@@ -24,10 +24,10 @@ export default function Dashboard({ user }) {
   const navigate = useNavigate();
 
   const adminEmail = "esportsimperial50@gmail.com";
-  const adminPassword = "imperialx"; // only used for admin login manually
+  const adminPassword = "imperialx"; // for manual admin login
 
   // ------------------------------
-  // Load profile data
+  // Load user profile
   // ------------------------------
   useEffect(() => {
     let mounted = true;
@@ -60,7 +60,7 @@ export default function Dashboard({ user }) {
   }, [user.uid, user.email]);
 
   // ------------------------------
-  // Add / update coin balance
+  // Add coins
   // ------------------------------
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -71,7 +71,7 @@ export default function Dashboard({ user }) {
   }
 
   // ------------------------------
-  // Claim daily bonus
+  // Claim daily
   // ------------------------------
   async function claimDaily() {
     if (!profile) return;
@@ -94,7 +94,7 @@ export default function Dashboard({ user }) {
   }
 
   // ------------------------------
-  // Ad watcher (demo)
+  // Watch Ad
   // ------------------------------
   async function watchAd() {
     await addCoin(1);
@@ -112,7 +112,7 @@ export default function Dashboard({ user }) {
         userId: user.uid,
         email: profile.email,
         amount: amt,
-        coins: amt, // 1 ₹ = 1 coin
+        coins: amt,
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -124,18 +124,16 @@ export default function Dashboard({ user }) {
   }
 
   // ------------------------------
-  // Withdraw request
+  // Withdraw request (10% commission)
   // ------------------------------
   async function handleWithdraw() {
     const amt = parseInt(withdrawAmount);
     if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
     if (!upiId) return alert("Please enter your UPI ID.");
 
-    // apply 10% commission
     const totalCoins = Math.ceil(amt * 1.1);
-
     if (profile.coins < totalCoins)
-      return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
+      return alert(`You need ${totalCoins} coins to withdraw ₹${amt} (10% fee).`);
 
     try {
       await addDoc(collection(db, "withdrawRequests"), {
@@ -152,9 +150,7 @@ export default function Dashboard({ user }) {
         coins: profile.coins - totalCoins,
       });
 
-      alert(
-        `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10 % commission).`
-      );
+      alert(`Withdrawal request submitted! ₹${amt} (-${totalCoins} coins inc. 10%).`);
       setWithdrawAmount("");
       setUpiId("");
       const snap = await getDoc(doc(db, "users", user.uid));
@@ -165,7 +161,7 @@ export default function Dashboard({ user }) {
   }
 
   // ------------------------------
-  // Admin data loader
+  // Admin Data
   // ------------------------------
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
@@ -179,13 +175,9 @@ export default function Dashboard({ user }) {
     })();
   }, [profile?.email]);
 
-  // ------------------------------
-  // Admin approve/reject handlers
-  // ------------------------------
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved" });
-
     if (type === "topup") {
       await updateDoc(doc(db, "users", req.userId), {
         coins: (profile.coins || 0) + req.coins,
@@ -209,9 +201,7 @@ export default function Dashboard({ user }) {
   }
 
   if (loading || !profile)
-    return (
-      <div className="center-screen">Loading Dashboard...</div>
-    );
+    return <div className="center-screen">Loading Dashboard...</div>;
 
   return (
     <div className="dash-root">
@@ -225,18 +215,13 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            <div className="subtitle">
-              {profile.displayName || profile.email}
-            </div>
+            <div className="subtitle">{profile.displayName || profile.email}</div>
           </div>
         </div>
 
         <div className="header-actions">
           {profile.email === adminEmail && (
-            <button
-              className="btn small"
-              onClick={() => setActiveTab("admin")}
-            >
+            <button className="btn small" onClick={() => setActiveTab("admin")}>
               Admin Panel
             </button>
           )}
@@ -287,9 +272,7 @@ export default function Dashboard({ user }) {
                     <img src="/bt.jpg" alt="bt" />
                     <div className="match-info">
                       <div className="match-title">Battle Royale #{i}</div>
-                      <button className="btn">
-                        Join
-                      </button>
+                      <button className="btn">Join</button>
                     </div>
                   </div>
                 ))}
@@ -316,44 +299,59 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
+        {/* --- Modern Top-up Section --- */}
         {activeTab === "topup" && (
-          <section className="panel">
-            <h3>Top-up Coins</h3>
-            <p>1 ₹ = 1 coin | Min ₹20</p>
-            <input
-              type="number"
-              placeholder="Enter amount ₹"
-              value={topupAmount}
-              onChange={(e) => setTopupAmount(e.target.value)}
-            />
-            <button className="btn" onClick={handleTopup}>
-              Submit Top-up Request
+          <section className="panel modern-card">
+            <h3 className="modern-title">💰 Top-up Coins</h3>
+            <p className="modern-subtitle">Select a package — 1 ₹ = 1 Coin</p>
+
+            <div className="amount-options">
+              {[20, 50, 100, 200].map((amt) => (
+                <button
+                  key={amt}
+                  className={`amount-btn ${topupAmount == amt ? "selected" : ""}`}
+                  onClick={() => setTopupAmount(amt)}
+                >
+                  ₹{amt} = {amt} Coins
+                </button>
+              ))}
+            </div>
+
+            <button className="btn large glow" onClick={handleTopup}>
+              🚀 Submit Top-up Request
             </button>
           </section>
         )}
 
+        {/* --- Modern Withdraw Section --- */}
         {activeTab === "withdraw" && (
-          <section className="panel">
-            <h3>Withdraw Coins</h3>
-            <p>10 % commission | Min ₹50</p>
-            <input
-              type="number"
-              placeholder="Enter amount ₹"
-              value={withdrawAmount}
-              onChange={(e) => setWithdrawAmount(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Enter your UPI ID"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-            />
-            <button className="btn" onClick={handleWithdraw}>
-              Request Withdrawal
-            </button>
+          <section className="panel modern-card">
+            <h3 className="modern-title">🏦 Withdraw Coins</h3>
+            <p className="modern-subtitle">10% Commission | Min ₹50</p>
+
+            <div className="withdraw-form">
+              <input
+                type="number"
+                placeholder="Enter withdrawal amount ₹"
+                className="modern-input"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="Enter your UPI ID (example@upi)"
+                className="modern-input"
+                value={upiId}
+                onChange={(e) => setUpiId(e.target.value)}
+              />
+              <button className="btn large glow" onClick={handleWithdraw}>
+                💸 Request Withdrawal
+              </button>
+            </div>
           </section>
         )}
 
+        {/* --- Admin Section --- */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
             <h3>Admin Panel</h3>
