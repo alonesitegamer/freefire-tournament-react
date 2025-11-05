@@ -726,3 +726,41 @@ body,
   font-weight: 600;
   color: var(--muted);
 }
+
+/* === ADDED: Account Profile Card === */
+.account-profile-card {
+  text-align: center;
+  padding: 24px;
+}
+.account-profile-card .modern-title {
+  text-align: center;
+  color: var(--accent2);
+}
+.account-profile-card .modern-subtitle {
+  text-align: center;
+  margin-bottom: 0;
+}
+
+/* === ADDED: Username Modal Styles === */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 500px;
+}
+
+.modal-content .modern-subtitle {
+  text-align: center;
+}
