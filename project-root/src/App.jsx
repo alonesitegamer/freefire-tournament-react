@@ -1,3 +1,5 @@
+// In your App.jsx file
+
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
@@ -8,17 +10,21 @@ import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-// --- 1. IMPORTS FOR NEW PAGES ---
+// --- IMPORTS FOR NEW PAGES ---
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import About from "./pages/About";
 import Footer from "./components/Footer";
-// We'll create Contact.jsx next
+
+// 1. IMPORT YOUR FINAL PAGE
+import Contact from "./pages/Contact";
 
 export default function App() {
   const [user, setUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
+
+  // ... (Your useEffect, error, and loading logic remains unchanged) ...
 
   React.useEffect(() => {
     try {
@@ -34,7 +40,6 @@ export default function App() {
     }
   }, []);
 
-  // Error display (Original code, unchanged)
   if (error) {
     return (
       <div
@@ -55,15 +60,12 @@ export default function App() {
     );
   }
 
-  // Loading state (Original code, unchanged)
   if (loading) return <Splash />;
 
-  // --- 2. WRAPPER FOR FOOTER ---
-  // We use a fragment <>...</> so the Footer can be outside the Routes
   return (
     <>
       <Routes>
-        {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES (Unchanged) --- */}
+        {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES --- */}
         <Route
           path="/"
           element={
@@ -91,17 +93,18 @@ export default function App() {
           element={user ? <Navigate to="/" replace /> : <Login />}
         />
 
-        {/* --- 3. NEW PUBLIC ROUTES --- */}
-        {/* These pages are public and do not require login */}
+        {/* --- NEW PUBLIC ROUTES --- */}
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms-of-service" element={<TermsOfService />} />
         <Route path="/about" element={<About />} />
+        
+        {/* 2. ADD THE FINAL ROUTE */}
+        <Route path="/contact" element={<Contact />} />
 
-        {/* Original catch-all route (Unchanged) */}
+        {/* --- Original catch-all route --- */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-
-      {/* The Footer will now appear on every page */}
+      
       <Footer />
     </>
   );
