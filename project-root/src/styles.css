@@ -765,17 +765,35 @@ body,
   text-align: center;
 }
 /* Add this at the end of your styles.css */
+/* --- FIX FOR LOGIN PAGE FOOTER --- */
 
+/* This makes sure your main container 
+  fills the screen and acts as the anchor
+  for the footer.
+*/
+.auth-root {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden; 
+}
+
+/* This is the corrected footer style.
+  It's anchored to the bottom of .auth-root
+  and brought to the front.
+*/
 .login-footer-links {
   position: absolute;
   bottom: 0;
+  left: 0;
   width: 100%;
   text-align: center;
   padding: 20px;
+  z-index: 100; /* <-- This brings it in FRONT of the video/overlay */
 }
 
 .login-footer-links a {
-  color: #aaa; /* Light grey, good for dark mode */
+  color: #aaa;
   text-decoration: none;
   font-size: 14px;
   margin: 0 10px;
@@ -787,6 +805,6 @@ body,
 }
 
 .login-footer-links span {
-  color: #555; /* A separator */
+  color: #555;
   margin: 0 5px;
 }
