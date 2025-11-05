@@ -17,7 +17,7 @@ body,
   margin: 0;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto,
     'Helvetica Neue', Arial;
-  background: transparent; /* 👈 FIX 1: Allows video to show */
+  background: transparent; /* 👈 FIX: Allows video to show */
   color: #fff;
 }
 .center {
@@ -193,7 +193,7 @@ body,
   flex: 1;
   overflow: auto;
   padding: 16px 18px;
-  padding-bottom: 80px; /* 👈 FIX 2: Adds space for the nav bar */
+  padding-bottom: 80px; /* 👈 FIX: Adds space for the nav bar */
 }
 .panel {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
@@ -226,7 +226,7 @@ body,
   margin-top: 12px;
 }
 .match-card {
-  background: rgba(0, 0, 0, 0.2); /* 👈 FIX 3: More transparent card */
+  background: rgba(0, 0, 0, 0.2); /* 👈 FIX: More transparent card */
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -255,7 +255,7 @@ body,
 
 /* Bottom nav */
 .bottom-nav {
-  position: fixed; /* 👈 FIX 2: Sticks nav bar to bottom */
+  position: fixed; /* 👈 FIX: Sticks nav bar to bottom */
   bottom: 0;
   left: 0;
   right: 0;
@@ -497,7 +497,7 @@ body,
   width: 38px;
   height: 38px;
   padding: 0; /* Remove default button padding */
-  
+
   /* Center the icon */
   display: flex;
   align-items: center;
@@ -507,4 +507,127 @@ body,
 /* Make the icon slightly larger */
 .music-btn svg {
   font-size: 16px;
+}
+
+/* === ADDED: Admin Form Styles === */
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* Adds space between fields */
+  padding: 16px;
+  border: 1px solid var(--panel);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.admin-form h4 {
+  margin: 0 0 8px 0;
+  color: var(--accent2);
+}
+
+.admin-form label {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: -8px; /* Pulls label closer to its input */
+}
+
+/* Make select dropdowns look like inputs */
+.admin-form select.modern-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27292.4%27%20height%3D%27292.4%27%3E%3Cpath%20fill%3D%27%23BFC7D1%27%20d%3D%27M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-13%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2013l128%20128c3.6%203.6%207.8%205.4%2013%205.4s9.4-1.8%2013-5.4l128-128c3.6-3.6%205.4-7.8%205.4-13%200-4.4-1.8-8.8-5.4-12.8z%27%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 0.65em auto;
+}
+
+.admin-form .btn {
+  margin-top: 12px;
+}
+
+/* === ADDED: Account Page Styles === */
+.account-menu {
+  padding: 8px !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.account-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.account-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent2);
+}
+
+.account-option svg {
+  color: var(--accent2);
+  margin-right: 16px;
+}
+
+.account-option span {
+  flex: 1; /* Pushes the arrow to the right */
+  text-align: left;
+}
+
+.account-option .arrow {
+  flex: none;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.account-option.logout svg {
+  color: #ff5c5c;
+}
+
+.back-btn {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.referral-card {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid var(--panel);
+}
+
+.referral-code {
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px dashed var(--accent);
+  margin-bottom: 16px;
+}
+
+.referral-form {
+  margin-top: 24px;
 }
