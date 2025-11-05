@@ -10,12 +10,26 @@ import {
   addDoc,
   collection,
   getDocs,
-  query, // 👈 ADDED
-  where, // 👈 ADDED
-  orderBy, // 👈 ADDED
-  arrayUnion, // 👈 ADDED
+  query,
+  where,
+  orderBy,
+  arrayUnion,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+
+// 👇 NEW: Define the default state for your match form
+const initialMatchState = {
+  title: "",
+  type: "BR",
+  imageUrl: "",
+  entryFee: 200,
+  maxPlayers: 48,
+  prizeModel: "Scalable",
+  commissionPercent: 15,
+  perKillReward: 75,
+  booyahPrize: 0,
+  teamType: "Solo",
+};
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -26,10 +40,12 @@ export default function Dashboard({ user }) {
   const [upiId, setUpiId] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
-
-  // 👇 ADDED STATE FOR MATCHES
+  
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+
+  // 👇 NEW: State to manage the "Create Match" form
+  const [newMatch, setNewMatch] = useState(initialMatchState);
 
   const navigate = useNavigate();
 
@@ -67,26 +83,24 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email]);
 
-  // 👇 ADDED: useEffect TO LOAD MATCHES
+  // useEffect TO LOAD MATCHES
   useEffect(() => {
-    // Function to load matches
     async function loadMatches() {
       setLoadingMatches(true);
       try {
-        const matchesRef = collection(db, "matches");
-        // Create a query to get upcoming matches, ordered by newest
+        const matchesRef = collection(db, 'matches');
         const q = query(
           matchesRef,
-          where("status", "==", "upcoming"),
-          orderBy("createdAt", "desc")
+          where('status', '==', 'upcoming'),
+          orderBy('createdAt', 'desc')
         );
-
+        
         const querySnapshot = await getDocs(q);
         const matchesData = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-
+        
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -94,12 +108,11 @@ export default function Dashboard({ user }) {
         setLoadingMatches(false);
       }
     }
-
-    // Only load matches if the 'matches' tab is active
-    if (activeTab === "matches") {
+    if (activeTab === 'matches') {
       loadMatches();
     }
-  }, [activeTab]); // This effect depends on activeTab
+  }, [activeTab]); 
+
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -191,18 +204,16 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // 👇 ADDED: FUNCTION TO JOIN A MATCH
   async function handleJoinMatch(match) {
-    if (!profile) return; // Safety check
+    if (!profile) return; 
 
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
 
-    // --- 1. Run Checks ---
     if (playersJoined.includes(user.uid)) {
       alert("You have already joined this match.");
       return;
     }
-
+    
     if (playersJoined.length >= maxPlayers) {
       alert("Sorry, this match is full.");
       return;
@@ -213,39 +224,29 @@ export default function Dashboard({ user }) {
       return;
     }
 
-    // Confirmation dialog
     if (!window.confirm(`Join this match for ${entryFee} coins?`)) {
       return;
     }
 
     try {
-      // --- 2. Process Join ---
-      setLoading(true); // Show a general loading state
+      setLoading(true); 
 
-      // Reference to the user's doc
-      const userDocRef = doc(db, "users", user.uid);
+      const userDocRef = doc(db, 'users', user.uid);
+      const matchDocRef = doc(db, 'matches', matchId);
 
-      // Reference to the match doc
-      const matchDocRef = doc(db, "matches", matchId);
-
-      // Step A: Deduct coins from user
       await updateDoc(userDocRef, {
         coins: profile.coins - entryFee,
       });
 
-      // Step B: Add user's ID to the match's playersJoined array
       await updateDoc(matchDocRef, {
         playersJoined: arrayUnion(user.uid),
       });
 
-      // --- 3. Update Local State ---
-      // Update the profile state with new coin balance
       setProfile({
         ...profile,
         coins: profile.coins - entryFee,
       });
 
-      // Update the specific match in the local matches state
       setMatches((prevMatches) =>
         prevMatches.map((m) =>
           m.id === matchId
@@ -255,6 +256,7 @@ export default function Dashboard({ user }) {
       );
 
       alert("You have successfully joined the match!");
+
     } catch (err) {
       console.error("Error joining match:", err);
       alert("An error occurred while joining. Please try again.");
@@ -292,6 +294,61 @@ export default function Dashboard({ user }) {
     await updateDoc(ref, { status: "rejected" });
     alert(`${type} rejected.`);
   }
+
+  // 👇 NEW: Helper function to update the newMatch state
+  const handleNewMatchChange = (e) => {
+    const { name, value, type } = e.target;
+    // Handle numbers and text
+    const val = type === "number" ? parseInt(value) || 0 : value;
+    setNewMatch((prev) => ({
+      ...prev,
+      [name]: val,
+    }));
+  };
+
+  // 👇 NEW: Function to handle creating the match
+  async function handleCreateMatch(e) {
+    e.preventDefault(); // Stop the form from reloading the page
+    
+    if (!newMatch.title || !newMatch.imageUrl) {
+      return alert("Please fill in at least the Title and Image URL.");
+    }
+
+    try {
+      setLoading(true);
+      
+      // 1. Prepare data based on prize model
+      let matchData = {
+        ...newMatch,
+        status: "upcoming",
+        playersJoined: [],
+        createdAt: serverTimestamp(),
+      };
+
+      // 2. Clean up the object
+      if (matchData.prizeModel === "Scalable") {
+        // We don't need booyahPrize for scalable
+        delete matchData.booyahPrize; 
+      } else {
+        // We don't need these for fixed
+        delete matchData.commissionPercent;
+        delete matchData.perKillReward;
+      }
+
+      // 3. Add to Firestore
+      await addDoc(collection(db, "matches"), matchData);
+      
+      alert("Match created successfully!");
+      setNewMatch(initialMatchState); // Reset the form
+      
+    } catch (err) {
+      console.error("Error creating match:", err);
+      alert("Failed to create match. Check console for error.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
 
   async function handleLogout() {
     await signOut(auth);
@@ -362,7 +419,6 @@ export default function Dashboard({ user }) {
               </div>
             </section>
 
-            {/* 👇 UPDATED: Removed hardcoded matches, replaced with welcome */}
             <section className="panel">
               <h3>Welcome!</h3>
               <p>Check the matches tab to join a game.</p>
@@ -370,21 +426,18 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* 👇 ADDED: NEW "MATCHES" TAB SECTION */}
-        {activeTab === "matches" && (
+        {activeTab === 'matches' && (
           <section className="panel">
             <h3>Available Matches</h3>
             {loadingMatches && <p>Loading matches...</p>}
-
+            
             {!loadingMatches && matches.length === 0 && (
               <p>No upcoming matches right now. Check back soon!</p>
             )}
 
             <div className="grid">
               {matches.map((match) => {
-                // Check if user is in the playersJoined array
                 const hasJoined = match.playersJoined?.includes(user.uid);
-                // Check if match is full
                 const isFull = match.playersJoined?.length >= match.maxPlayers;
 
                 return (
@@ -392,18 +445,16 @@ export default function Dashboard({ user }) {
                     <img src={match.imageUrl} alt={match.title} />
                     <div className="match-info">
                       <div className="match-title">{match.title}</div>
-                      {/* 👇 THIS IS THE FIX 👇 */}
                       <div className="match-meta">
-                        Entry: {match.entryFee} Coins | Joined:{" "}
-                        {match.playersJoined?.length || 0} / {match.maxPlayers}
+                        Entry: {match.entryFee} Coins | Joined: {match.playersJoined?.length || 0} / {match.maxPlayers}
                       </div>
-
+                      
                       <button
                         className="btn"
                         onClick={() => handleJoinMatch(match)}
                         disabled={hasJoined || isFull}
                       >
-                        {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
+                        {hasJoined ? 'Joined' : isFull ? 'Full' : 'Join'}
                       </button>
                     </div>
                   </div>
@@ -475,47 +526,112 @@ export default function Dashboard({ user }) {
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
             <h3>Admin Panel</h3>
+
+            {/* 👇 NEW: The "Create Match" Form */}
+            <form onSubmit={handleCreateMatch} className="admin-form">
+              <h4>Create New Match</h4>
+              
+              <input
+                name="title"
+                className="modern-input"
+                placeholder="Match Title (e.g., 1v1 Clash Squad)"
+                value={newMatch.title}
+                onChange={handleNewMatchChange}
+              />
+              <input
+                name="imageUrl"
+                className="modern-input"
+                placeholder="Image URL (e.g., /cs.jpg)"
+                value={newMatch.imageUrl}
+                onChange={handleNewMatchChange}
+              />
+
+              <label>Match Type</label>
+              <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange}>
+                <option value="BR">Battle Royale</option>
+                <option value="CS">Clash Squad</option>
+              </select>
+
+              <label>Prize Model</label>
+              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange}>
+                <option value="Scalable">Scalable (BR - % commission)</option>
+                <option value="Fixed">Fixed (CS - fixed prize)</option>
+              </select>
+              
+              <label>Entry Fee (Coins)</label>
+              <input
+                name="entryFee"
+                type="number"
+                className="modern-input"
+                value={newMatch.entryFee}
+                onChange={handleNewMatchChange}
+              />
+              
+              <label>Max Players</label>
+              <input
+                name="maxPlayers"
+                type="number"
+                className="modern-input"
+                value={newMatch.maxPlayers}
+                onChange={handleNewMatchChange}
+              />
+
+              {/* These fields only show when needed */}
+              {newMatch.prizeModel === 'Scalable' ? (
+                <>
+                  <label>Per Kill Reward (Coins)</label>
+                  <input
+                    name="perKillReward"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.perKillReward}
+                    onChange={handleNewMatchChange}
+                  />
+                  <label>Commission (%)</label>
+                  <input
+                    name="commissionPercent"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.commissionPercent}
+                    onChange={handleNewMatchChange}
+                  />
+                </>
+              ) : (
+                <>
+                  <label>Booyah Prize (Fixed Total)</label>
+                  <input
+                    name="booyahPrize"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.booyahPrize}
+                    onChange={handleNewMatchChange}
+                  />
+                </>
+              )}
+              
+              <button type="submit" className="btn glow">Create Match</button>
+            </form>
+            
+            <hr style={{margin: '24px 0', borderColor: 'var(--panel)'}} />
+
+            {/* Your existing admin panel code */}
             <h4>Top-up Requests</h4>
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>
-                  {r.email} | ₹{r.amount}
-                </span>
+                <span>{r.email} | ₹{r.amount}</span>
                 <div>
-                  <button
-                    className="btn small"
-                    onClick={() => approveRequest("topup", r)}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() => rejectRequest("topup", r)}
-                  >
-                    Reject
-                  </button>
+                  <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
+                  <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
                 </div>
               </div>
             ))}
             <h4>Withdraw Requests</h4>
             {requests.withdraw.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>
-                  {r.email} | ₹{r.amount} | UPI: {r.upiId}
-                </span>
+                <span>{r.email} | ₹{r.amount} | UPI: {r.upiId}</span>
                 <div>
-                  <button
-                    className="btn small"
-                    onClick={() => approveRequest("withdraw", r)}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() => rejectRequest("withdraw", r)}
-                  >
-                    Reject
-                  </button>
+                  <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
+                  <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
                 </div>
               </div>
             ))}
