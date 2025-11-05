@@ -764,23 +764,27 @@ body,
 .modal-content .modern-subtitle {
   text-align: center;
 }
-/* Add this at the end of your styles.css */
 /* --- FIX FOR LOGIN PAGE FOOTER --- */
 
-/* This makes sure your main container 
-  fills the screen and acts as the anchor
-  for the footer.
+/* 1. REPLACE your .auth-root style with this one.
+      The new lines are 'min-height', 'padding-bottom',
+      and 'box-sizing'.
 */
 .auth-root {
   position: relative;
-  height: 100vh;
+  min-height: 100vh; /* Use 'min-height' instead of 'height' */
   width: 100%;
   overflow: hidden; 
+  display: flex; /* These center the card */
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding-bottom: 80px; /* <-- ADDS SPACE AT THE BOTTOM */
+  box-sizing: border-box; /* <-- Ensures padding is included */
 }
 
-/* This is the corrected footer style.
-  It's anchored to the bottom of .auth-root
-  and brought to the front.
+/* 2. REPLACE your .login-footer-links style with this.
+      It's mostly the same, but 'height' is added.
 */
 .login-footer-links {
   position: absolute;
@@ -789,7 +793,9 @@ body,
   width: 100%;
   text-align: center;
   padding: 20px;
-  z-index: 100; /* <-- This brings it in FRONT of the video/overlay */
+  height: 80px; /* <-- SETS A FIXED HEIGHT */
+  z-index: 100;
+  box-sizing: border-box; /* <-- Good practice */
 }
 
 .login-footer-links a {
@@ -808,3 +814,4 @@ body,
   color: #555;
   margin: 0 5px;
 }
+
