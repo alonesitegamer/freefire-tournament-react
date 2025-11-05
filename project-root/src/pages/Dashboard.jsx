@@ -25,7 +25,7 @@ import {
   FaGift,
   FaSignOutAlt,
   FaArrowLeft,
-  FaUserEdit, // 👈 NEW: Icon for Edit Username
+  FaUserEdit,
 } from "react-icons/fa";
 
 // Import your history page components
@@ -75,7 +75,6 @@ function formatMatchTime(timestamp) {
   });
 }
 
-
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,30 +82,22 @@ export default function Dashboard({ user }) {
   const [topupAmount, setTopupAmount] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
-
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
-
-  // State to manage the "Create Match" form
   const [newMatch, setNewMatch] = useState(initialMatchState);
-
-  // State for the music
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
-
-  // State for the Account page's internal menu
   const [accountView, setAccountView] = useState("main");
   const [referralInput, setReferralInput] = useState("");
-
-  // State for the Match Details view
   const [selectedMatch, setSelectedMatch] = useState(null);
-
-  // 👇 NEW: State for the username modal
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
 
-  const navigate = useNavigate();
+  // 👇 NEW: State to hold the ad
+  const [rewardedAd, setRewardedAd] = useState(null);
+  const [adLoading, setAdLoading] = useState(false);
 
+  const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
   const adminPassword = "imperialx";
 
@@ -121,13 +112,12 @@ export default function Dashboard({ user }) {
         if (snap.exists()) {
           if (mounted) setProfile({ id: snap.id, ...snap.data() });
         } else {
-          // Added referralCode and hasRedeemedReferral for new users
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           await setDoc(ref, {
             email: user.email,
             coins: 0,
             displayName: user.displayName || "",
-            username: "", // 👈 NEW: Add blank username field
+            username: "", // Add blank username field
             lastDaily: null,
             createdAt: serverTimestamp(),
             referralCode: newReferralCode, 
@@ -157,13 +147,8 @@ export default function Dashboard({ user }) {
           where("status", "==", "upcoming"),
           orderBy("createdAt", "desc")
         );
-
         const querySnapshot = await getDocs(q);
-        const matchesData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
+        const matchesData = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -176,12 +161,59 @@ export default function Dashboard({ user }) {
     }
   }, [activeTab]);
 
-  // 👇 NEW: Pre-fill username modal when it opens
+  // Pre-fill username modal when it opens
   useEffect(() => {
     if (profile?.username) {
       setNewUsername(profile.username);
     }
   }, [showUsernameModal, profile?.username]);
+
+  // 👇 NEW: useEffect to pre-load the rewarded ad
+  useEffect(() => {
+    // Only run this code if the AdSense script is loaded
+    if (window.adsbygoogle) {
+      const adBreak = window.adbreak;
+      
+      adBreak({
+        type: 'reward',
+        name: 'watch-ad-reward', // You can name this anything
+        
+        // This function is called before the ad plays
+        beforeAd: () => {
+          setAdLoading(true);
+        },
+        
+        // This function is called when the ad is finished or skipped
+        adDismissed: () => {
+          setAdLoading(false);
+          // Pre-load the *next* ad so it's ready
+          setRewardedAd(adBreak);
+        },
+        
+        // This function is called when the ad fails to load
+        adBreakDone: (placementInfo) => {
+          if (placementInfo.breakStatus === 'error') {
+            console.error("Ad failed to load:", placementInfo.breakError);
+            alert("Ads aren't available right now. Please try again later.");
+          }
+          setAdLoading(false);
+        },
+
+        // This is the most important part!
+        // It's called *only* if the user successfully watches the ad
+        beforeReward: (showAdFn) => {
+          // This function is called by AdSense, and we MUST call showAdFn()
+          // to actually get the reward.
+          addCoin(5);
+          alert("+5 coins for watching the ad!");
+          showAdFn(); // This confirms the reward
+        }
+      });
+      
+      // Save the ad to our state
+      setRewardedAd(adBreak);
+    }
+  }, []); // Run this only once
 
 
   // Function to toggle music on/off
@@ -226,7 +258,14 @@ export default function Dashboard({ user }) {
     }
   }
   
-  async function addCoin(n = 1) { if (!profile) return; const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + n }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); }
+  async function addCoin(n = 1) {
+    if (!profile) return;
+    const ref = doc(db, "users", user.uid);
+    const newCoins = (profile.coins || 0) + n;
+    await updateDoc(ref, { coins: newCoins });
+    // Update local state immediately for instant feedback
+    setProfile(prevProfile => ({ ...prevProfile, coins: newCoins }));
+  }
   
   async function claimDaily() {
     if (!profile) return;
@@ -245,9 +284,18 @@ export default function Dashboard({ user }) {
     alert("+10 coins credited!"); 
   }
 
+  // 👇 UPDATED: This function now calls the ad
   async function watchAd() {
-    await addCoin(5); // 5 coins
-    alert("+5 coins for watching ad (demo)"); 
+    if (adLoading) return; // Don't do anything if an ad is already loading
+    
+    if (rewardedAd) {
+      setAdLoading(true);
+      // Call the ad
+      rewardedAd.show();
+    } else {
+      alert("Ads are not ready yet. Please try again in a moment.");
+      // This can happen if the AdSense script is slow to load
+    }
   }
   
   async function handleTopup() {
@@ -273,21 +321,13 @@ export default function Dashboard({ user }) {
   // Function for redeeming rewards (UPI, Gift Cards)
   async function handleRedeemReward(reward) {
     if (!profile) return;
+    if (profile.coins < reward.cost) return alert("You don't have enough coins for this reward.");
 
-    if (profile.coins < reward.cost) {
-      return alert("You don't have enough coins for this reward.");
-    }
-
-    let upiId = ''; // Variable to hold UPI ID if needed
-
-    // If the reward type is UPI, ask for the ID
+    let upiId = ''; 
     if (reward.type === 'UPI') {
       upiId = window.prompt(`Enter your UPI ID to receive ₹${reward.amount}:`);
-      if (!upiId) { // User clicked cancel or left it blank
-        return alert("UPI ID is required for this reward. Redemption cancelled.");
-      }
+      if (!upiId) return alert("UPI ID is required. Redemption cancelled.");
     } else {
-      // For gift cards
       if (!window.confirm(`Redeem ${reward.type} Gift Card (₹${reward.amount}) for ${reward.cost} coins?`)) {
         return;
       }
@@ -295,25 +335,22 @@ export default function Dashboard({ user }) {
 
     try {
       setLoading(true);
-      // 1. Add to withdrawRequests
       await addDoc(collection(db, "withdrawRequests"), {
         userId: user.uid,
         email: profile.email,
         amount: reward.amount,
         coinsDeducted: reward.cost,
         status: "pending",
-        type: reward.type, // "UPI", "Google Play", etc.
-        upiId: upiId, // Will be blank for gift cards, filled for UPI
+        type: reward.type,
+        upiId: upiId, 
         createdAt: serverTimestamp(),
       });
 
-      // 2. Deduct coins
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, {
         coins: profile.coins - reward.cost,
       });
 
-      // 3. Update local state
       setProfile({
         ...profile,
         coins: profile.coins - reward.cost,
@@ -324,7 +361,6 @@ export default function Dashboard({ user }) {
       } else {
         alert("Redemption request submitted! Admin will email your code within 24 hours.");
       }
-
     } catch (err) {
       console.error("Withdraw error:", err);
       alert("An error occurred. Please try again.");
@@ -335,12 +371,10 @@ export default function Dashboard({ user }) {
   
   async function handleJoinMatch(match) {
     if (!profile) return; 
-
-    // 👇 NEW: Check for username before anything else
     if (!profile.username) {
       alert("Please set your in-game username before joining a match.");
       setShowUsernameModal(true);
-      return; // Stop the function
+      return; 
     }
     
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
@@ -373,7 +407,6 @@ export default function Dashboard({ user }) {
       
       alert("You have successfully joined the match!");
       setSelectedMatch(updatedMatch); 
-
     } catch (err) {
       console.error("Error joining match:", err);
       alert("An error occurred while joining. Please try again.");
@@ -465,7 +498,7 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // 👇 NEW: Function to save the new username
+  // Function to save the new username
   async function handleSetUsername(e) {
     e.preventDefault();
     if (!newUsername) return alert("Username cannot be blank.");
@@ -514,7 +547,6 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            {/* 👇 UPDATED: Show username in header if it exists */}
             <div className="subtitle">{profile.username || profile.email}</div>
           </div>
         </div>
@@ -546,8 +578,9 @@ export default function Dashboard({ user }) {
                   <button className="btn" onClick={claimDaily}>
                     Claim Daily (+10)
                   </button>
-                  <button className="btn ghost" onClick={watchAd}>
-                    Watch Ad (+5)
+                  {/* 👇 UPDATED: Show loading state on ad button */}
+                  <button className="btn ghost" onClick={watchAd} disabled={adLoading}>
+                    {adLoading ? "Loading Ad..." : "Watch Ad (+5)"}
                   </button>
                 </div>
               </div>
@@ -654,7 +687,7 @@ export default function Dashboard({ user }) {
                   .filter((opt) => opt.type === 'UPI')
                   .map((reward) => (
                     <div
-                      key={reward.amount}
+                      key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
@@ -668,7 +701,6 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
-
             {/* 2. Google Play Section */}
             <section className="panel">
               <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Google Gift Card</h3>
@@ -677,7 +709,7 @@ export default function Dashboard({ user }) {
                   .filter((opt) => opt.type === 'Google Play')
                   .map((reward) => (
                     <div
-                      key={reward.amount}
+                      key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
@@ -691,7 +723,6 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
-            
             {/* 3. Amazon Section */}
             <section className="panel">
               <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Amazon Gift Card</h3>
@@ -700,7 +731,7 @@ export default function Dashboard({ user }) {
                   .filter((opt) => opt.type === 'Amazon')
                   .map((reward) => (
                     <div
-                      key={reward.amount}
+                      key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
@@ -751,22 +782,13 @@ export default function Dashboard({ user }) {
           <div className="account-container">
             {accountView === "main" && (
               <>
-                {/* 👇 NEW: Profile card to show username */}
                 <section className="panel account-profile-card">
                   <h3 className="modern-title">{profile.username || "Set Your Username"}</h3>
                   <p className="modern-subtitle">{profile.email}</p>
                 </section>
                 
                 <section className="panel account-menu">
-                  {/* 👇 NEW: Edit Username Button */}
-                  <button
-                    className="account-option"
-                    onClick={() => setShowUsernameModal(true)}
-                  >
-                    <FaUserEdit size={20} />
-                    <span>Edit Username</span>
-                    <span className="arrow">&gt;</span>
-                  </button>
+                  <button className="account-option" onClick={() => setShowUsernameModal(true)} > <FaUserEdit size={20} /> <span>Edit Username</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
@@ -824,7 +846,6 @@ export default function Dashboard({ user }) {
         ))}
       </footer>
 
-      {/* 👇 NEW: Username Popup Modal */}
       {showUsernameModal && (
         <div className="modal-overlay">
           <div className="modal-content modern-card">
