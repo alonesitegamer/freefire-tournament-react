@@ -3,10 +3,17 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Splash from "./components/Splash";
-import MatchHistoryPage from "./pages/MatchHistoryPage"; // NEW IMPORT
-import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage"; // NEW IMPORT
+import MatchHistoryPage from "./pages/MatchHistoryPage";
+import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
+
+// --- 1. IMPORTS FOR NEW PAGES ---
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import About from "./pages/About";
+import Footer from "./components/Footer";
+// We'll create Contact.jsx next
 
 export default function App() {
   const [user, setUser] = React.useState(null);
@@ -27,7 +34,7 @@ export default function App() {
     }
   }, []);
 
-  // Error display
+  // Error display (Original code, unchanged)
   if (error) {
     return (
       <div
@@ -48,38 +55,54 @@ export default function App() {
     );
   }
 
-  // Loading state
+  // Loading state (Original code, unchanged)
   if (loading) return <Splash />;
 
-  // Routing (no nested BrowserRouter!)
+  // --- 2. WRAPPER FOR FOOTER ---
+  // We use a fragment <>...</> so the Footer can be outside the Routes
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          user ? (
-            <Dashboard user={user} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      {/* NEW ROUTES FOR HISTORY PAGES (Require Authentication) */}
-      <Route
-        path="/match-history" 
-        element={user ? <MatchHistoryPage /> : <Navigate to="/login" replace />}
-      />
-      <Route
-        path="/withdrawal-history" 
-        element={user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />}
-      />
-      {/* END NEW ROUTES */}
-      
-      <Route
-        path="/login"
-        element={user ? <Navigate to="/" replace /> : <Login />}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES (Unchanged) --- */}
+        <Route
+          path="/"
+          element={
+            user ? (
+              <Dashboard user={user} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/match-history"
+          element={
+            user ? <MatchHistoryPage /> : <Navigate to="/login" replace />
+          }
+        />
+        <Route
+          path="/withdrawal-history"
+          element={
+            user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />
+          }
+        />
+        <Route
+          path="/login"
+          element={user ? <Navigate to="/" replace /> : <Login />}
+        />
+
+        {/* --- 3. NEW PUBLIC ROUTES --- */}
+        {/* These pages are public and do not require login */}
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/about" element={<About />} />
+
+        {/* Original catch-all route (Unchanged) */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* The Footer will now appear on every page */}
+      <Footer />
+    </>
   );
 }
