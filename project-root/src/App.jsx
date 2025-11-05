@@ -8,12 +8,12 @@ import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-// --- 1. IMPORTS FOR NEW PAGES (Corrected .jsx Path) ---
-import PrivacyPolicy from "./components/PrivacyPolicy.jsx"; // <--- FIXED!
-import TermsOfService from "./components/TermOfService.jsx";
-import About from "./components/About.jsx";
-import Contact from "./components/Contact.jsx";
-import Footer from "./components/Footer.jsx";
+// --- IMPORTS FOR NEW PAGES (Paths fixed) ---
+import PrivacyPolicy from "./components/PrivacyPolicy.jsx"; 
+import TermsOfService from "./components/TermOfService.jsx"; 
+import About from "./components/About.jsx"; 
+import Contact from "./components/Contact.jsx"; 
+// Footer import has been REMOVED
 
 export default function App() {
   const [user, setUser] = React.useState(null);
@@ -58,50 +58,45 @@ export default function App() {
   // Loading state (Original code, unchanged)
   if (loading) return <Splash />;
 
-  // We use a fragment <>...</> so the Footer can be outside the Routes
+  // We only need Routes. The Footer component is gone.
   return (
-    <>
-      <Routes>
-        {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES (Unchanged) --- */}
-        <Route
-          path="/"
-          element={
-            user ? (
-              <Dashboard user={user} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/match-history"
-          element={
-            user ? <MatchHistoryPage /> : <Navigate to="/login" replace />
-          }
-        />
-        <Route
-          path="/withdrawal-history"
-          element={
-            user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />
-          }
-        />
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" replace /> : <Login />}
-        />
+    <Routes>
+      {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES (Unchanged) --- */}
+      <Route
+        path="/"
+        element={
+          user ? (
+            <Dashboard user={user} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/match-history"
+        element={
+          user ? <MatchHistoryPage /> : <Navigate to="/login" replace />
+        }
+      />
+      <Route
+        path="/withdrawal-history"
+        element={
+          user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />
+        }
+      />
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/" replace /> : <Login />}
+      />
 
-        {/* --- 3. NEW PUBLIC ROUTES (Paths are unchanged) --- */}
-        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-        <Route path="/terms-of-service" element={<TermsOfService />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
+      {/* --- NEW PUBLIC ROUTES (Unchanged, these need to exist) --- */}
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/terms-of-service" element={<TermsOfService />} />
+      <Route path="/about" element={<About />} />
+      <Route path="/contact" element={<Contact />} />
 
-        {/* Original catch-all route (Unchanged) */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-
-      {/* The Footer will now appear on every page */}
-      <Footer />
-    </>
+      {/* Original catch-all route (Unchanged) */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
