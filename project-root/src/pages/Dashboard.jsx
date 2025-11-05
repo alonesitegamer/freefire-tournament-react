@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react"; // Added useRef
 import { auth, db } from "../firebase";
 import { signOut } from "firebase/auth";
 import {
@@ -16,6 +16,7 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import { FaVolumeUp, FaVolumeMute } from "react-icons/fa"; // Added icons
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -46,6 +47,10 @@ export default function Dashboard({ user }) {
 
   // State to manage the "Create Match" form
   const [newMatch, setNewMatch] = useState(initialMatchState);
+
+  // 👇 NEW: State for the music
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null); // Reference to the <audio> element
 
   const navigate = useNavigate();
 
@@ -112,6 +117,16 @@ export default function Dashboard({ user }) {
       loadMatches();
     }
   }, [activeTab]);
+
+  // 👇 NEW: Function to toggle music on/off
+  const toggleMusic = () => {
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -276,22 +291,17 @@ export default function Dashboard({ user }) {
     })();
   }, [profile?.email]);
 
-  // 👇 *** FIXED APPROVE FUNCTION ***
+  // FIXED APPROVE FUNCTION
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved" });
 
     if (type === "topup") {
-      // --- THIS IS THE FIX for the coin bug ---
-      // 1. Get the specific user's document
       const userDocRef = doc(db, "users", req.userId);
       const userSnap = await getDoc(userDocRef);
 
       if (userSnap.exists()) {
-        // 2. Get their *current* coins
         const userCurrentCoins = userSnap.data().coins || 0;
-
-        // 3. Add the new coins to *their* balance
         await updateDoc(userDocRef, {
           coins: userCurrentCoins + req.coins,
         });
@@ -299,25 +309,22 @@ export default function Dashboard({ user }) {
         console.error("User document not found for approval!");
         alert("Error: User not found.");
       }
-      // --- END OF FIX ---
     }
 
     alert(`${type} approved.`);
 
-    // --- THIS IS THE FIX for the disappearing request ---
     setRequests((prev) => ({
       ...prev,
       [type]: prev[type].filter((item) => item.id !== req.id),
     }));
   }
 
-  // 👇 *** FIXED REJECT FUNCTION ***
+  // FIXED REJECT FUNCTION
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected" });
     alert(`${type} rejected.`);
 
-    // --- THIS IS THE FIX for the disappearing request ---
     setRequests((prev) => ({
       ...prev,
       [type]: prev[type].filter((item) => item.id !== req.id),
@@ -327,7 +334,6 @@ export default function Dashboard({ user }) {
   // Helper function to update the newMatch state
   const handleNewMatchChange = (e) => {
     const { name, value, type } = e.target;
-    // Handle numbers and text
     const val = type === "number" ? parseInt(value) || 0 : value;
     setNewMatch((prev) => ({
       ...prev,
@@ -337,7 +343,7 @@ export default function Dashboard({ user }) {
 
   // Function to handle creating the match
   async function handleCreateMatch(e) {
-    e.preventDefault(); // Stop the form from reloading the page
+    e.preventDefault(); 
 
     if (!newMatch.title || !newMatch.imageUrl) {
       return alert("Please fill in at least the Title and Image URL.");
@@ -346,7 +352,6 @@ export default function Dashboard({ user }) {
     try {
       setLoading(true);
 
-      // 1. Prepare data based on prize model
       let matchData = {
         ...newMatch,
         status: "upcoming",
@@ -354,21 +359,17 @@ export default function Dashboard({ user }) {
         createdAt: serverTimestamp(),
       };
 
-      // 2. Clean up the object
       if (matchData.prizeModel === "Scalable") {
-        // We don't need booyahPrize for scalable
         delete matchData.booyahPrize;
       } else {
-        // We don't need these for fixed
         delete matchData.commissionPercent;
         delete matchData.perKillReward;
       }
 
-      // 3. Add to Firestore
       await addDoc(collection(db, "matches"), matchData);
 
       alert("Match created successfully!");
-      setNewMatch(initialMatchState); // Reset the form
+      setNewMatch(initialMatchState); 
     } catch (err) {
       console.error("Error creating match:", err);
       alert("Failed to create match. Check console for error.");
@@ -387,6 +388,9 @@ export default function Dashboard({ user }) {
 
   return (
     <div className="dash-root">
+      {/* 👇 NEW: Add the hidden <audio> element here */}
+      <audio ref={audioRef} src="/bgm.mp3" loop />
+
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -402,6 +406,11 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions">
+          {/* 👇 NEW: Add the music button here */}
+          <button className="btn small ghost music-btn" onClick={toggleMusic}>
+            {isPlaying ? <FaVolumeUp /> : <FaVolumeMute />}
+          </button>
+
           {profile.email === adminEmail && (
             <button className="btn small" onClick={() => setActiveTab("admin")}>
               Admin Panel
@@ -717,3 +726,4 @@ export default function Dashboard({ user }) {
     </div>
   );
 }
+
