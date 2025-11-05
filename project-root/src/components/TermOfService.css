@@ -1,0 +1,54 @@
+/* In src/pages/TermsOfService.css */
+
+.tos-container {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+
+/* For dark mode, you might want this instead */
+/*
+.tos-container {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 20px;
+  background-color: #2b2b2b;
+  color: #eee;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+*/
+
+.tos-container h1 {
+  font-size: 2em;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+}
+
+.tos-container h2 {
+  font-size: 1.5em;
+  margin-top: 30px;
+  color: #007bff; /* A highlight color */
+}
+
+.tos-container h3 {
+  font-size: 1.2em;
+  margin-top: 20px;
+}
+
+.tos-container p, .tos-container li {
+  font-size: 1em;
+  margin-bottom: 15px;
+}
+
+.tos-container ul {
+  padding-left: 20px;
+}
+
+.tos-container strong {
+  color: #d9534f; /* Make important parts stand out */
+}
+
