@@ -75,6 +75,7 @@ function formatMatchTime(timestamp) {
   });
 }
 
+
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,8 +94,7 @@ export default function Dashboard({ user }) {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
 
-  // 👇 NEW: State to hold the ad
-  const [rewardedAd, setRewardedAd] = useState(null);
+  // 👇 State to manage ad loading
   const [adLoading, setAdLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -168,54 +168,6 @@ export default function Dashboard({ user }) {
     }
   }, [showUsernameModal, profile?.username]);
 
-  // 👇 NEW: useEffect to pre-load the rewarded ad
-  useEffect(() => {
-    // Only run this code if the AdSense script is loaded
-    if (window.adsbygoogle) {
-      const adBreak = window.adbreak;
-      
-      adBreak({
-        type: 'reward',
-        name: 'watch-ad-reward', // You can name this anything
-        
-        // This function is called before the ad plays
-        beforeAd: () => {
-          setAdLoading(true);
-        },
-        
-        // This function is called when the ad is finished or skipped
-        adDismissed: () => {
-          setAdLoading(false);
-          // Pre-load the *next* ad so it's ready
-          setRewardedAd(adBreak);
-        },
-        
-        // This function is called when the ad fails to load
-        adBreakDone: (placementInfo) => {
-          if (placementInfo.breakStatus === 'error') {
-            console.error("Ad failed to load:", placementInfo.breakError);
-            alert("Ads aren't available right now. Please try again later.");
-          }
-          setAdLoading(false);
-        },
-
-        // This is the most important part!
-        // It's called *only* if the user successfully watches the ad
-        beforeReward: (showAdFn) => {
-          // This function is called by AdSense, and we MUST call showAdFn()
-          // to actually get the reward.
-          addCoin(5);
-          alert("+5 coins for watching the ad!");
-          showAdFn(); // This confirms the reward
-        }
-      });
-      
-      // Save the ad to our state
-      setRewardedAd(adBreak);
-    }
-  }, []); // Run this only once
-
-
   // Function to toggle music on/off
   const toggleMusic = () => {
     if (isPlaying) {
@@ -284,17 +236,52 @@ export default function Dashboard({ user }) {
     alert("+10 coins credited!"); 
   }
 
-  // 👇 UPDATED: This function now calls the ad
+  // 👇 *** THIS IS THE FIXED AD FUNCTION *** 👇
   async function watchAd() {
-    if (adLoading) return; // Don't do anything if an ad is already loading
-    
-    if (rewardedAd) {
-      setAdLoading(true);
-      // Call the ad
-      rewardedAd.show();
-    } else {
-      alert("Ads are not ready yet. Please try again in a moment.");
-      // This can happen if the AdSense script is slow to load
+    if (adLoading) return; // Don't let them click twice
+
+    // Check if AdSense is loaded
+    if (!window.adsbygoogle || !window.adbreak) {
+      console.error("AdSense script not loaded.");
+      alert("Ads are not available right now. Please try again later.");
+      return;
+    }
+
+    setAdLoading(true);
+
+    try {
+      // This is the correct way to call the ad
+      window.adbreak({
+        type: 'reward',
+        name: 'watch-ad-reward',
+        
+        // Ad is finished or skipped
+        adDismissed: () => {
+          setAdLoading(false);
+        },
+
+        // Ad failed to load
+        adBreakDone: (placementInfo) => {
+          if (placementInfo.breakStatus !== 'viewed' && placementInfo.breakStatus !== 'dismissed') {
+            console.error("Ad failed to load:", placementInfo.breakError);
+            if(placementInfo.breakStatus !== 'unfilled') {
+              alert("Ads failed to load. Please try again later.");
+            }
+          }
+          setAdLoading(false);
+        },
+
+        // User watched the ad!
+        beforeReward: (showAdFn) => {
+          addCoin(5);
+          alert("+5 coins for watching the ad!");
+          showAdFn(); // Confirm the reward
+        }
+      });
+    } catch (err) {
+      console.error("AdSense error:", err);
+      alert("An ad error occurred.");
+      setAdLoading(false);
     }
   }
   
@@ -578,7 +565,6 @@ export default function Dashboard({ user }) {
                   <button className="btn" onClick={claimDaily}>
                     Claim Daily (+10)
                   </button>
-                  {/* 👇 UPDATED: Show loading state on ad button */}
                   <button className="btn ghost" onClick={watchAd} disabled={adLoading}>
                     {adLoading ? "Loading Ad..." : "Watch Ad (+5)"}
                   </button>
