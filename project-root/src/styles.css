@@ -489,3 +489,22 @@ body,
   /* Add a permanent shadow */
   box-shadow: 0 0 12px var(--accent2);
 }
+
+/* === ADDED: Music Button Style === */
+.music-btn {
+  /* Make it round */
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0; /* Remove default button padding */
+  
+  /* Center the icon */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make the icon slightly larger */
+.music-btn svg {
+  font-size: 16px;
+}
