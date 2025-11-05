@@ -8,11 +8,11 @@ import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-// --- 1. IMPORTS FOR NEW PAGES (Corrected Paths) ---
-import PrivacyPolicy from "./components/PrivacyPolicy.js"; // Fixed path
-import TermsOfService from "./components/TermOfService.jsx"; // Fixed path & name
-import About from "./components/About.jsx"; // Fixed path
-import Contact from "./components/Contact.jsx"; // Fixed path
+// --- 1. IMPORTS FOR NEW PAGES (Corrected .jsx Path) ---
+import PrivacyPolicy from "./components/PrivacyPolicy.jsx"; // <--- FIXED!
+import TermsOfService from "./components/TermOfService.jsx";
+import About from "./components/About.jsx";
+import Contact from "./components/Contact.jsx";
 import Footer from "./components/Footer.jsx";
 
 export default function App() {
@@ -104,4 +104,4 @@ export default function App() {
       <Footer />
     </>
   );
-        }
+}
