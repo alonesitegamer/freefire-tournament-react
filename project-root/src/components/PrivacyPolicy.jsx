@@ -1,3 +1,5 @@
+// In src/components/PrivacyPolicy.jsx
+
 import React from 'react';
 
 // You can create a simple CSS file to add some padding
@@ -294,7 +296,7 @@ const PrivacyPolicy = () => {
                   GHOSPUR,
                   email: priyankabairagi036@gmail.com.
                   We will address your concerns in accordance with applicable law.
-              </P>
+              </p> {/* <--- THIS WAS THE TYPO. IT IS NOW FIXED. */}
           </li>
       </ol>
       <p className="privacy-policy-p">
