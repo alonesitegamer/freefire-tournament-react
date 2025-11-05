@@ -26,13 +26,13 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle,
+  // FaQuestionCircle, // Removed HowToPlay icon
 } from "react-icons/fa";
 
 // Import your history page components
 import MatchHistoryPage from './MatchHistoryPage';
 import WithdrawalHistoryPage from './WithdrawalHistoryPage';
-import HowToPlay from './HowToPlay'; 
+// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -50,7 +50,7 @@ const initialMatchState = {
   rules: "", 
 };
 
-// 👇 UPDATED: Removed the 110 coin packs
+// List of available gift cards
 const rewardOptions = [
   { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
   { type: 'UPI', amount: 50, cost: 550, icon: '/upi.png' },
@@ -758,7 +758,7 @@ export default function Dashboard({ user }) {
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
             <h4>Top-up Requests</h4>
-            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> T</div> </div> ))}
+            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> </div> </div> ))}
             <h4>Withdraw Requests</h4>
             {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | {r.type === 'UPI' ? `UPI: ${r.upiId}` : `Type: ${r.type}`} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
           </section>
