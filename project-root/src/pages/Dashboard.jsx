@@ -17,7 +17,7 @@ import {
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
-// 👇 NEW: Define the default state for your match form
+// Define the default state for your match form
 const initialMatchState = {
   title: "",
   type: "BR",
@@ -40,11 +40,11 @@ export default function Dashboard({ user }) {
   const [upiId, setUpiId] = useState("");
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
-  
+
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
-  // 👇 NEW: State to manage the "Create Match" form
+  // State to manage the "Create Match" form
   const [newMatch, setNewMatch] = useState(initialMatchState);
 
   const navigate = useNavigate();
@@ -88,19 +88,19 @@ export default function Dashboard({ user }) {
     async function loadMatches() {
       setLoadingMatches(true);
       try {
-        const matchesRef = collection(db, 'matches');
+        const matchesRef = collection(db, "matches");
         const q = query(
           matchesRef,
-          where('status', '==', 'upcoming'),
-          orderBy('createdAt', 'desc')
+          where("status", "==", "upcoming"),
+          orderBy("createdAt", "desc")
         );
-        
+
         const querySnapshot = await getDocs(q);
         const matchesData = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-        
+
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -108,11 +108,10 @@ export default function Dashboard({ user }) {
         setLoadingMatches(false);
       }
     }
-    if (activeTab === 'matches') {
+    if (activeTab === "matches") {
       loadMatches();
     }
-  }, [activeTab]); 
-
+  }, [activeTab]);
 
   async function addCoin(n = 1) {
     if (!profile) return;
@@ -205,7 +204,7 @@ export default function Dashboard({ user }) {
   }
 
   async function handleJoinMatch(match) {
-    if (!profile) return; 
+    if (!profile) return;
 
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
 
@@ -213,7 +212,7 @@ export default function Dashboard({ user }) {
       alert("You have already joined this match.");
       return;
     }
-    
+
     if (playersJoined.length >= maxPlayers) {
       alert("Sorry, this match is full.");
       return;
@@ -229,10 +228,10 @@ export default function Dashboard({ user }) {
     }
 
     try {
-      setLoading(true); 
+      setLoading(true);
 
-      const userDocRef = doc(db, 'users', user.uid);
-      const matchDocRef = doc(db, 'matches', matchId);
+      const userDocRef = doc(db, "users", user.uid);
+      const matchDocRef = doc(db, "matches", matchId);
 
       await updateDoc(userDocRef, {
         coins: profile.coins - entryFee,
@@ -256,7 +255,6 @@ export default function Dashboard({ user }) {
       );
 
       alert("You have successfully joined the match!");
-
     } catch (err) {
       console.error("Error joining match:", err);
       alert("An error occurred while joining. Please try again.");
@@ -278,24 +276,55 @@ export default function Dashboard({ user }) {
     })();
   }, [profile?.email]);
 
+  // 👇 *** FIXED APPROVE FUNCTION ***
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved" });
+
     if (type === "topup") {
-      await updateDoc(doc(db, "users", req.userId), {
-        coins: (profile.coins || 0) + req.coins,
-      });
+      // --- THIS IS THE FIX for the coin bug ---
+      // 1. Get the specific user's document
+      const userDocRef = doc(db, "users", req.userId);
+      const userSnap = await getDoc(userDocRef);
+
+      if (userSnap.exists()) {
+        // 2. Get their *current* coins
+        const userCurrentCoins = userSnap.data().coins || 0;
+
+        // 3. Add the new coins to *their* balance
+        await updateDoc(userDocRef, {
+          coins: userCurrentCoins + req.coins,
+        });
+      } else {
+        console.error("User document not found for approval!");
+        alert("Error: User not found.");
+      }
+      // --- END OF FIX ---
     }
+
     alert(`${type} approved.`);
+
+    // --- THIS IS THE FIX for the disappearing request ---
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
   }
 
+  // 👇 *** FIXED REJECT FUNCTION ***
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected" });
     alert(`${type} rejected.`);
+
+    // --- THIS IS THE FIX for the disappearing request ---
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
   }
 
-  // 👇 NEW: Helper function to update the newMatch state
+  // Helper function to update the newMatch state
   const handleNewMatchChange = (e) => {
     const { name, value, type } = e.target;
     // Handle numbers and text
@@ -306,17 +335,17 @@ export default function Dashboard({ user }) {
     }));
   };
 
-  // 👇 NEW: Function to handle creating the match
+  // Function to handle creating the match
   async function handleCreateMatch(e) {
     e.preventDefault(); // Stop the form from reloading the page
-    
+
     if (!newMatch.title || !newMatch.imageUrl) {
       return alert("Please fill in at least the Title and Image URL.");
     }
 
     try {
       setLoading(true);
-      
+
       // 1. Prepare data based on prize model
       let matchData = {
         ...newMatch,
@@ -328,7 +357,7 @@ export default function Dashboard({ user }) {
       // 2. Clean up the object
       if (matchData.prizeModel === "Scalable") {
         // We don't need booyahPrize for scalable
-        delete matchData.booyahPrize; 
+        delete matchData.booyahPrize;
       } else {
         // We don't need these for fixed
         delete matchData.commissionPercent;
@@ -337,10 +366,9 @@ export default function Dashboard({ user }) {
 
       // 3. Add to Firestore
       await addDoc(collection(db, "matches"), matchData);
-      
+
       alert("Match created successfully!");
       setNewMatch(initialMatchState); // Reset the form
-      
     } catch (err) {
       console.error("Error creating match:", err);
       alert("Failed to create match. Check console for error.");
@@ -348,7 +376,6 @@ export default function Dashboard({ user }) {
       setLoading(false);
     }
   }
-
 
   async function handleLogout() {
     await signOut(auth);
@@ -426,11 +453,11 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {activeTab === 'matches' && (
+        {activeTab === "matches" && (
           <section className="panel">
             <h3>Available Matches</h3>
             {loadingMatches && <p>Loading matches...</p>}
-            
+
             {!loadingMatches && matches.length === 0 && (
               <p>No upcoming matches right now. Check back soon!</p>
             )}
@@ -446,15 +473,16 @@ export default function Dashboard({ user }) {
                     <div className="match-info">
                       <div className="match-title">{match.title}</div>
                       <div className="match-meta">
-                        Entry: {match.entryFee} Coins | Joined: {match.playersJoined?.length || 0} / {match.maxPlayers}
+                        Entry: {match.entryFee} Coins | Joined:{" "}
+                        {match.playersJoined?.length || 0} / {match.maxPlayers}
                       </div>
-                      
+
                       <button
                         className="btn"
                         onClick={() => handleJoinMatch(match)}
                         disabled={hasJoined || isFull}
                       >
-                        {hasJoined ? 'Joined' : isFull ? 'Full' : 'Join'}
+                        {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
                       </button>
                     </div>
                   </div>
@@ -527,10 +555,10 @@ export default function Dashboard({ user }) {
           <section className="panel">
             <h3>Admin Panel</h3>
 
-            {/* 👇 NEW: The "Create Match" Form */}
+            {/* The "Create Match" Form */}
             <form onSubmit={handleCreateMatch} className="admin-form">
               <h4>Create New Match</h4>
-              
+
               <input
                 name="title"
                 className="modern-input"
@@ -547,17 +575,27 @@ export default function Dashboard({ user }) {
               />
 
               <label>Match Type</label>
-              <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange}>
+              <select
+                name="type"
+                className="modern-input"
+                value={newMatch.type}
+                onChange={handleNewMatchChange}
+              >
                 <option value="BR">Battle Royale</option>
                 <option value="CS">Clash Squad</option>
               </select>
 
               <label>Prize Model</label>
-              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange}>
+              <select
+                name="prizeModel"
+                className="modern-input"
+                value={newMatch.prizeModel}
+                onChange={handleNewMatchChange}
+              >
                 <option value="Scalable">Scalable (BR - % commission)</option>
                 <option value="Fixed">Fixed (CS - fixed prize)</option>
               </select>
-              
+
               <label>Entry Fee (Coins)</label>
               <input
                 name="entryFee"
@@ -566,7 +604,7 @@ export default function Dashboard({ user }) {
                 value={newMatch.entryFee}
                 onChange={handleNewMatchChange}
               />
-              
+
               <label>Max Players</label>
               <input
                 name="maxPlayers"
@@ -577,7 +615,7 @@ export default function Dashboard({ user }) {
               />
 
               {/* These fields only show when needed */}
-              {newMatch.prizeModel === 'Scalable' ? (
+              {newMatch.prizeModel === "Scalable" ? (
                 <>
                   <label>Per Kill Reward (Coins)</label>
                   <input
@@ -608,30 +646,56 @@ export default function Dashboard({ user }) {
                   />
                 </>
               )}
-              
-              <button type="submit" className="btn glow">Create Match</button>
+
+              <button type="submit" className="btn glow">
+                Create Match
+              </button>
             </form>
-            
-            <hr style={{margin: '24px 0', borderColor: 'var(--panel)'}} />
+
+            <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
 
             {/* Your existing admin panel code */}
             <h4>Top-up Requests</h4>
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>{r.email} | ₹{r.amount}</span>
+                <span>
+                  {r.email} | ₹{r.amount}
+                </span>
                 <div>
-                  <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
-                  <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("topup", r)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("topup", r)}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))}
             <h4>Withdraw Requests</h4>
             {requests.withdraw.map((r) => (
               <div key={r.id} className="admin-row">
-                <span>{r.email} | ₹{r.amount} | UPI: {r.upiId}</span>
+                <span>
+                  {r.email} | ₹{r.amount} | UPI: {r.upiId}
+                </span>
                 <div>
-                  <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
-                  <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("withdraw", r)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("withdraw", r)}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))}
