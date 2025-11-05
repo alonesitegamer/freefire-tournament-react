@@ -595,7 +595,7 @@ body,
   margin-top: 24px;
 }
 
-/* === NEW: Match Details Page Styles === */
+/* === Match Details Page Styles === */
 .match-details-view .match-details-image {
   width: 100%;
   height: 150px;
@@ -648,4 +648,19 @@ body,
   color: #eee;
   line-height: 1.6;
   white-space: pre-wrap; /* This respects line breaks in your rule string */
+}
+
+/* === Home Page Button Fix === */
+.home-actions {
+  display: flex;
+  flex-direction: column; /* Stack them vertically */
+  gap: 10px; /* Add space between them */
+  align-items: flex-end; /* Align them to the right */
+}
+
+/* Make buttons in that container fill the space */
+.home-actions .btn {
+  width: 100%;
+  min-width: 140px; /* Stop them from getting too small */
+  margin: 0; /* Remove default margin-top from .btn */
 }
