@@ -202,8 +202,33 @@ export default function Dashboard({ user }) {
   }
   
   async function addCoin(n = 1) { if (!profile) return; const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + n }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); }
-  async function claimDaily() { if (!profile) return; const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null; const now = new Date(); const isSameDay = last && last.toDateString() === now.toDateString(); if (isSameDay) return alert("You already claimed today's coin."); const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + 1, lastDaily: serverTimestamp(), }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); alert("+1 coin credited!"); }
-  async function watchAd() { await addCoin(1); alert("+1 coin for watching ad (demo)"); }
+  
+  // 👇 *** UPDATED for 10 coins ***
+  async function claimDaily() {
+    if (!profile) return;
+    const last =
+      profile.lastDaily && typeof profile.lastDaily.toDate === "function"
+        ? profile.lastDaily.toDate()
+        : null;
+    const now = new Date();
+    const isSameDay = last && last.toDateString() === now.toDateString();
+    if (isSameDay) return alert("You already claimed today's coin.");
+
+    const ref = doc(db, "users", user.uid);
+    await updateDoc(ref, {
+      coins: (profile.coins || 0) + 10, // Changed from 1 to 10
+      lastDaily: serverTimestamp(),
+    });
+    const snap = await getDoc(ref);
+    setProfile({ id: snap.id, ...snap.data() });
+    alert("+10 coins credited!"); // Changed from +1
+  }
+
+  // 👇 *** UPDATED for 5 coins ***
+  async function watchAd() {
+    await addCoin(5); // Changed from 1 to 5
+    alert("+5 coins for watching ad (demo)"); // Changed from +1
+  }
   
   async function handleTopup() {
     const amt = parseInt(selectedAmount || topupAmount);
@@ -213,8 +238,7 @@ export default function Dashboard({ user }) {
         userId: user.uid,
         email: profile.email,
         amount: amt,
-        // 👇 CHANGED: 1 Rupee = 10 Coins
-        coins: amt * 10,
+        coins: amt * 10, // 1 Rupee = 10 Coins
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -231,8 +255,7 @@ export default function Dashboard({ user }) {
     if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
     if (!upiId) return alert("Please enter your UPI ID.");
 
-    // 👇 CHANGED: 1 Rupee = 10 Coins
-    const totalCoins = Math.ceil((amt * 10) * 1.1); // amt*10 is the base, * 1.1 adds 10% commission
+    const totalCoins = Math.ceil((amt * 10) * 1.1); // 1 Rupee = 10 Coins, plus 10% commission
 
     if (profile.coins < totalCoins)
       return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
@@ -269,7 +292,6 @@ export default function Dashboard({ user }) {
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
 
     if (playersJoined.includes(user.uid)) {
-      // If already joined, just go to the details page
       setSelectedMatch(match);
       return;
     }
@@ -296,7 +318,7 @@ export default function Dashboard({ user }) {
       );
       
       alert("You have successfully joined the match!");
-      setSelectedMatch(updatedMatch); // Open details page after joining
+      setSelectedMatch(updatedMatch); 
 
     } catch (err) {
       console.error("Error joining match:", err);
@@ -437,9 +459,14 @@ export default function Dashboard({ user }) {
                     <span>{profile.coins ?? 0}</span>
                   </div>
                 </div>
-                <div>
-                  <button className="btn" onClick={claimDaily}> Claim Daily (+1) </button>
-                  <button className="btn ghost" onClick={watchAd}> Watch Ad (+1) </button>
+                {/* 👇 *** UPDATED: Added className and changed button text *** */}
+                <div className="home-actions">
+                  <button className="btn" onClick={claimDaily}>
+                    Claim Daily (+10)
+                  </button>
+                  <button className="btn ghost" onClick={watchAd}>
+                    Watch Ad (+5)
+                  </button>
                 </div>
               </div>
             </section>
@@ -480,7 +507,7 @@ export default function Dashboard({ user }) {
                           <button
                             className="btn"
                             onClick={(e) => {
-                              e.stopPropagation(); // Stop click from bubbling up to the card
+                              e.stopPropagation(); 
                               handleJoinMatch(match);
                             }}
                             disabled={hasJoined || isFull}
@@ -511,7 +538,6 @@ export default function Dashboard({ user }) {
                   
                   return (
                     <>
-                      {/* Show Room ID only if user has joined AND admin has posted it */}
                       {hasJoined && selectedMatch.roomID ? (
                         <div className="room-details">
                           <h4>Room Details</h4>
@@ -539,12 +565,11 @@ export default function Dashboard({ user }) {
 
         {activeTab === "topup" && (
           <section className="modern-card">
-            {/* 👇 CHANGED: 1 Rupee = 10 Coins */}
+            {/* 👇 *** UPDATED: Text for new coin value *** */}
             <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p> 
             <div className="amount-options"> 
               {[20, 50, 100, 200].map((amt) => ( 
                 <div key={amt} className={`amount-btn ${ selectedAmount === amt ? "selected" : "" }`} onClick={() => setSelectedAmount(amt)} > 
-                  {/* 👇 CHANGED: 1 Rupee = 10 Coins */}
                   ₹{amt} = {amt * 10} Coins 
                 </div> 
               ))} 
