@@ -25,6 +25,7 @@ import {
   FaGift,
   FaSignOutAlt,
   FaArrowLeft,
+  FaUserEdit, // 👈 NEW: Icon for Edit Username
 } from "react-icons/fa";
 
 // Import your history page components
@@ -47,9 +48,7 @@ const initialMatchState = {
   rules: "", 
 };
 
-// 👇 UPDATED: Added UPI options, removed Flipkart
-// We use your 10 Coins = 1 Rupee + 10% commission rule
-// e.g., ₹10 = 100 Coins + 10% = 110 Coins
+// List of available gift cards
 const rewardOptions = [
   { type: 'UPI', amount: 10, cost: 110, icon: '/upi.png' },
   { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
@@ -82,7 +81,6 @@ export default function Dashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
   const [topupAmount, setTopupAmount] = useState("");
-  // 👇 REMOVED: withdrawAmount and upiId states
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
 
@@ -103,6 +101,10 @@ export default function Dashboard({ user }) {
   // State for the Match Details view
   const [selectedMatch, setSelectedMatch] = useState(null);
 
+  // 👇 NEW: State for the username modal
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+
   const navigate = useNavigate();
 
   const adminEmail = "esportsimperial50@gmail.com";
@@ -119,11 +121,13 @@ export default function Dashboard({ user }) {
         if (snap.exists()) {
           if (mounted) setProfile({ id: snap.id, ...snap.data() });
         } else {
+          // Added referralCode and hasRedeemedReferral for new users
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           await setDoc(ref, {
             email: user.email,
             coins: 0,
             displayName: user.displayName || "",
+            username: "", // 👈 NEW: Add blank username field
             lastDaily: null,
             createdAt: serverTimestamp(),
             referralCode: newReferralCode, 
@@ -171,6 +175,14 @@ export default function Dashboard({ user }) {
       loadMatches();
     }
   }, [activeTab]);
+
+  // 👇 NEW: Pre-fill username modal when it opens
+  useEffect(() => {
+    if (profile?.username) {
+      setNewUsername(profile.username);
+    }
+  }, [showUsernameModal, profile?.username]);
+
 
   // Function to toggle music on/off
   const toggleMusic = () => {
@@ -258,7 +270,7 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // 👇 NEW: Renamed and simplified function for ALL rewards
+  // Function for redeeming rewards (UPI, Gift Cards)
   async function handleRedeemReward(reward) {
     if (!profile) return;
 
@@ -323,6 +335,14 @@ export default function Dashboard({ user }) {
   
   async function handleJoinMatch(match) {
     if (!profile) return; 
+
+    // 👇 NEW: Check for username before anything else
+    if (!profile.username) {
+      alert("Please set your in-game username before joining a match.");
+      setShowUsernameModal(true);
+      return; // Stop the function
+    }
+    
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
 
     if (playersJoined.includes(user.uid)) {
@@ -445,6 +465,34 @@ export default function Dashboard({ user }) {
     }
   }
 
+  // 👇 NEW: Function to save the new username
+  async function handleSetUsername(e) {
+    e.preventDefault();
+    if (!newUsername) return alert("Username cannot be blank.");
+
+    try {
+      setLoading(true);
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        username: newUsername,
+      });
+
+      // Update local profile state
+      setProfile({
+        ...profile,
+        username: newUsername,
+      });
+
+      alert("Username updated successfully!");
+      setShowUsernameModal(false);
+    } catch (err) {
+      console.error("Error setting username:", err);
+      alert("Failed to set username.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleLogout() {
     await signOut(auth);
     navigate("/login");
@@ -466,7 +514,8 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            <div className="subtitle">{profile.displayName || profile.email}</div>
+            {/* 👇 UPDATED: Show username in header if it exists */}
+            <div className="subtitle">{profile.username || profile.email}</div>
           </div>
         </div>
         <div className="header-actions">
@@ -594,7 +643,6 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
-        {/* 👇 *** UPDATED: This is the new Withdraw tab *** 👇 */}
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
             {/* 1. UPI Section */}
@@ -668,8 +716,6 @@ export default function Dashboard({ user }) {
             </section>
           </div>
         )}
-        {/* 👆 *** END of new Withdraw tab *** 👆 */}
-
 
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
@@ -704,12 +750,29 @@ export default function Dashboard({ user }) {
         {activeTab === "account" && (
           <div className="account-container">
             {accountView === "main" && (
-              <section className="panel account-menu">
-                <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
-                <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
-                <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
-                <button className="account-option logout" onClick={handleLogout}> <FaSignOutAlt size={20} /> <span>Logout</span> <span className="arrow">&gt;</span> </button>
-              </section>
+              <>
+                {/* 👇 NEW: Profile card to show username */}
+                <section className="panel account-profile-card">
+                  <h3 className="modern-title">{profile.username || "Set Your Username"}</h3>
+                  <p className="modern-subtitle">{profile.email}</p>
+                </section>
+                
+                <section className="panel account-menu">
+                  {/* 👇 NEW: Edit Username Button */}
+                  <button
+                    className="account-option"
+                    onClick={() => setShowUsernameModal(true)}
+                  >
+                    <FaUserEdit size={20} />
+                    <span>Edit Username</span>
+                    <span className="arrow">&gt;</span>
+                  </button>
+                  <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
+                  <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
+                  <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
+                  <button className="account-option logout" onClick={handleLogout}> <FaSignOutAlt size={20} /> <span>Logout</span> <span className="arrow">&gt;</span> </button>
+                </section>
+              </>
             )}
             {accountView === "refer" && (
               <section className="panel">
@@ -760,6 +823,42 @@ export default function Dashboard({ user }) {
           </button>
         ))}
       </footer>
+
+      {/* 👇 NEW: Username Popup Modal */}
+      {showUsernameModal && (
+        <div className="modal-overlay">
+          <div className="modal-content modern-card">
+            <h3 className="modern-title">
+              {profile.username ? "Edit Your Username" : "Set Your In-Game Username"}
+            </h3>
+            <p className="modern-subtitle">
+              You must set a username before joining a match. This name will be
+              used in tournaments.
+            </p>
+            <form onSubmit={handleSetUsername}>
+              <input
+                type="text"
+                className="modern-input"
+                placeholder="Enter your username"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+              />
+              <button type="submit" className="btn glow large" disabled={loading}>
+                {loading ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                className="btn large ghost"
+                style={{marginTop: '10px'}}
+                onClick={() => setShowUsernameModal(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
