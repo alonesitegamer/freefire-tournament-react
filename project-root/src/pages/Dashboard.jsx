@@ -43,11 +43,11 @@ const initialMatchState = {
   perKillReward: 75,
   booyahPrize: 0,
   teamType: "Solo",
-  startTime: "", // 👇 NEW: Added startTime
-  rules: "", // 👇 NEW: Added rules
+  startTime: "", 
+  rules: "", 
 };
 
-// 👇 NEW: Helper function to format timestamps nicely
+// Helper function to format timestamps nicely
 function formatMatchTime(timestamp) {
   if (!timestamp || typeof timestamp.toDate !== 'function') {
     return "Time TBD";
@@ -204,8 +204,65 @@ export default function Dashboard({ user }) {
   async function addCoin(n = 1) { if (!profile) return; const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + n }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); }
   async function claimDaily() { if (!profile) return; const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null; const now = new Date(); const isSameDay = last && last.toDateString() === now.toDateString(); if (isSameDay) return alert("You already claimed today's coin."); const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + 1, lastDaily: serverTimestamp(), }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); alert("+1 coin credited!"); }
   async function watchAd() { await addCoin(1); alert("+1 coin for watching ad (demo)"); }
-  async function handleTopup() { const amt = parseInt(selectedAmount || topupAmount); if (!amt || amt < 20) return alert("Minimum top-up is ₹20."); try { await addDoc(collection(db, "topupRequests"), { userId: user.uid, email: profile.email, amount: amt, coins: amt, status: "pending", createdAt: serverTimestamp(), }); alert("Top-up request submitted! Admin will verify it soon."); setTopupAmount(""); setSelectedAmount(null); } catch (err) { console.error("Top-up error:", err); } }
-  async function handleWithdraw() { const amt = parseInt(withdrawAmount); if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50."); if (!upiId) return alert("Please enter your UPI ID."); const totalCoins = Math.ceil(amt * 1.1); if (profile.coins < totalCoins) return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`); try { await addDoc(collection(db, "withdrawRequests"), { userId: user.uid, email: profile.email, upiId, amount: amt, coinsDeducted: totalCoins, status: "pending", createdAt: serverTimestamp(), }); await updateDoc(doc(db, "users", user.uid), { coins: profile.coins - totalCoins, }); alert( `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10% commission).` ); setWithdrawAmount(""); setUpiId(""); const snap = await getDoc(doc(db, "users", user.uid)); setProfile({ id: snap.id, ...snap.data() }); } catch (err) { console.error("Withdraw error:", err); } }
+  
+  async function handleTopup() {
+    const amt = parseInt(selectedAmount || topupAmount);
+    if (!amt || amt < 20) return alert("Minimum top-up is ₹20.");
+    try {
+      await addDoc(collection(db, "topupRequests"), {
+        userId: user.uid,
+        email: profile.email,
+        amount: amt,
+        // 👇 CHANGED: 1 Rupee = 10 Coins
+        coins: amt * 10,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+      alert("Top-up request submitted! Admin will verify it soon.");
+      setTopupAmount("");
+      setSelectedAmount(null);
+    } catch (err) {
+      console.error("Top-up error:", err);
+    }
+  }
+
+  async function handleWithdraw() {
+    const amt = parseInt(withdrawAmount);
+    if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
+    if (!upiId) return alert("Please enter your UPI ID.");
+
+    // 👇 CHANGED: 1 Rupee = 10 Coins
+    const totalCoins = Math.ceil((amt * 10) * 1.1); // amt*10 is the base, * 1.1 adds 10% commission
+
+    if (profile.coins < totalCoins)
+      return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
+
+    try {
+      await addDoc(collection(db, "withdrawRequests"), {
+        userId: user.uid,
+        email: profile.email,
+        upiId,
+        amount: amt,
+        coinsDeducted: totalCoins,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, "users", user.uid), {
+        coins: profile.coins - totalCoins,
+      });
+
+      alert(
+        `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10% commission).`
+      );
+      setWithdrawAmount("");
+      setUpiId("");
+      const snap = await getDoc(doc(db, "users", user.uid));
+      setProfile({ id: snap.id, ...snap.data() });
+    } catch (err) {
+      console.error("Withdraw error:", err);
+    }
+  }
   
   async function handleJoinMatch(match) {
     if (!profile) return; 
@@ -297,7 +354,7 @@ export default function Dashboard({ user }) {
   // Function to handle creating the match
   async function handleCreateMatch(e) {
     e.preventDefault(); 
-    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) { // 👇 NEW: Added startTime check
+    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) { 
       return alert("Please fill in Title, Image URL, and Start Time.");
     }
 
@@ -306,11 +363,10 @@ export default function Dashboard({ user }) {
 
       let matchData = {
         ...newMatch,
-        startTime: new Date(newMatch.startTime), // 👇 NEW: Convert string to Date object for Firestore
+        startTime: new Date(newMatch.startTime), 
         status: "upcoming",
         playersJoined: [],
         createdAt: serverTimestamp(),
-        // 👇 NEW: Add blank room details
         roomID: "",
         roomPassword: "",
       }; 
@@ -414,7 +470,6 @@ export default function Dashboard({ user }) {
                         <img src={match.imageUrl} alt={match.title} />
                         <div className="match-info">
                           <div className="match-title">{match.title}</div>
-                          {/* 👇 NEW: Added Start Time to match card */}
                           <div className="match-meta time">
                             Starts: {formatMatchTime(match.startTime)}
                           </div>
@@ -447,7 +502,6 @@ export default function Dashboard({ user }) {
                 <img src={selectedMatch.imageUrl} alt="match" className="match-details-image" />
                 <h3 className="modern-title">{selectedMatch.title}</h3>
 
-                {/* 👇 NEW: Added Start Time to details page */}
                 <p className="match-details-time">
                   Starts: {formatMatchTime(selectedMatch.startTime)}
                 </p>
@@ -485,7 +539,17 @@ export default function Dashboard({ user }) {
 
         {activeTab === "topup" && (
           <section className="modern-card">
-            <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 1 Coin | Choose an amount</p> <div className="amount-options"> {[20, 50, 100, 200].map((amt) => ( <div key={amt} className={`amount-btn ${ selectedAmount === amt ? "selected" : "" }`} onClick={() => setSelectedAmount(amt)} > ₹{amt} = {amt} Coins </div> ))} </div> <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={topupAmount} onChange={(e) => { setSelectedAmount(null); setTopupAmount(e.target.value); }} /> <button className="btn glow large" onClick={handleTopup}> Submit Top-up Request </button>
+            {/* 👇 CHANGED: 1 Rupee = 10 Coins */}
+            <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p> 
+            <div className="amount-options"> 
+              {[20, 50, 100, 200].map((amt) => ( 
+                <div key={amt} className={`amount-btn ${ selectedAmount === amt ? "selected" : "" }`} onClick={() => setSelectedAmount(amt)} > 
+                  {/* 👇 CHANGED: 1 Rupee = 10 Coins */}
+                  ₹{amt} = {amt * 10} Coins 
+                </div> 
+              ))} 
+            </div> 
+            <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={topupAmount} onChange={(e) => { setSelectedAmount(null); setTopupAmount(e.target.value); }} /> <button className="btn glow large" onClick={handleTopup}> Submit Top-up Request </button>
           </section>
         )}
 
@@ -503,7 +567,6 @@ export default function Dashboard({ user }) {
               <input name="title" className="modern-input" placeholder="Match Title (e.g., 1v1 Clash Squad)" value={newMatch.title} onChange={handleNewMatchChange} />
               <input name="imageUrl" className="modern-input" placeholder="Image URL (e.g., /cs.jpg)" value={newMatch.imageUrl} onChange={handleNewMatchChange} />
               
-              {/* 👇 NEW: Added Start Time input */}
               <label>Start Time</label>
               <input
                 name="startTime"
