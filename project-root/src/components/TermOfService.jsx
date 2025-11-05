@@ -1,7 +1,8 @@
-// In src/pages/TermsOfService.jsx
+// In src/components/TermOfService.jsx
 
 import React from 'react';
-import './TermsOfService.css'; // We'll create this file next
+// THIS IMPORT IS NOW FIXED to match your file name "TermOfService.css"
+import './TermOfService.css'; 
 
 const TermsOfService = () => {
   return (
@@ -56,7 +57,7 @@ const TermsOfService = () => {
         </li>
         <li>
           After payment, you <strong>must</strong> send your transaction ID and registered
-          account email to <strong>[YOUR SUPPORT EMAIL HERE]</strong> as proof of payment.
+          account email to <strong>priyankabairagi036@gmail.com</strong> as proof of payment.
         </li>
         <li>
           Please allow up to <strong>24 hours</strong> for the coins to be manually credited
@@ -122,4 +123,3 @@ const TermsOfService = () => {
 };
 
 export default TermsOfService;
-
