@@ -1,13 +1,12 @@
 // In src/components/PrivacyPolicy.jsx
 
 import React from 'react';
-
-// You can create a simple CSS file to add some padding
-// import './PrivacyPolicy.css'; 
+import './PrivacyPolicy.css'; // <-- 1. UNCOMMENTED THIS IMPORT
 
 const PrivacyPolicy = () => {
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
+    // 2. CHANGED DIV TO USE THE CSS CLASS
+    <div className="privacy-policy-container">
       <h1 className="privacy-policy-h1">Privacy Policy
       <br/><span>Last Updated On 05-Nov-2025</span>
       <br/><span>Effective Date 05-Nov-2025</span>
@@ -33,6 +32,9 @@ const PrivacyPolicy = () => {
           Privacy Policy. If you do not consent to the same,
           please do not access or use the Service.
       </p>
+
+      {/* ... all the other p tags and li tags ... */}
+      {/* ... (The rest of your file is unchanged) ... */}
 
       <p className="privacy-policy-p">
           We may modify this Privacy Policy at any time without
@@ -62,11 +64,6 @@ const PrivacyPolicy = () => {
                               <li>Name</li>
                   
                               <li>Email</li>
-                  
-                  
-                  
-                  
-                  
                   
                               <li>Payment Info</li>
                               
@@ -113,8 +110,6 @@ const PrivacyPolicy = () => {
                   
                               <li>Creating user account</li>
                   
-                  
-                  
                               <li>Enforce T&C</li>
                   
                               <li>Processing payment</li>
@@ -128,8 +123,6 @@ const PrivacyPolicy = () => {
                               <li>Manage customer order</li>
                   
                               <li>Site protection</li>
-                  
-                  
                   
                               <li>Manage user account</li>
                   
@@ -159,9 +152,6 @@ const PrivacyPolicy = () => {
               </p>
               <ol className="privacy-policy-ol">
                               <li>Ad service</li>
-                  
-                  
-                  
                   
                               <li>Analytics</li>
                   
@@ -296,7 +286,7 @@ const PrivacyPolicy = () => {
                   GHOSPUR,
                   email: priyankabairagi036@gmail.com.
                   We will address your concerns in accordance with applicable law.
-              </p> {/* <--- THIS WAS THE TYPO. IT IS NOW FIXED. */}
+              </p> 
           </li>
       </ol>
       <p className="privacy-policy-p">
