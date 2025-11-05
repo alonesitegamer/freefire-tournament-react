@@ -764,3 +764,29 @@ body,
 .modal-content .modern-subtitle {
   text-align: center;
 }
+/* Add this at the end of your styles.css */
+
+.login-footer-links {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  text-align: center;
+  padding: 20px;
+}
+
+.login-footer-links a {
+  color: #aaa; /* Light grey, good for dark mode */
+  text-decoration: none;
+  font-size: 14px;
+  margin: 0 10px;
+}
+
+.login-footer-links a:hover {
+  text-decoration: underline;
+  color: #fff;
+}
+
+.login-footer-links span {
+  color: #555; /* A separator */
+  margin: 0 5px;
+}
