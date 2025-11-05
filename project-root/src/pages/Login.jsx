@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  // NEW: Import Phone Auth and reCAPTCHA
   RecaptchaVerifier,
   signInWithPhoneNumber, 
   signInWithPopup,
@@ -8,23 +7,21 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { Link } from "react-router-dom"; // <-- 1. IMPORT LINK
 
 const provider = new GoogleAuthProvider();
 
 export default function Login() {
-  // NEW: State for phone number, OTP, and UI flow
+  // ... (All your existing state and functions remain unchanged) ...
   const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
   const [referral, setReferral] = useState("");
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState(null);
-
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // UPDATED: Setup invisible reCAPTCHA with cleanup
   useEffect(() => {
-    // This creates the invisible reCAPTCHA verifier.
     try {
       if (!window.recaptchaVerifier) {
         window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
@@ -39,31 +36,26 @@ export default function Login() {
       console.error("Error setting up reCAPTCHA:", error);
       setErr("Failed to initialize login. Please refresh the page.");
     }
-
-    // 👇 ADDED THIS CLEANUP FUNCTION
     return () => {
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.clear();
       }
     };
-  }, []); // Empty array means this runs only once
+  }, []);
 
   
   async function saveInitialUser(user, referralCode = "") {
+    // ... (This function is unchanged) ...
     try {
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
-
-      // Only create a new document if one doesn't exist
       if (!snap.exists()) {
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-        
         await setDoc(ref, {
           email: user.email || null,
           phoneNumber: user.phoneNumber || null,
           displayName: user.displayName || "",
           username: "", 
-          
           coins: 0,
           lastDaily: null,
           referral: referralCode || null, 
@@ -77,35 +69,28 @@ export default function Login() {
     }
   }
 
-  // UPDATED: Step 1 - Send the OTP (with better error handling)
   const handleSendOtp = async (e) => {
+    // ... (This function is unchanged) ...
     e.preventDefault();
     setErr("");
     setLoading(true);
-
     try {
       const appVerifier = window.recaptchaVerifier;
-      
       const formattedMobile = "+91" + mobile;
       if (mobile.length !== 10) {
         setErr("Please enter a valid 10-digit mobile number.");
         setLoading(false);
         return;
       }
-
       const confResult = await signInWithPhoneNumber(auth, formattedMobile, appVerifier);
-      
       setConfirmationResult(confResult);
       setShowOtpInput(true);
       setLoading(false);
       setErr("An OTP has been sent to your number.");
-
     } catch (error) {
       console.error("SMS Send error:", error);
       setErr(error.message);
       setLoading(false);
-      
-      // 👇 ADDED THIS BLOCK TO RESET THE RECAPTCHA ON THAT ERROR
       if (error.message.includes("reCAPTCHA")) {
         if(window.grecaptcha && window.recaptchaVerifier) {
             window.grecaptcha.reset(window.recaptchaVerifier.widgetId);
@@ -114,12 +99,11 @@ export default function Login() {
     }
   };
 
-  // NEW: Step 2 - Verify the OTP
   const handleVerifyOtp = async (e) => {
+    // ... (This function is unchanged) ...
     e.preventDefault();
     setErr("");
     setLoading(true);
-
     if (!confirmationResult) {
       setErr("Something went wrong. Please try sending the OTP again.");
       setLoading(false);
@@ -130,16 +114,10 @@ export default function Login() {
       setLoading(false);
       return;
     }
-
     try {
       const res = await confirmationResult.confirm(otp);
-      // User is signed in!
-      
-      // Now, save their data to Firestore (if they are a new user)
       await saveInitialUser(res.user, referral);
-      
       setLoading(false);
-
     } catch (error) {
       console.error("OTP Verify error:", error);
       setErr(error.message);
@@ -147,8 +125,8 @@ export default function Login() {
     }
   };
 
-
   const handleGoogle = async () => {
+    // ... (This function is unchanged) ...
     setErr("");
     setLoading(true);
     try {
@@ -164,7 +142,6 @@ export default function Login() {
 
   return (
     <div className="auth-root">
-      {/* NEW: This div is required for the invisible reCAPTCHA */}
       <div id="recaptcha-container"></div>
       
       <video className="bg-video" autoPlay loop muted playsInline>
@@ -173,6 +150,7 @@ export default function Login() {
       <div className="auth-overlay" />
 
       <div className="auth-card">
+        {/* ... (Your existing login card UI is unchanged) ... */}
         <img
           src="/icon.jpg"
           className="logo-small"
@@ -181,10 +159,10 @@ export default function Login() {
         />
         
         {!showOtpInput ? (
-          // FORM 1: Enter Mobile Number
           <>
             <h2>Sign In or Register</h2>
             <form onSubmit={handleSendOtp} className="form-col">
+              {/* ... (inputs) ... */}
               <div className="tel-input-group">
                 <span className="country-code">+91</span>
                 <input
@@ -210,11 +188,11 @@ export default function Login() {
             </form>
           </>
         ) : (
-          // FORM 2: Enter OTP
           <>
             <h2>Verify Your Number</h2>
             <p className="text-muted">Enter the 6-digit code sent to +91 {mobile}</p>
             <form onSubmit={handleVerifyOtp} className="form-col">
+              {/* ... (inputs) ... */}
               <input
                 placeholder="6-digit OTP"
                 type="number"
@@ -249,8 +227,20 @@ export default function Login() {
         <button className="btn google" onClick={handleGoogle} disabled={loading}>
           Sign in with Google
         </button>
-        
       </div>
+
+      {/* --- 2. ADD THIS NEW FOOTER SECTION --- */}
+      <div className="login-footer-links">
+        <Link to="/privacy-policy">Privacy Policy</Link>
+        <span>•</span>
+        <Link to="/terms-of-service">Terms of Service</Link>
+        <span>•</span>
+        <Link to="/about">About Us</Link>
+        <span>•</span>
+        <Link to="/contact">Contact</Link>
+      </div>
+      {/* --- END NEW SECTION --- */}
+
     </div>
   );
 }
