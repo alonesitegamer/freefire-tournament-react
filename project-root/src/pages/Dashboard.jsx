@@ -216,9 +216,78 @@ export default function Dashboard({ user }) {
   async function handleTopup() { const amt = parseInt(selectedAmount || topupAmount); if (!amt || amt < 20) return alert("Minimum top-up is ₹20."); try { await addDoc(collection(db, "topupRequests"), { userId: user.uid, email: profile.email, amount: amt, coins: amt, status: "pending", createdAt: serverTimestamp(), }); alert("Top-up request submitted! Admin will verify it soon."); setTopupAmount(""); setSelectedAmount(null); } catch (err) { console.error("Top-up error:", err); } }
   async function handleWithdraw() { const amt = parseInt(withdrawAmount); if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50."); if (!upiId) return alert("Please enter your UPI ID."); const totalCoins = Math.ceil(amt * 1.1); if (profile.coins < totalCoins) return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`); try { await addDoc(collection(db, "withdrawRequests"), { userId: user.uid, email: profile.email, upiId, amount: amt, coinsDeducted: totalCoins, status: "pending", createdAt: serverTimestamp(), }); await updateDoc(doc(db, "users", user.uid), { coins: profile.coins - totalCoins, }); alert( `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10% commission).` ); setWithdrawAmount(""); setUpiId(""); const snap = await getDoc(doc(db, "users", user.uid)); setProfile({ id: snap.id, ...snap.data() }); } catch (err) { console.error("Withdraw error:", err); } }
   async function handleJoinMatch(match) { if (!profile) return; const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match; if (playersJoined.includes(user.uid)) { alert("You have already joined this match."); return; } if (playersJoined.length >= maxPlayers) { alert("Sorry, this match is full."); return; } if (profile.coins < entryFee) { alert("You don't have enough coins to join this match."); return; } if (!window.confirm(`Join this match for ${entryFee} coins?`)) { return; } try { setLoading(true); const userDocRef = doc(db, "users", user.uid); const matchDocRef = doc(db, "matches", matchId); await updateDoc(userDocRef, { coins: profile.coins - entryFee, }); await updateDoc(matchDocRef, { playersJoined: arrayUnion(user.uid), }); setProfile({ ...profile, coins: profile.coins - entryFee, }); setMatches((prevMatches) => prevMatches.map((m) => m.id === matchId ? { ...m, playersJoined: [...m.playersJoined, user.uid] } : m ) ); alert("You have successfully joined the match!"); } catch (err) { console.error("Error joining match:", err); alert("An error occurred while joining. Please try again."); } finally { setLoading(false); } }
-  async function approveRequest(type, req) { const ref = doc(db, `${type}Requests`, req.id); await updateDoc(ref, { status: "approved" }); if (type === "topup") { const userDocRef = doc(db, "users", req.userId); const userSnap = await getDoc(userDocRef); if (userSnap.exists()) { const userCurrentCoins = userSnap.data().coins || 0; await updateDoc(userDocRef, { coins: userCurrentCoins + req.coins, }); } else { console.error("User document not found for approval!"); alert("Error: User not found."); } } alert(`${type} approved.`); setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id), })); }
-  async function rejectRequest(type, req) { const ref = doc(db, `${type}Requests`, req.id); await updateDoc(ref, { status: "rejected" }); alert(`${type} rejected.`); setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id), })); }
+  
+  // Admin fetch
+  useEffect(() => {
+    // 👇 *** THIS IS THE FIX ***
+    // Only run this if we are admin
+    if (profile?.email !== adminEmail) return;
+
+    (async () => {
+      // 1. Fetch only PENDING topup requests
+      const topupQuery = query(
+        collection(db, "topupRequests"),
+        where("status", "==", "pending")
+      );
+      const topupSnap = await getDocs(topupQuery);
+
+      // 2. Fetch only PENDING withdraw requests
+      const withdrawQuery = query(
+        collection(db, "withdrawRequests"),
+        where("status", "==", "pending")
+      );
+      const withdrawSnap = await getDocs(withdrawQuery);
+      
+      setRequests({
+        topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        withdraw: withdrawSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    })();
+  }, [profile?.email, activeTab]); // Added activeTab to re-fetch when clicking Admin
+
+  // FIXED APPROVE FUNCTION
+  async function approveRequest(type, req) {
+    const ref = doc(db, `${type}Requests`, req.id);
+    await updateDoc(ref, { status: "approved" });
+
+    if (type === "topup") {
+      const userDocRef = doc(db, "users", req.userId);
+      const userSnap = await getDoc(userDocRef);
+
+      if (userSnap.exists()) {
+        const userCurrentCoins = userSnap.data().coins || 0;
+        await updateDoc(userDocRef, {
+          coins: userCurrentCoins + req.coins,
+        });
+      } else {
+        console.error("User document not found for approval!");
+        alert("Error: User not found.");
+      }
+    }
+
+    alert(`${type} approved.`);
+
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
+  }
+
+  // FIXED REJECT FUNCTION
+  async function rejectRequest(type, req) {
+    const ref = doc(db, `${type}Requests`, req.id);
+    await updateDoc(ref, { status: "rejected" });
+    alert(`${type} rejected.`);
+
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
+  }
+
+  // Helper function to update the newMatch state
   const handleNewMatchChange = (e) => { const { name, value, type } = e.target; const val = type === "number" ? parseInt(value) || 0 : value; setNewMatch((prev) => ({ ...prev, [name]: val, })); };
+  // Function to handle creating the match
   async function handleCreateMatch(e) { e.preventDefault(); if (!newMatch.title || !newMatch.imageUrl) { return alert("Please fill in at least the Title and Image URL."); } try { setLoading(true); let matchData = { ...newMatch, status: "upcoming", playersJoined: [], createdAt: serverTimestamp(), }; if (matchData.prizeModel === "Scalable") { delete matchData.booyahPrize; } else { delete matchData.commissionPercent; delete matchData.perKillReward; } await addDoc(collection(db, "matches"), matchData); alert("Match created successfully!"); setNewMatch(initialMatchState); } catch (err) { console.error("Error creating match:", err); alert("Failed to create match. Check console for error."); } finally { setLoading(false); } }
 
   async function handleLogout() {
@@ -257,8 +326,7 @@ export default function Dashboard({ user }) {
               Admin Panel
             </button>
           )}
-          {/* This logout button is now hidden, as it's inside the Account tab */}
-          {/* <button className="btn small ghost" onClick={handleLogout}>Logout</button> */}
+          {/* Logout button is now in the Account tab menu */}
         </div>
       </header>
 
@@ -270,69 +338,36 @@ export default function Dashboard({ user }) {
                 <div>
                   <div className="muted">Coins</div>
                   <div className="big coin-row">
-                    <img
-                      src="/coin.jpg"
-                      alt="coin"
-                      className="coin-icon"
-                      style={{
-                        width: "28px",
-                        height: "28px",
-                        borderRadius: "50%",
-                        animation: "spinCoin 3s linear infinite",
-                      }}
-                    />
+                    <img src="/coin.jpg" alt="coin" className="coin-icon" style={{ width: "28px", height: "28px", borderRadius: "50%", animation: "spinCoin 3s linear infinite", }} />
                     <span>{profile.coins ?? 0}</span>
                   </div>
                 </div>
                 <div>
-                  <button className="btn" onClick={claimDaily}>
-                    Claim Daily (+1)
-                  </button>
-                  <button className="btn ghost" onClick={watchAd}>
-                    Watch Ad (+1)
-                  </button>
+                  <button className="btn" onClick={claimDaily}> Claim Daily (+1) </button>
+                  <button className="btn ghost" onClick={watchAd}> Watch Ad (+1) </button>
                 </div>
               </div>
             </section>
-
-            <section className="panel">
-              <h3>Welcome!</h3>
-              <p>Check the matches tab to join a game.</p>
-            </section>
+            <section className="panel"> <h3>Welcome!</h3> <p>Check the matches tab to join a game.</p> </section>
           </>
         )}
 
         {activeTab === "matches" && (
-          <section className="panel">
+           <section className="panel">
             <h3>Available Matches</h3>
             {loadingMatches && <p>Loading matches...</p>}
-
-            {!loadingMatches && matches.length === 0 && (
-              <p>No upcoming matches right now. Check back soon!</p>
-            )}
-
+            {!loadingMatches && matches.length === 0 && ( <p>No upcoming matches right now. Check back soon!</p> )}
             <div className="grid">
               {matches.map((match) => {
                 const hasJoined = match.playersJoined?.includes(user.uid);
                 const isFull = match.playersJoined?.length >= match.maxPlayers;
-
                 return (
                   <div key={match.id} className="match-card">
                     <img src={match.imageUrl} alt={match.title} />
                     <div className="match-info">
                       <div className="match-title">{match.title}</div>
-                      <div className="match-meta">
-                        Entry: {match.entryFee} Coins | Joined:{" "}
-                        {match.playersJoined?.length || 0} / {match.maxPlayers}
-                      </div>
-
-                      <button
-                        className="btn"
-                        onClick={() => handleJoinMatch(match)}
-                        disabled={hasJoined || isFull}
-                      >
-                        {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
-                      </button>
+                      <div className="match-meta"> Entry: {match.entryFee} Coins | Joined:{" "} {match.playersJoined?.length || 0} / {match.maxPlayers} </div>
+                      <button className="btn" onClick={() => handleJoinMatch(match)} disabled={hasJoined || isFull} > {hasJoined ? "Joined" : isFull ? "Full" : "Join"} </button>
                     </div>
                   </div>
                 );
@@ -343,283 +378,69 @@ export default function Dashboard({ user }) {
 
         {activeTab === "topup" && (
           <section className="modern-card">
-            <h3 className="modern-title">Top-up Coins</h3>
-            <p className="modern-subtitle">1 ₹ = 1 Coin | Choose an amount</p>
-            <div className="amount-options">
-              {[20, 50, 100, 200].map((amt) => (
-                <div
-                  key={amt}
-                  className={`amount-btn ${
-                    selectedAmount === amt ? "selected" : ""
-                  }`}
-                  onClick={() => setSelectedAmount(amt)}
-                >
-                  ₹{amt} = {amt} Coins
-                </div>
-              ))}
-            </div>
-            <input
-              type="number"
-              className="modern-input"
-              placeholder="Or enter custom amount ₹"
-              value={topupAmount}
-              onChange={(e) => {
-                setSelectedAmount(null);
-                setTopupAmount(e.target.value);
-              }}
-            />
-            <button className="btn glow large" onClick={handleTopup}>
-              Submit Top-up Request
-            </button>
+            <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 1 Coin | Choose an amount</p> <div className="amount-options"> {[20, 50, 100, 200].map((amt) => ( <div key={amt} className={`amount-btn ${ selectedAmount === amt ? "selected" : "" }`} onClick={() => setSelectedAmount(amt)} > ₹{amt} = {amt} Coins </div> ))} </div> <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={topupAmount} onChange={(e) => { setSelectedAmount(null); setTopupAmount(e.target.value); }} /> <button className="btn glow large" onClick={handleTopup}> Submit Top-up Request </button>
           </section>
         )}
 
         {activeTab === "withdraw" && (
           <section className="modern-card">
-            <h3 className="modern-title">Withdraw Coins</h3>
-            <p className="modern-subtitle">10% commission | Minimum ₹50</p>
-            <div className="withdraw-form">
-              <input
-                type="number"
-                className="modern-input"
-                placeholder="Enter amount ₹"
-                value={withdrawAmount}
-                onChange={(e) => setWithdrawAmount(e.target.value)}
-              />
-              <input
-                type="text"
-                className="modern-input"
-                placeholder="Enter your UPI ID"
-                value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
-              />
-              <button className="btn glow large" onClick={handleWithdraw}>
-                Request Withdrawal
-              </button>
-            </div>
+            <h3 className="modern-title">Withdraw Coins</h3> <p className="modern-subtitle">10% commission | Minimum ₹50</p> <div className="withdraw-form"> <input type="number" className="modern-input" placeholder="Enter amount ₹" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} /> <input type="text" className="modern-input" placeholder="Enter your UPI ID" value={upiId} onChange={(e) => setUpiId(e.target.value)} /> <button className="btn glow large" onClick={handleWithdraw}> Request Withdrawal </button> </div>
           </section>
         )}
 
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
             <h3>Admin Panel</h3>
-
-            {/* The "Create Match" Form */}
             <form onSubmit={handleCreateMatch} className="admin-form">
               <h4>Create New Match</h4>
-
-              <input
-                name="title"
-                className="modern-input"
-                placeholder="Match Title (e.g., 1v1 Clash Squad)"
-                value={newMatch.title}
-                onChange={handleNewMatchChange}
-              />
-              <input
-                name="imageUrl"
-                className="modern-input"
-                placeholder="Image URL (e.g., /cs.jpg)"
-                value={newMatch.imageUrl}
-                onChange={handleNewMatchChange}
-              />
-
+              <input name="title" className="modern-input" placeholder="Match Title (e.g., 1v1 Clash Squad)" value={newMatch.title} onChange={handleNewMatchChange} />
+              <input name="imageUrl" className="modern-input" placeholder="Image URL (e.g., /cs.jpg)" value={newMatch.imageUrl} onChange={handleNewMatchChange} />
               <label>Match Type</label>
-              <select
-                name="type"
-                className="modern-input"
-                value={newMatch.type}
-                onChange={handleNewMatchChange}
-              >
-                <option value="BR">Battle Royale</option>
-                <option value="CS">Clash Squad</option>
-              </select>
-
+              <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange} > <option value="BR">Battle Royale</option> <option value="CS">Clash Squad</option> </select>
               <label>Prize Model</label>
-              <select
-                name="prizeModel"
-                className="modern-input"
-                value={newMatch.prizeModel}
-                onChange={handleNewMatchChange}
-              >
-                <option value="Scalable">Scalable (BR - % commission)</option>
-                <option value="Fixed">Fixed (CS - fixed prize)</option>
-              </select>
-
+              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option value="Fixed">Fixed (CS - fixed prize)</option> </select>
               <label>Entry Fee (Coins)</label>
-              <input
-                name="entryFee"
-                type="number"
-                className="modern-input"
-                value={newMatch.entryFee}
-                onChange={handleNewMatchChange}
-              />
-
+              <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={handleNewMatchChange} />
               <label>Max Players</label>
-              <input
-                name="maxPlayers"
-                type="number"
-                className="modern-input"
-                value={newMatch.maxPlayers}
-                onChange={handleNewMatchChange}
-              />
-
-              {/* These fields only show when needed */}
-              {newMatch.prizeModel === "Scalable" ? (
-                <>
-                  <label>Per Kill Reward (Coins)</label>
-                  <input
-                    name="perKillReward"
-                    type="number"
-                    className="modern-input"
-                    value={newMatch.perKillReward}
-                    onChange={handleNewMatchChange}
-                  />
-                  <label>Commission (%)</label>
-                  <input
-                    name="commissionPercent"
-                    type="number"
-                    className="modern-input"
-                    value={newMatch.commissionPercent}
-                    onChange={handleNewMatchChange}
-                  />
-                </>
-              ) : (
-                <>
-                  <label>Booyah Prize (Fixed Total)</label>
-                  <input
-                    name="booyahPrize"
-                    type="number"
-                    className="modern-input"
-                    value={newMatch.booyahPrize}
-                    onChange={handleNewMatchChange}
-                  />
-                </>
-              )}
-
-              <button type="submit" className="btn glow">
-                Create Match
-              </button>
+              <input name="maxPlayers" type="number" className="modern-input" value={newMatch.maxPlayers} onChange={handleNewMatchChange} />
+              {newMatch.prizeModel === "Scalable" ? ( <> <label>Per Kill Reward (Coins)</label> <input name="perKillReward" type="number" className="modern-input" value={newMatch.perKillReward} onChange={handleNewMatchChange} /> <label>Commission (%)</label> <input name="commissionPercent" type="number" className="modern-input" value={newMatch.commissionPercent} onChange={handleNewMatchChange} /> </> ) : ( <> <label>Booyah Prize (Fixed Total)</label> <input name="booyahPrize" type="number" className="modern-input" value={newMatch.booyahPrize} onChange={handleNewMatchChange} /> </> )}
+              <button type="submit" className="btn glow"> Create Match </button>
             </form>
-
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
-
-            {/* Your existing admin panel code */}
             <h4>Top-up Requests</h4>
-            {requests.topup.map((r) => (
-              <div key={r.id} className="admin-row">
-                <span>
-                  {r.email} | ₹{r.amount}
-                </span>
-                <div>
-                  <button
-                    className="btn small"
-                    onClick={() => approveRequest("topup", r)}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() => rejectRequest("topup", r)}
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> </div> </div> ))}
             <h4>Withdraw Requests</h4>
-            {requests.withdraw.map((r) => (
-              <div key={r.id} className="admin-row">
-                <span>
-                  {r.email} | ₹{r.amount} | UPI: {r.upiId}
-                </span>
-                <div>
-                  <button
-                    className="btn small"
-                    onClick={() => approveRequest("withdraw", r)}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() => rejectRequest("withdraw", r)}
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+            {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | UPI: {r.upiId} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
           </section>
         )}
 
-        {/* 👇 This is the entire 'Account' tab section */}
         {activeTab === "account" && (
           <div className="account-container">
             {/* Main Menu View */}
             {accountView === "main" && (
               <section className="panel account-menu">
-                <button
-                  className="account-option"
-                  onClick={() => setAccountView("refer")}
-                >
-                  <FaGift size={20} />
-                  <span>Refer a Friend</span>
-                  <span className="arrow">&gt;</span>
-                </button>
-                <button
-                  className="account-option"
-                  onClick={() => setAccountView("match_history")}
-                >
-                  <FaHistory size={20} />
-                  <span>Match History</span>
-                  <span className="arrow">&gt;</span>
-                </button>
-                <button
-                  className="account-option"
-                  onClick={() => setAccountView("withdraw_history")}
-                >
-                  <FaMoneyBillWave size={20} />
-                  <span>Withdrawal History</span>
-                  <span className="arrow">&gt;</span>
-                </button>
-                <button className="account-option logout" onClick={handleLogout}>
-                  <FaSignOutAlt size={20} />
-                  <span>Logout</span>
-                  <span className="arrow">&gt;</span>
-                </button>
+                <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
+                <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
+                <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
+                <button className="account-option logout" onClick={handleLogout}> <FaSignOutAlt size={20} /> <span>Logout</span> <span className="arrow">&gt;</span> </button>
               </section>
             )}
 
             {/* Refer a Friend View */}
             {accountView === "refer" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}>
-                  <FaArrowLeft /> Back
-                </button>
+                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
                 <h3 className="modern-title">Refer a Friend</h3>
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
                   <div className="referral-code">{profile.referralCode}</div>
-                  <p className="modern-subtitle" style={{ textAlign: "center" }}>
-                    Share this code with your friends. When they use it, they get
-                    30 coins and you get 100 coins!
-                  </p>
+                  <p className="modern-subtitle" style={{ textAlign: "center" }}> Share this code with your friends. When they use it, they get 30 coins and you get 100 coins! </p>
                 </div>
                 {!profile.hasRedeemedReferral && (
                   <div className="referral-form">
                     <p>Have a friend's code?</p>
-                    <input
-                      type="text"
-                      className="modern-input"
-                      placeholder="Enter referral code"
-                      value={referralInput}
-                      onChange={(e) => setReferralInput(e.target.value)}
-                    />
-                    <button
-                      className="btn glow large"
-                      onClick={handleRedeemReferral}
-                    >
-                      Redeem Code
-                    </button>
+                    <input type="text" className="modern-input" placeholder="Enter referral code" value={referralInput} onChange={(e) => setReferralInput(e.target.value)} />
+                    <button className="btn glow large" onClick={handleRedeemReferral} > Redeem Code </button>
                   </div>
                 )}
               </section>
@@ -628,9 +449,7 @@ export default function Dashboard({ user }) {
             {/* Match History View */}
             {accountView === "match_history" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}>
-                  <FaArrowLeft /> Back
-                </button>
+                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
                 <MatchHistoryPage user={user} />
               </section>
             )}
@@ -638,9 +457,7 @@ export default function Dashboard({ user }) {
             {/* Withdrawal History View */}
             {accountView === "withdraw_history" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}>
-                  <FaArrowLeft /> Back
-                </button>
+                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
                 <WithdrawalHistoryPage user={user} />
               </section>
             )}
