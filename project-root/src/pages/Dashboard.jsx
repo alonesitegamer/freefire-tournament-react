@@ -47,6 +47,21 @@ const initialMatchState = {
   rules: "", 
 };
 
+// 👇 UPDATED: Added UPI options, removed Flipkart
+// We use your 10 Coins = 1 Rupee + 10% commission rule
+// e.g., ₹10 = 100 Coins + 10% = 110 Coins
+const rewardOptions = [
+  { type: 'UPI', amount: 10, cost: 110, icon: '/upi.png' },
+  { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
+  { type: 'UPI', amount: 50, cost: 550, icon: '/upi.png' },
+  { type: 'Google Play', amount: 10, cost: 110, icon: '/google-play.png' },
+  { type: 'Google Play', amount: 50, cost: 550, icon: '/google-play.png' },
+  { type: 'Google Play', amount: 100, cost: 1100, icon: '/google-play.png' },
+  { type: 'Amazon', amount: 10, cost: 110, icon: '/amazon.png' },
+  { type: 'Amazon', amount: 50, cost: 550, icon: '/amazon.png' },
+  { type: 'Amazon', amount: 100, cost: 1100, icon: '/amazon.png' },
+];
+
 // Helper function to format timestamps nicely
 function formatMatchTime(timestamp) {
   if (!timestamp || typeof timestamp.toDate !== 'function') {
@@ -67,8 +82,7 @@ export default function Dashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
   const [topupAmount, setTopupAmount] = useState("");
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [upiId, setUpiId] = useState("");
+  // 👇 REMOVED: withdrawAmount and upiId states
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [selectedAmount, setSelectedAmount] = useState(null);
 
@@ -105,7 +119,6 @@ export default function Dashboard({ user }) {
         if (snap.exists()) {
           if (mounted) setProfile({ id: snap.id, ...snap.data() });
         } else {
-          // Added referralCode and hasRedeemedReferral for new users
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           await setDoc(ref, {
             email: user.email,
@@ -113,8 +126,8 @@ export default function Dashboard({ user }) {
             displayName: user.displayName || "",
             lastDaily: null,
             createdAt: serverTimestamp(),
-            referralCode: newReferralCode, // Unique code for every user
-            hasRedeemedReferral: false, // Flag to prevent multiple redeems
+            referralCode: newReferralCode, 
+            hasRedeemedReferral: false, 
           });
           const s2 = await getDoc(ref);
           if (mounted) setProfile({ id: s2.id, ...s2.data() });
@@ -203,31 +216,26 @@ export default function Dashboard({ user }) {
   
   async function addCoin(n = 1) { if (!profile) return; const ref = doc(db, "users", user.uid); await updateDoc(ref, { coins: (profile.coins || 0) + n }); const snap = await getDoc(ref); setProfile({ id: snap.id, ...snap.data() }); }
   
-  // 👇 *** UPDATED for 10 coins ***
   async function claimDaily() {
     if (!profile) return;
-    const last =
-      profile.lastDaily && typeof profile.lastDaily.toDate === "function"
-        ? profile.lastDaily.toDate()
-        : null;
+    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null;
     const now = new Date();
     const isSameDay = last && last.toDateString() === now.toDateString();
     if (isSameDay) return alert("You already claimed today's coin.");
 
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, {
-      coins: (profile.coins || 0) + 10, // Changed from 1 to 10
+      coins: (profile.coins || 0) + 10, // 10 coins
       lastDaily: serverTimestamp(),
     });
     const snap = await getDoc(ref);
     setProfile({ id: snap.id, ...snap.data() });
-    alert("+10 coins credited!"); // Changed from +1
+    alert("+10 coins credited!"); 
   }
 
-  // 👇 *** UPDATED for 5 coins ***
   async function watchAd() {
-    await addCoin(5); // Changed from 1 to 5
-    alert("+5 coins for watching ad (demo)"); // Changed from +1
+    await addCoin(5); // 5 coins
+    alert("+5 coins for watching ad (demo)"); 
   }
   
   async function handleTopup() {
@@ -250,40 +258,66 @@ export default function Dashboard({ user }) {
     }
   }
 
-  async function handleWithdraw() {
-    const amt = parseInt(withdrawAmount);
-    if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
-    if (!upiId) return alert("Please enter your UPI ID.");
+  // 👇 NEW: Renamed and simplified function for ALL rewards
+  async function handleRedeemReward(reward) {
+    if (!profile) return;
 
-    const totalCoins = Math.ceil((amt * 10) * 1.1); // 1 Rupee = 10 Coins, plus 10% commission
+    if (profile.coins < reward.cost) {
+      return alert("You don't have enough coins for this reward.");
+    }
 
-    if (profile.coins < totalCoins)
-      return alert(`You need at least ${totalCoins} coins to withdraw ₹${amt}.`);
+    let upiId = ''; // Variable to hold UPI ID if needed
+
+    // If the reward type is UPI, ask for the ID
+    if (reward.type === 'UPI') {
+      upiId = window.prompt(`Enter your UPI ID to receive ₹${reward.amount}:`);
+      if (!upiId) { // User clicked cancel or left it blank
+        return alert("UPI ID is required for this reward. Redemption cancelled.");
+      }
+    } else {
+      // For gift cards
+      if (!window.confirm(`Redeem ${reward.type} Gift Card (₹${reward.amount}) for ${reward.cost} coins?`)) {
+        return;
+      }
+    }
 
     try {
+      setLoading(true);
+      // 1. Add to withdrawRequests
       await addDoc(collection(db, "withdrawRequests"), {
         userId: user.uid,
         email: profile.email,
-        upiId,
-        amount: amt,
-        coinsDeducted: totalCoins,
+        amount: reward.amount,
+        coinsDeducted: reward.cost,
         status: "pending",
+        type: reward.type, // "UPI", "Google Play", etc.
+        upiId: upiId, // Will be blank for gift cards, filled for UPI
         createdAt: serverTimestamp(),
       });
 
-      await updateDoc(doc(db, "users", user.uid), {
-        coins: profile.coins - totalCoins,
+      // 2. Deduct coins
+      const userDocRef = doc(db, "users", user.uid);
+      await updateDoc(userDocRef, {
+        coins: profile.coins - reward.cost,
       });
 
-      alert(
-        `Withdrawal request submitted! ₹${amt} (-${totalCoins} coins including 10% commission).`
-      );
-      setWithdrawAmount("");
-      setUpiId("");
-      const snap = await getDoc(doc(db, "users", user.uid));
-      setProfile({ id: snap.id, ...snap.data() });
+      // 3. Update local state
+      setProfile({
+        ...profile,
+        coins: profile.coins - reward.cost,
+      });
+
+      if (reward.type === 'UPI') {
+        alert("Withdrawal request submitted! Admin will process it shortly.");
+      } else {
+        alert("Redemption request submitted! Admin will email your code within 24 hours.");
+      }
+
     } catch (err) {
       console.error("Withdraw error:", err);
+      alert("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
   
@@ -459,7 +493,6 @@ export default function Dashboard({ user }) {
                     <span>{profile.coins ?? 0}</span>
                   </div>
                 </div>
-                {/* 👇 *** UPDATED: Added className and changed button text *** */}
                 <div className="home-actions">
                   <button className="btn" onClick={claimDaily}>
                     Claim Daily (+10)
@@ -489,11 +522,7 @@ export default function Dashboard({ user }) {
                     const hasJoined = match.playersJoined?.includes(user.uid);
                     const isFull = match.playersJoined?.length >= match.maxPlayers;
                     return (
-                      <div
-                        key={match.id}
-                        className="match-card"
-                        onClick={() => setSelectedMatch(match)} // Click card to open details
-                      >
+                      <div key={match.id} className="match-card" onClick={() => setSelectedMatch(match)}>
                         <img src={match.imageUrl} alt={match.title} />
                         <div className="match-info">
                           <div className="match-title">{match.title}</div>
@@ -504,14 +533,7 @@ export default function Dashboard({ user }) {
                             Entry: {match.entryFee} Coins | Joined:{" "}
                             {match.playersJoined?.length || 0} / {match.maxPlayers}
                           </div>
-                          <button
-                            className="btn"
-                            onClick={(e) => {
-                              e.stopPropagation(); 
-                              handleJoinMatch(match);
-                            }}
-                            disabled={hasJoined || isFull}
-                          >
+                          <button className="btn" onClick={(e) => { e.stopPropagation(); handleJoinMatch(match); }} disabled={hasJoined || isFull} >
                             {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
                           </button>
                         </div>
@@ -528,14 +550,11 @@ export default function Dashboard({ user }) {
                 </button>
                 <img src={selectedMatch.imageUrl} alt="match" className="match-details-image" />
                 <h3 className="modern-title">{selectedMatch.title}</h3>
-
                 <p className="match-details-time">
                   Starts: {formatMatchTime(selectedMatch.startTime)}
                 </p>
-                
                 {(() => {
                   const hasJoined = selectedMatch.playersJoined?.includes(user.uid);
-                  
                   return (
                     <>
                       {hasJoined && selectedMatch.roomID ? (
@@ -549,7 +568,6 @@ export default function Dashboard({ user }) {
                           <p>You have joined! Room ID and Password will be revealed here 15 minutes before the match starts.</p>
                         </div>
                       ) : null}
-                      
                       <div className="match-rules">
                         <h4>Match Rules</h4>
                         <p>{selectedMatch.rules || "No specific rules provided for this match."}</p>
@@ -557,7 +575,6 @@ export default function Dashboard({ user }) {
                     </>
                   );
                 })()}
-
               </section>
             )}
           </>
@@ -565,7 +582,6 @@ export default function Dashboard({ user }) {
 
         {activeTab === "topup" && (
           <section className="modern-card">
-            {/* 👇 *** UPDATED: Text for new coin value *** */}
             <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p> 
             <div className="amount-options"> 
               {[20, 50, 100, 200].map((amt) => ( 
@@ -578,11 +594,82 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
+        {/* 👇 *** UPDATED: This is the new Withdraw tab *** 👇 */}
         {activeTab === "withdraw" && (
-          <section className="modern-card">
-            <h3 className="modern-title">Withdraw Coins</h3> <p className="modern-subtitle">10% commission | Minimum ₹50</p> <div className="withdraw-form"> <input type="number" className="modern-input" placeholder="Enter amount ₹" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} /> <input type="text" className="modern-input" placeholder="Enter your UPI ID" value={upiId} onChange={(e) => setUpiId(e.target.value)} /> <button className="btn glow large" onClick={handleWithdraw}> Request Withdrawal </button> </div>
-          </section>
+          <div className="withdraw-container">
+            {/* 1. UPI Section */}
+            <section className="panel">
+              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem Coins as UPI</h3>
+              <p className="modern-subtitle" style={{ paddingLeft: '10px' }}>10% commission fee</p>
+              <div className="reward-grid">
+                {rewardOptions
+                  .filter((opt) => opt.type === 'UPI')
+                  .map((reward) => (
+                    <div
+                      key={reward.amount}
+                      className="reward-card"
+                      onClick={() => handleRedeemReward(reward)}
+                    >
+                      <img src={reward.icon} alt="UPI" className="reward-icon" />
+                      <div className="reward-cost">
+                        <img src="/coin.jpg" alt="coin" />
+                        <span>{reward.cost}</span>
+                      </div>
+                      <div className="reward-amount">₹ {reward.amount}</div>
+                    </div>
+                  ))}
+              </div>
+            </section>
+
+            {/* 2. Google Play Section */}
+            <section className="panel">
+              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Google Gift Card</h3>
+              <div className="reward-grid">
+                {rewardOptions
+                  .filter((opt) => opt.type === 'Google Play')
+                  .map((reward) => (
+                    <div
+                      key={reward.amount}
+                      className="reward-card"
+                      onClick={() => handleRedeemReward(reward)}
+                    >
+                      <img src={reward.icon} alt="Google Play" className="reward-icon" />
+                      <div className="reward-cost">
+                        <img src="/coin.jpg" alt="coin" />
+                        <span>{reward.cost}</span>
+                      </div>
+                      <div className="reward-amount">₹ {reward.amount}</div>
+                    </div>
+                  ))}
+              </div>
+            </section>
+            
+            {/* 3. Amazon Section */}
+            <section className="panel">
+              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Amazon Gift Card</h3>
+              <div className="reward-grid">
+                {rewardOptions
+                  .filter((opt) => opt.type === 'Amazon')
+                  .map((reward) => (
+                    <div
+                      key={reward.amount}
+                      className="reward-card"
+                      onClick={() => handleRedeemReward(reward)}
+                    >
+                      <img src={reward.icon} alt="Amazon" className="reward-icon" />
+                      <div className="reward-cost">
+                        <img src="/coin.jpg" alt="coin" />
+                        <span>{reward.cost}</span>
+                      </div>
+                      <div className="reward-amount">₹ {reward.amount}</div>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          </div>
         )}
+        {/* 👆 *** END of new Withdraw tab *** 👆 */}
+
 
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
@@ -591,16 +678,8 @@ export default function Dashboard({ user }) {
               <h4>Create New Match</h4>
               <input name="title" className="modern-input" placeholder="Match Title (e.g., 1v1 Clash Squad)" value={newMatch.title} onChange={handleNewMatchChange} />
               <input name="imageUrl" className="modern-input" placeholder="Image URL (e.g., /cs.jpg)" value={newMatch.imageUrl} onChange={handleNewMatchChange} />
-              
               <label>Start Time</label>
-              <input
-                name="startTime"
-                type="datetime-local"
-                className="modern-input"
-                value={newMatch.startTime}
-                onChange={handleNewMatchChange}
-              />
-              
+              <input name="startTime" type="datetime-local" className="modern-input" value={newMatch.startTime} onChange={handleNewMatchChange} />
               <label>Match Type</label>
               <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange} > <option value="BR">Battle Royale</option> <option value="CS">Clash Squad</option> </select>
               <label>Prize Model</label>
@@ -611,20 +690,14 @@ export default function Dashboard({ user }) {
               <input name="maxPlayers" type="number" className="modern-input" value={newMatch.maxPlayers} onChange={handleNewMatchChange} />
               {newMatch.prizeModel === "Scalable" ? ( <> <label>Per Kill Reward (Coins)</label> <input name="perKillReward" type="number" className="modern-input" value={newMatch.perKillReward} onChange={handleNewMatchChange} /> <label>Commission (%)</label> <input name="commissionPercent" type="number" className="modern-input" value={newMatch.commissionPercent} onChange={handleNewMatchChange} /> </> ) : ( <> <label>Booyah Prize (Fixed Total)</label> <input name="booyahPrize" type="number" className="modern-input" value={newMatch.booyahPrize} onChange={handleNewMatchChange} /> </> )}
               <label>Rules</label>
-              <textarea
-                name="rules"
-                className="modern-input"
-                placeholder="Enter match rules..."
-                value={newMatch.rules}
-                onChange={handleNewMatchChange}
-              />
+              <textarea name="rules" className="modern-input" placeholder="Enter match rules..." value={newMatch.rules} onChange={handleNewMatchChange} />
               <button type="submit" className="btn glow"> Create Match </button>
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
             <h4>Top-up Requests</h4>
             {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> </div> </div> ))}
             <h4>Withdraw Requests</h4>
-            {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | UPI: {r.upiId} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
+            {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | {r.type === 'UPI' ? `UPI: ${r.upiId}` : `Type: ${r.type}`} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
           </section>
         )}
 
