@@ -26,11 +26,13 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
+  FaQuestionCircle,
 } from "react-icons/fa";
 
 // Import your history page components
 import MatchHistoryPage from './MatchHistoryPage';
 import WithdrawalHistoryPage from './WithdrawalHistoryPage';
+import HowToPlay from './HowToPlay'; 
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -48,15 +50,12 @@ const initialMatchState = {
   rules: "", 
 };
 
-// List of available gift cards
+// 👇 UPDATED: Removed the 110 coin packs
 const rewardOptions = [
-  { type: 'UPI', amount: 10, cost: 110, icon: '/upi.png' },
   { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
   { type: 'UPI', amount: 50, cost: 550, icon: '/upi.png' },
-  { type: 'Google Play', amount: 10, cost: 110, icon: '/google-play.png' },
   { type: 'Google Play', amount: 50, cost: 550, icon: '/google-play.png' },
   { type: 'Google Play', amount: 100, cost: 1100, icon: '/google-play.png' },
-  { type: 'Amazon', amount: 10, cost: 110, icon: '/amazon.png' },
   { type: 'Amazon', amount: 50, cost: 550, icon: '/amazon.png' },
   { type: 'Amazon', amount: 100, cost: 1100, icon: '/amazon.png' },
 ];
@@ -93,8 +92,6 @@ export default function Dashboard({ user }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
-
-  // 👇 State to manage ad loading
   const [adLoading, setAdLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -188,7 +185,10 @@ export default function Dashboard({ user }) {
       setLoading(true);
       const q = query(collection(db, "users"), where("referralCode", "==", referralInput.toUpperCase()));
       const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) return alert("Invalid referral code.");
+      if (querySnapshot.empty) { 
+        setLoading(false); 
+        return alert("Invalid referral code."); 
+      }
 
       const referrerDoc = querySnapshot.docs[0];
       const referrerRef = doc(db, "users", referrerDoc.id);
@@ -236,7 +236,7 @@ export default function Dashboard({ user }) {
     alert("+10 coins credited!"); 
   }
 
-  // 👇 *** THIS IS THE FIXED AD FUNCTION *** 👇
+  // FIXED AD FUNCTION
   async function watchAd() {
     if (adLoading) return; // Don't let them click twice
 
@@ -758,7 +758,7 @@ export default function Dashboard({ user }) {
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
             <h4>Top-up Requests</h4>
-            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> </div> </div> ))}
+            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> T</div> </div> ))}
             <h4>Withdraw Requests</h4>
             {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | {r.type === 'UPI' ? `UPI: ${r.upiId}` : `Type: ${r.type}`} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
           </section>
@@ -774,6 +774,14 @@ export default function Dashboard({ user }) {
                 </section>
                 
                 <section className="panel account-menu">
+                  <button
+                    className="account-option"
+                    onClick={() => setAccountView("how_to_play")}
+                  >
+                    <FaQuestionCircle size={20} />
+                    <span>How to Play</span>
+                    <span className="arrow">&gt;</span>
+                  </button>
                   <button className="account-option" onClick={() => setShowUsernameModal(true)} > <FaUserEdit size={20} /> <span>Edit Username</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
@@ -782,6 +790,16 @@ export default function Dashboard({ user }) {
                 </section>
               </>
             )}
+
+            {accountView === "how_to_play" && (
+              <section className="panel">
+                <button className="back-btn" onClick={() => setAccountView("main")}>
+                  <FaArrowLeft /> Back
+                </button>
+                <HowToPlay />
+              </section>
+            )}
+
             {accountView === "refer" && (
               <section className="panel">
                 <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
