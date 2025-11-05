@@ -22,17 +22,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // NEW: Setup invisible reCAPTCHA on component mount
+  // UPDATED: Setup invisible reCAPTCHA with cleanup
   useEffect(() => {
     // This creates the invisible reCAPTCHA verifier.
-    // It will trigger automatically when you send an OTP.
     try {
       if (!window.recaptchaVerifier) {
         window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
           'size': 'invisible',
           'callback': (response) => {
-            // reCAPTCHA solved. You can (but don't have to)
-            // trigger the sign-in from here.
             console.log("reCAPTCHA solved");
           }
         });
@@ -42,10 +39,16 @@ export default function Login() {
       console.error("Error setting up reCAPTCHA:", error);
       setErr("Failed to initialize login. Please refresh the page.");
     }
+
+    // 👇 ADDED THIS CLEANUP FUNCTION
+    return () => {
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+      }
+    };
   }, []); // Empty array means this runs only once
 
-  // UPDATED: This function is now smarter and saves whatever
-  // data (email or phone) the user object has.
+  
   async function saveInitialUser(user, referralCode = "") {
     try {
       const ref = doc(db, "users", user.uid);
@@ -56,17 +59,16 @@ export default function Login() {
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
         
         await setDoc(ref, {
-          // Save whatever provider data is available
           email: user.email || null,
           phoneNumber: user.phoneNumber || null,
           displayName: user.displayName || "",
-          username: "", // Add the blank username field
+          username: "", 
           
           coins: 0,
           lastDaily: null,
-          referral: referralCode || null, // Save the referral they entered
-          referralCode: newReferralCode,  // Their *own* new referral code
-          hasRedeemedReferral: !!referralCode, // Mark as redeemed if they used one
+          referral: referralCode || null, 
+          referralCode: newReferralCode,  
+          hasRedeemedReferral: !!referralCode, 
           createdAt: serverTimestamp(),
         });
       }
@@ -75,7 +77,7 @@ export default function Login() {
     }
   }
 
-  // NEW: Step 1 - Send the OTP to the user's phone
+  // UPDATED: Step 1 - Send the OTP (with better error handling)
   const handleSendOtp = async (e) => {
     e.preventDefault();
     setErr("");
@@ -84,8 +86,6 @@ export default function Login() {
     try {
       const appVerifier = window.recaptchaVerifier;
       
-      // ⚠️ IMPORTANT: Format the number with your country code.
-      // This example uses +91 for India.
       const formattedMobile = "+91" + mobile;
       if (mobile.length !== 10) {
         setErr("Please enter a valid 10-digit mobile number.");
@@ -95,7 +95,6 @@ export default function Login() {
 
       const confResult = await signInWithPhoneNumber(auth, formattedMobile, appVerifier);
       
-      // SMS sent. Save the confirmation result to use in step 2
       setConfirmationResult(confResult);
       setShowOtpInput(true);
       setLoading(false);
@@ -106,9 +105,11 @@ export default function Login() {
       setErr(error.message);
       setLoading(false);
       
-      // Reset reCAPTCHA in case of error so user can try again
-      if(window.grecaptcha && window.recaptchaVerifier) {
-        window.grecaptcha.reset(window.recaptchaVerifier.widgetId);
+      // 👇 ADDED THIS BLOCK TO RESET THE RECAPTCHA ON THAT ERROR
+      if (error.message.includes("reCAPTCHA")) {
+        if(window.grecaptcha && window.recaptchaVerifier) {
+            window.grecaptcha.reset(window.recaptchaVerifier.widgetId);
+        }
       }
     }
   };
@@ -133,13 +134,10 @@ export default function Login() {
     try {
       const res = await confirmationResult.confirm(otp);
       // User is signed in!
-      // `res.user` contains the user data.
       
       // Now, save their data to Firestore (if they are a new user)
       await saveInitialUser(res.user, referral);
       
-      // You don't need to do anything else. The main App.js
-      // listener will detect the login and navigate to the dashboard.
       setLoading(false);
 
     } catch (error) {
@@ -150,8 +148,6 @@ export default function Login() {
   };
 
 
-  // UPDATED: handleGoogle logic is the same, but
-  // it now calls the smarter saveInitialUser function.
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
@@ -184,8 +180,6 @@ export default function Login() {
           onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
         />
         
-        {/* We now show one of two forms */}
-
         {!showOtpInput ? (
           // FORM 1: Enter Mobile Number
           <>
@@ -255,8 +249,6 @@ export default function Login() {
         <button className="btn google" onClick={handleGoogle} disabled={loading}>
           Sign in with Google
         </button>
-        
-        {/* We no longer need the Login/Register toggle */}
         
       </div>
     </div>
