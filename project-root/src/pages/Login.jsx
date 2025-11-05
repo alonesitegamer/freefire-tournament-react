@@ -1,35 +1,72 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
+  // NEW: Import Phone Auth and reCAPTCHA
+  RecaptchaVerifier,
+  signInWithPhoneNumber, 
   signInWithPopup,
   GoogleAuthProvider,
 } from "firebase/auth";
-import { auth, db } from "../firebase"; // removed provider import (we'll define it)
+import { auth, db } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
-const provider = new GoogleAuthProvider(); // ✅ explicitly define provider (prevents crash)
+const provider = new GoogleAuthProvider();
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // NEW: State for phone number, OTP, and UI flow
+  const [mobile, setMobile] = useState("");
+  const [otp, setOtp] = useState("");
   const [referral, setReferral] = useState("");
-  const [mode, setMode] = useState("login");
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // ✅ helper: save user doc safely
-  async function saveInitialUser(uid, emailVal, displayName = "", referralCode = "") {
+  // NEW: Setup invisible reCAPTCHA on component mount
+  useEffect(() => {
+    // This creates the invisible reCAPTCHA verifier.
+    // It will trigger automatically when you send an OTP.
     try {
-      const ref = doc(db, "users", uid);
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          'size': 'invisible',
+          'callback': (response) => {
+            // reCAPTCHA solved. You can (but don't have to)
+            // trigger the sign-in from here.
+            console.log("reCAPTCHA solved");
+          }
+        });
+        window.recaptchaVerifier.render();
+      }
+    } catch (error) {
+      console.error("Error setting up reCAPTCHA:", error);
+      setErr("Failed to initialize login. Please refresh the page.");
+    }
+  }, []); // Empty array means this runs only once
+
+  // UPDATED: This function is now smarter and saves whatever
+  // data (email or phone) the user object has.
+  async function saveInitialUser(user, referralCode = "") {
+    try {
+      const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
+
+      // Only create a new document if one doesn't exist
       if (!snap.exists()) {
+        const newReferralCode = user.uid.substring(0, 8).toUpperCase();
+        
         await setDoc(ref, {
-          email: emailVal,
-          displayName,
+          // Save whatever provider data is available
+          email: user.email || null,
+          phoneNumber: user.phoneNumber || null,
+          displayName: user.displayName || "",
+          username: "", // Add the blank username field
+          
           coins: 0,
           lastDaily: null,
-          referral: referralCode || null,
+          referral: referralCode || null, // Save the referral they entered
+          referralCode: newReferralCode,  // Their *own* new referral code
+          hasRedeemedReferral: !!referralCode, // Mark as redeemed if they used one
           createdAt: serverTimestamp(),
         });
       }
@@ -38,37 +75,89 @@ export default function Login() {
     }
   }
 
-  const handleEmail = async (e) => {
+  // NEW: Step 1 - Send the OTP to the user's phone
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
+
     try {
-      if (mode === "login") {
-        const res = await signInWithEmailAndPassword(auth, email, password);
-        await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "");
-      } else {
-        const res = await createUserWithEmailAndPassword(auth, email, password);
-        await saveInitialUser(res.user.uid, res.user.email, res.user.displayName || "", referral);
+      const appVerifier = window.recaptchaVerifier;
+      
+      // ⚠️ IMPORTANT: Format the number with your country code.
+      // This example uses +91 for India.
+      const formattedMobile = "+91" + mobile;
+      if (mobile.length !== 10) {
+        setErr("Please enter a valid 10-digit mobile number.");
+        setLoading(false);
+        return;
       }
+
+      const confResult = await signInWithPhoneNumber(auth, formattedMobile, appVerifier);
+      
+      // SMS sent. Save the confirmation result to use in step 2
+      setConfirmationResult(confResult);
+      setShowOtpInput(true);
+      setLoading(false);
+      setErr("An OTP has been sent to your number.");
+
     } catch (error) {
-      console.error("Auth error:", error);
+      console.error("SMS Send error:", error);
       setErr(error.message);
-    } finally {
+      setLoading(false);
+      
+      // Reset reCAPTCHA in case of error so user can try again
+      if(window.grecaptcha && window.recaptchaVerifier) {
+        window.grecaptcha.reset(window.recaptchaVerifier.widgetId);
+      }
+    }
+  };
+
+  // NEW: Step 2 - Verify the OTP
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
+
+    if (!confirmationResult) {
+      setErr("Something went wrong. Please try sending the OTP again.");
+      setLoading(false);
+      return;
+    }
+    if (otp.length !== 6) {
+      setErr("Please enter a valid 6-digit OTP.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await confirmationResult.confirm(otp);
+      // User is signed in!
+      // `res.user` contains the user data.
+      
+      // Now, save their data to Firestore (if they are a new user)
+      await saveInitialUser(res.user, referral);
+      
+      // You don't need to do anything else. The main App.js
+      // listener will detect the login and navigate to the dashboard.
+      setLoading(false);
+
+    } catch (error) {
+      console.error("OTP Verify error:", error);
+      setErr(error.message);
       setLoading(false);
     }
   };
 
+
+  // UPDATED: handleGoogle logic is the same, but
+  // it now calls the smarter saveInitialUser function.
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
-      await saveInitialUser(
-        res.user.uid,
-        res.user.email || "",
-        res.user.displayName || "",
-        referral
-      );
+      await saveInitialUser(res.user, referral);
     } catch (error) {
       console.error("Google Sign-In error:", error);
       setErr(error.message);
@@ -79,6 +168,9 @@ export default function Login() {
 
   return (
     <div className="auth-root">
+      {/* NEW: This div is required for the invisible reCAPTCHA */}
+      <div id="recaptcha-container"></div>
+      
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -91,56 +183,81 @@ export default function Login() {
           alt="logo"
           onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
         />
-        <h2>{mode === "login" ? "Sign In" : "Create Account"}</h2>
+        
+        {/* We now show one of two forms */}
 
-        <form onSubmit={handleEmail} className="form-col">
-          <input
-            placeholder="Email"
-            type="email"
-            className="field"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Password"
-            type="password"
-            className="field"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          {mode === "register" && (
-            <input
-              placeholder="Referral Code (optional)"
-              type="text"
-              className="field"
-              value={referral}
-              onChange={(e) => setReferral(e.target.value)}
-            />
-          )}
-          {err && <div className="error">{err}</div>}
-
-          <button className="btn" type="submit" disabled={loading}>
-            {loading ? "Please wait…" : mode === "login" ? "Login" : "Register"}
-          </button>
-        </form>
+        {!showOtpInput ? (
+          // FORM 1: Enter Mobile Number
+          <>
+            <h2>Sign In or Register</h2>
+            <form onSubmit={handleSendOtp} className="form-col">
+              <div className="tel-input-group">
+                <span className="country-code">+91</span>
+                <input
+                  placeholder="10-digit Mobile Number"
+                  type="tel"
+                  className="field"
+                  value={mobile}
+                  onChange={(e) => setMobile(e.target.value)}
+                  required
+                />
+              </div>
+              <input
+                placeholder="Referral Code (optional)"
+                type="text"
+                className="field"
+                value={referral}
+                onChange={(e) => setReferral(e.target.value)}
+              />
+              {err && <div className="error">{err}</div>}
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Sending..." : "Send OTP"}
+              </button>
+            </form>
+          </>
+        ) : (
+          // FORM 2: Enter OTP
+          <>
+            <h2>Verify Your Number</h2>
+            <p className="text-muted">Enter the 6-digit code sent to +91 {mobile}</p>
+            <form onSubmit={handleVerifyOtp} className="form-col">
+              <input
+                placeholder="6-digit OTP"
+                type="number"
+                className="field"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+              />
+              {err && <div className="error">{err}</div>}
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Verifying..." : "Verify & Login"}
+              </button>
+            </form>
+            <p className="text-muted">
+              Wrong number?{" "}
+              <span
+                className="link"
+                onClick={() => {
+                  setShowOtpInput(false);
+                  setErr("");
+                  setOtp("");
+                }}
+              >
+                Change
+              </span>
+            </p>
+          </>
+        )}
 
         <div className="sep">OR</div>
 
         <button className="btn google" onClick={handleGoogle} disabled={loading}>
           Sign in with Google
         </button>
-
-        <p className="text-muted">
-          {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-          <span
-            className="link"
-            onClick={() => setMode(mode === "login" ? "register" : "login")}
-          >
-            {mode === "login" ? "Register" : "Login"}
-          </span>
-        </p>
+        
+        {/* We no longer need the Login/Register toggle */}
+        
       </div>
     </div>
   );
