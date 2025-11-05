@@ -1,0 +1,79 @@
+/* In src/pages/Contact.css */
+
+.contact-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 20px;
+  background-color: #f4f4f4; /* Light background for the page */
+  min-height: 80vh;
+}
+
+/* For dark mode, you might want this instead */
+/*
+.contact-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 20px;
+  background-color: #1a1a1a;
+  color: #eee;
+  min-height: 80vh;
+}
+.contact-card {
+  background: #2b2b2b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+*/
+
+.contact-card {
+  max-width: 600px;
+  width: 100%;
+  background: #ffffff;
+  padding: 30px 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.contact-card h1 {
+  font-size: 2.5em;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.contact-intro {
+  font-size: 1.1em;
+  color: #555;
+  margin-bottom: 30px;
+}
+
+.contact-card h2 {
+  font-size: 1.5em;
+  color: #333;
+  margin-top: 25px;
+  margin-bottom: 10px;
+}
+
+.contact-card p {
+  font-size: 1em;
+  line-height: 1.7;
+  color: #444;
+  margin-bottom: 20px;
+}
+
+.contact-email-link {
+  display: inline-block;
+  background-color: #007bff;
+  color: #ffffff;
+  padding: 12px 25px;
+  border-radius: 8px;
+  font-size: 1.1em;
+  font-weight: bold;
+  text-decoration: none;
+  transition: background-color 0.3s ease;
+}
+
+.contact-email-link:hover {
+  background-color: #0056b3;
+}
