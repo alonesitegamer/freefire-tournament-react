@@ -664,3 +664,65 @@ body,
   min-width: 140px; /* Stop them from getting too small */
   margin: 0; /* Remove default margin-top from .btn */
 }
+
+/* === Reward Card Styles === */
+.reward-grid {
+  display: grid;
+  /* Shows 3 cards per row */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reward-card {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reward-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+}
+
+.reward-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+
+.reward-cost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  /* Keep it from getting too wide on small cards */
+  max-width: 100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.reward-cost img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.reward-amount {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
