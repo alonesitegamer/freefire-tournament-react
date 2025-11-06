@@ -1,10 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase";
-import { 
-  signOut, 
-  updateProfile, // 👈 NEW: For changing display name
-  sendPasswordResetEmail // 👈 NEW: For changing password
-} from "firebase/auth"; 
+import { signOut } from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -31,14 +27,13 @@ import {
   FaArrowLeft,
   FaUserEdit,
   FaQuestionCircle,
-  FaUserCog // 👈 NEW: Icon for Profile Settings
+  FaUserCog 
 } from "react-icons/fa";
 
 // Import your history page components
 import MatchHistoryPage from './MatchHistoryPage';
 import WithdrawalHistoryPage from './WithdrawalHistoryPage';
-// Removed HowToPlay import to fix build
-// import HowToPlay from './HowToPlay'; 
+// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -99,8 +94,6 @@ export default function Dashboard({ user }) {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [adLoading, setAdLoading] = useState(false);
-
-  // 👇 NEW: State for the Profile Settings form
   const [newDisplayName, setNewDisplayName] = useState("");
 
   const navigate = useNavigate();
@@ -119,9 +112,10 @@ export default function Dashboard({ user }) {
           const data = snap.data();
           if (mounted) {
             setProfile({ id: snap.id, ...data });
-            setNewDisplayName(data.displayName || ""); // 👈 NEW: Pre-fill display name
+            setNewDisplayName(data.displayName || ""); 
           }
         } else {
+          // This part auto-generates the referral code for new users
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           const initialData = {
             email: user.email,
@@ -136,7 +130,7 @@ export default function Dashboard({ user }) {
           await setDoc(ref, initialData);
           if (mounted) {
             setProfile({ id: ref.id, ...initialData });
-            setNewDisplayName(initialData.displayName); // 👈 NEW: Pre-fill display name
+            setNewDisplayName(initialData.displayName); 
           }
         }
       } catch (err) {
@@ -191,7 +185,7 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // Function to handle redeeming a referral code
+  // 👇 *** UPDATED: Referral function with 20/50 coins ***
   async function handleRedeemReferral() {
     if (!referralInput) return alert("Please enter a referral code.");
     if (profile.hasRedeemedReferral) return alert("You have already redeemed a referral code.");
@@ -210,13 +204,16 @@ export default function Dashboard({ user }) {
       const referrerRef = doc(db, "users", referrerDoc.id);
       const referrerCurrentCoins = referrerDoc.data().coins || 0;
 
-      await updateDoc(referrerRef, { coins: referrerCurrentCoins + 100 });
+      // 1. Pay the referrer 20 coins
+      await updateDoc(referrerRef, { coins: referrerCurrentCoins + 20 });
 
+      // 2. Pay the current user (referee) 50 coins and mark as redeemed
       const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { coins: profile.coins + 30, hasRedeemedReferral: true });
+      await updateDoc(userRef, { coins: profile.coins + 50, hasRedeemedReferral: true });
 
-      setProfile({ ...profile, coins: profile.coins + 30, hasRedeemedReferral: true });
-      alert("Success! You received 30 coins, and your friend received 100 coins.");
+      // 3. Update local state
+      setProfile({ ...profile, coins: profile.coins + 50, hasRedeemedReferral: true });
+      alert("Success! You received 50 coins, and your friend received 20 coins.");
       setReferralInput("");
     } catch (err) {
       console.error("Referral Error:", err);
@@ -501,12 +498,7 @@ export default function Dashboard({ user }) {
         username: newUsername,
       });
 
-      // Update local profile state
-      setProfile({
-        ...profile,
-        username: newUsername,
-      });
-
+      setProfile({ ...profile, username: newUsername });
       alert("Username updated successfully!");
       setShowUsernameModal(false);
     } catch (err) {
@@ -517,12 +509,10 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // 👇 NEW: Function to send a password reset email
+  // Function to send a password reset email
   async function handlePasswordReset() {
     if (!user?.email) return alert("Could not find user email.");
     
-    // Only works for users who signed up with Email/Password
-    // Google-signed-in users must manage their password via Google
     if (auth.currentUser.providerData.some(p => p.providerId === 'google.com')) {
       return alert("You are logged in with Google. You must change your password through your Google account.");
     }
@@ -557,7 +547,6 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            {/* Show username OR display name OR email */}
             <div className="subtitle">{profile.username || profile.displayName || profile.email}</div>
           </div>
         </div>
@@ -770,7 +759,7 @@ export default function Dashboard({ user }) {
               <label>Match Type</label>
               <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange} > <option value="BR">Battle Royale</option> <option value="CS">Clash Squad</option> </select>
               <label>Prize Model</label>
-              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option valueT="Fixed">Fixed (CS - fixed prize)</option> </select>
+              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option value="Fixed">Fixed (CS - fixed prize)</option> </select>
               <label>Entry Fee (Coins)</label>
               <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={handleNewMatchChange} />
               <label>Max Players</label>
@@ -798,7 +787,6 @@ export default function Dashboard({ user }) {
                 </section>
                 
                 <section className="panel account-menu">
-                  {/* 👇 NEW: "Profile Settings" button */}
                   <button
                     className="account-option"
                     onClick={() => {
@@ -819,14 +807,12 @@ export default function Dashboard({ user }) {
               </>
             )}
 
-            {/* 👇 NEW: "Profile Settings" view */}
             {accountView === "profile" && (
               <section className="panel">
                 <button className="back-btn" onClick={() => setAccountView("main")}>
                   <FaArrowLeft /> Back
                 </button>
                 <h3 className="modern-title">Profile Settings</h3>
-
                 <div className="profile-settings-form">
                   <div className="form-group">
                     <label>Email</label>
@@ -836,9 +822,7 @@ export default function Dashboard({ user }) {
                     <label>User ID</label>
                     <input type="text" className="modern-input" value={user.uid} disabled />
                   </div>
-
                   <hr />
-
                   <form className="form-group" onSubmit={(e) => { e.preventDefault(); handleUpdateDisplayName(); }}>
                     <label>Display Name</label>
                     <input
@@ -852,9 +836,7 @@ export default function Dashboard({ user }) {
                       {loading ? "Saving..." : "Save Name"}
                     </button>
                   </form>
-
                   <hr />
-
                   <div className="form-group">
                     <label>Password</label>
                     <button className="btn ghost" onClick={handlePasswordReset}>
@@ -874,7 +856,11 @@ export default function Dashboard({ user }) {
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
                   <div className="referral-code">{profile.referralCode}</div>
-                  <p className="modern-subtitle" style={{ textAlign: "center" }}> Share this code with your friends. When they use it, they get 30 coins and you get 100 coins! </p>
+                  {/* 👇 *** UPDATED: Text for 20/50 coins *** */}
+                  <p className="modern-subtitle" style={{ textAlign: "center" }}>
+                    Share this code with your friends. When they use it, they get
+                    50 coins and you get 20 coins!
+                  </p>
                 </div>
                 {!profile.hasRedeemedReferral && (
                   <div className="referral-form">
