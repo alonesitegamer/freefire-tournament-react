@@ -26,14 +26,15 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle,
+  FaQuestionCircle, // 👈 REMOVED (How to Play)
   FaUserCog 
 } from "react-icons/fa";
 
 // Import your history page components
 import MatchHistoryPage from './MatchHistoryPage';
 import WithdrawalHistoryPage from './WithdrawalHistoryPage';
-// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
+// Removed HowToPlay import to fix build
+// import HowToPlay from './HowToPlay'; 
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -108,14 +109,41 @@ export default function Dashboard({ user }) {
         setLoading(true);
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
+        
         if (snap.exists()) {
           const data = snap.data();
-          if (mounted) {
-            setProfile({ id: snap.id, ...data });
-            setNewDisplayName(data.displayName || ""); 
+          
+          // 👇 *** THIS IS THE FIX *** 👇
+          // Check if the user is old and is missing a referral code
+          if (!data.referralCode) {
+            const newReferralCode = user.uid.substring(0, 8).toUpperCase();
+            // Go update their document in Firestore with the new code
+            await updateDoc(ref, {
+              referralCode: newReferralCode,
+              hasRedeemedReferral: data.hasRedeemedReferral || false // Add this field too
+            });
+            
+            // Set the profile state with the *new* data
+            if (mounted) {
+              setProfile({ 
+                id: snap.id, 
+                ...data, 
+                referralCode: newReferralCode, 
+                hasRedeemedReferral: data.hasRedeemedReferral || false 
+              });
+              setNewDisplayName(data.displayName || "");
+            }
+          } else {
+            // User already has a code, load as normal
+            if (mounted) {
+              setProfile({ id: snap.id, ...data });
+              setNewDisplayName(data.displayName || ""); 
+            }
           }
+          // 👆 *** END OF FIX *** 👆
+
         } else {
-          // This part auto-generates the referral code for new users
+          // This is a brand new user, create their document
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           const initialData = {
             email: user.email,
@@ -185,7 +213,7 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // 👇 *** UPDATED: Referral function with 20/50 coins ***
+  // Referral function with 20/50 coins
   async function handleRedeemReferral() {
     if (!referralInput) return alert("Please enter a referral code.");
     if (profile.hasRedeemedReferral) return alert("You have already redeemed a referral code.");
@@ -508,6 +536,42 @@ export default function Dashboard({ user }) {
       setLoading(false);
     }
   }
+
+  // Function to update display name
+  async function handleUpdateDisplayName() {
+    if (!newDisplayName) return alert("Display name cannot be blank.");
+    if (newDisplayName === profile.displayName) return alert("No changes made.");
+
+    setLoading(true);
+    try {
+      // 1. Update Firebase Auth profile
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: newDisplayName
+        });
+      }
+      
+      // 2. Update Firestore profile
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        displayName: newDisplayName
+      });
+
+      // 3. Update local state
+      setProfile({
+        ...profile,
+        displayName: newDisplayName
+      });
+
+      alert("Display name updated successfully!");
+    } catch (err) {
+      console.error("Error updating display name:", err);
+      alert("Failed to update display name.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
 
   // Function to send a password reset email
   async function handlePasswordReset() {
@@ -855,7 +919,10 @@ export default function Dashboard({ user }) {
                 <h3 className="modern-title">Refer a Friend</h3>
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
-                  <div className="referral-code">{profile.referralCode}</div>
+                  <div className="referral-code">
+                    {/* 👇 NEW: Added loading check */}
+                    {profile.referralCode ? profile.referralCode : "Loading..."}
+                  </div>
                   {/* 👇 *** UPDATED: Text for 20/50 coins *** */}
                   <p className="modern-subtitle" style={{ textAlign: "center" }}>
                     Share this code with your friends. When they use it, they get
