@@ -815,3 +815,21 @@ body,
   margin: 0 5px;
 }
 
+.forgot-password {
+  width: 100%;
+  text-align: right;
+  font-size: 0.9em;
+  margin-top: -8px; /* Pulls it up closer to the password field */
+  margin-bottom: 12px;
+}
+
+.forgot-password .link {
+  color: #a0aec0; /* A light gray, change as you like */
+}
+
+/* This will make your success message green */
+.error.success {
+  color: #48bb78; /* A nice green */
+  background-color: rgba(72, 187, 120, 0.1);
+  border-left: 4px solid #48bb78;
+}
