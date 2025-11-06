@@ -580,17 +580,22 @@ body,
   text-align: center;
   border: 1px solid var(--panel);
 }
+
+/* 👇 *** UPDATED: Referral Code Style *** 👇 */
 .referral-code {
-  background: var(--bg);
+  background: rgba(0, 0, 0, 0.2); /* Transparent background */
+  backdrop-filter: blur(5px); /* Blurred background */
+  -webkit-backdrop-filter: blur(5px);
   color: var(--accent);
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: 2px;
   padding: 16px;
   border-radius: 8px;
-  border: 1px dashed var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.1); /* Transparent border */
   margin-bottom: 16px;
 }
+
 .referral-form {
   margin-top: 24px;
 }
@@ -727,21 +732,7 @@ body,
   color: var(--muted);
 }
 
-/* === ADDED: Account Profile Card === */
-.account-profile-card {
-  text-align: center;
-  padding: 24px;
-}
-.account-profile-card .modern-title {
-  text-align: center;
-  color: var(--accent2);
-}
-.account-profile-card .modern-subtitle {
-  text-align: center;
-  margin-bottom: 0;
-}
-
-/* === ADDED: Username Modal Styles === */
+/* === Username Modal Styles === */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -764,76 +755,22 @@ body,
 .modal-content .modern-subtitle {
   text-align: center;
 }
-/* --- FIX FOR LOGIN PAGE FOOTER --- */
 
-/* 1. REPLACE your .auth-root style with this one.
-      The new lines are 'min-height', 'padding-bottom',
-      and 'box-sizing'.
-*/
-.auth-root {
-  position: relative;
-  min-height: 100vh; /* Use 'min-height' instead of 'height' */
-  width: 100%;
-  overflow: hidden; 
-  display: flex; /* These center the card */
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding-bottom: 80px; /* <-- ADDS SPACE AT THE BOTTOM */
-  box-sizing: border-box; /* <-- Ensures padding is included */
-}
-
-/* 2. REPLACE your .login-footer-links style with this.
-      It's mostly the same, but 'height' is added.
-*/
-.login-footer-links {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
+/* === Account Profile Card === */
+.account-profile-card {
   text-align: center;
-  padding: 20px;
-  height: 80px; /* <-- SETS A FIXED HEIGHT */
-  z-index: 100;
-  box-sizing: border-box; /* <-- Good practice */
+  padding: 24px;
+}
+.account-profile-card .modern-title {
+  text-align: center;
+  color: var(--accent2);
+}
+.account-profile-card .modern-subtitle {
+  text-align: center;
+  margin-bottom: 0;
 }
 
-.login-footer-links a {
-  color: #aaa;
-  text-decoration: none;
-  font-size: 14px;
-  margin: 0 10px;
-}
-
-.login-footer-links a:hover {
-  text-decoration: underline;
-  color: #fff;
-}
-
-.login-footer-links span {
-  color: #555;
-  margin: 0 5px;
-}
-
-.forgot-password {
-  width: 100%;
-  text-align: right;
-  font-size: 0.9em;
-  margin-top: -8px; /* Pulls it up closer to the password field */
-  margin-bottom: 12px;
-}
-
-.forgot-password .link {
-  color: #a0aec0; /* A light gray, change as you like */
-}
-
-/* This will make your success message green */
-.error.success {
-  color: #48bb78; /* A nice green */
-  background-color: rgba(72, 187, 120, 0.1);
-  border-left: 4px solid #48bb78;
-}
-/* === ADDED: Profile Settings Page === */
+/* === Profile Settings Page === */
 .form-group {
   width: 100%;
   margin-bottom: 20px;
@@ -864,3 +801,6 @@ body,
   background: var(--panel);
   margin: 24px 0;
 }
+
+/* (Removed HowToPlay styles) */
+  
