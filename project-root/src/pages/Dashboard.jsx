@@ -14,7 +14,7 @@ import {
   where,
   orderBy,
   arrayUnion,
-  increment, // 👈 *** NEW: IMPORTED 'increment' ***
+  increment,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
@@ -27,7 +27,7 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle,
+  FaQuestionCircle, // 👈 REMOVED (How to Play)
   FaUserCog,
 } from "react-icons/fa";
 
@@ -211,7 +211,7 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // 👇 *** UPDATED: Referral function with 'increment' ***
+  // Referral function with 20/50 coins
   async function handleRedeemReferral() {
     if (!referralInput) return setModalMessage("Please enter a referral code.");
     if (profile.hasRedeemedReferral)
@@ -221,34 +221,28 @@ export default function Dashboard({ user }) {
 
     try {
       setLoading(true);
-      // 1. Find the user who owns the code
       const q = query(
         collection(db, "users"),
         where("referralCode", "==", referralInput.toUpperCase())
       );
       const querySnapshot = await getDocs(q);
-      
+
       if (querySnapshot.empty) {
         setLoading(false);
         return setModalMessage("Invalid referral code.");
       }
 
-      // 2. Get the referrer (the person who gave the code)
       const referrerDoc = querySnapshot.docs[0];
       const referrerRef = doc(db, "users", referrerDoc.id);
 
-      // 3. Pay the referrer 20 coins (using increment)
-      //    This no longer requires us to *read* their document first
       await updateDoc(referrerRef, { coins: increment(20) });
 
-      // 4. Pay the current user (referee) 50 coins and mark as redeemed
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         coins: profile.coins + 50,
         hasRedeemedReferral: true,
       });
 
-      // 5. Update local state
       setProfile({
         ...profile,
         coins: profile.coins + 50,
@@ -769,12 +763,24 @@ export default function Dashboard({ user }) {
             ) : (
               // 2. MATCH DETAILS VIEW
               <section className="panel match-details-view">
-                <button
-                  className="back-btn"
-                  onClick={() => setSelectedMatch(null)}
-                >
-                  <FaArrowLeft /> Back to Matches
-                </button>
+                {/* 👇 *** THIS IS THE UPDATED HEADER *** 👇 */}
+                <div className="match-details-header">
+                  <button
+                    className="back-btn"
+                    onClick={() => setSelectedMatch(null)}
+                  >
+                    <FaArrowLeft /> Back to Matches
+                  </button>
+                  <button
+                    className="btn small"
+                    onClick={() => setShowUsernameModal(true)}
+                  >
+                    <FaUserEdit style={{ marginRight: '8px' }} />
+                    Edit Username
+                  </button>
+                </div>
+                {/* 👆 *** END OF UPDATE *** 👆 */}
+
                 <img
                   src={selectedMatch.imageUrl}
                   alt="match"
@@ -1374,12 +1380,18 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
-      {/* 👇 NEW: Custom Message Modal */}
+      {/* Custom Message Modal */}
       {modalMessage && (
         <div className="modal-overlay" onClick={() => setModalMessage(null)}>
-          <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content modern-card"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="modern-title">Notification</h3>
-            <p className="modern-subtitle" style={{textAlign: 'center', marginBottom: '24px'}}>
+            <p
+              className="modern-subtitle"
+              style={{ textAlign: "center", marginBottom: "24px" }}
+            >
               {modalMessage}
             </p>
             <button
@@ -1391,7 +1403,6 @@ export default function Dashboard({ user }) {
           </div>
         </div>
       )}
-
     </div>
   );
 }
