@@ -27,7 +27,7 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle, // 👈 REMOVED (How to Play)
+  FaQuestionCircle,
   FaUserCog,
 } from "react-icons/fa";
 
@@ -95,9 +95,11 @@ export default function Dashboard({ user }) {
   const [newUsername, setNewUsername] = useState("");
   const [adLoading, setAdLoading] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
-
-  // NEW: State for the message modal
   const [modalMessage, setModalMessage] = useState(null);
+
+  // 👇 NEW: State for the Topup page
+  const [topupView, setTopupView] = useState("select"); // 'select' or 'pay'
+  const [paymentUpiId, setPaymentUpiId] = useState("");
 
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
@@ -114,14 +116,12 @@ export default function Dashboard({ user }) {
 
         if (snap.exists()) {
           const data = snap.data();
-
           if (!data.referralCode) {
             const newReferralCode = user.uid.substring(0, 8).toUpperCase();
             await updateDoc(ref, {
               referralCode: newReferralCode,
               hasRedeemedReferral: data.hasRedeemedReferral || false,
             });
-
             if (mounted) {
               setProfile({
                 id: snap.id,
@@ -327,23 +327,48 @@ export default function Dashboard({ user }) {
     }
   }
 
+  // 👇 UPDATED: This function no longer submits, it just switches the view
   async function handleTopup() {
     const amt = parseInt(selectedAmount || topupAmount);
     if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
+    
+    // All checks passed, go to payment screen
+    setTopupView('pay');
+  }
+
+  // 👇 NEW: This function runs when the user clicks "I Paid"
+  async function handleConfirmPayment() {
+    const amt = parseInt(selectedAmount || topupAmount);
+
+    if (!paymentUpiId) {
+      return setModalMessage("Please enter your UPI ID so we can verify your payment.");
+    }
+    
     try {
+      setLoading(true);
       await addDoc(collection(db, "topupRequests"), {
         userId: user.uid,
         email: profile.email,
         amount: amt,
         coins: amt * 10,
+        upiId: paymentUpiId, // Send the UPI ID with the request
         status: "pending",
         createdAt: serverTimestamp(),
       });
       setModalMessage("Top-up request submitted! Admin will verify it soon.");
+      
+      // Reset everything and go home
       setTopupAmount("");
       setSelectedAmount(null);
+      setPaymentUpiId("");
+      setTopupView("select");
+      setActiveTab("home");
+
     } catch (err) {
       console.error("Top-up error:", err);
+      setModalMessage("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -763,7 +788,6 @@ export default function Dashboard({ user }) {
             ) : (
               // 2. MATCH DETAILS VIEW
               <section className="panel match-details-view">
-                {/* 👇 *** THIS IS THE UPDATED HEADER *** 👇 */}
                 <div className="match-details-header">
                   <button
                     className="back-btn"
@@ -775,11 +799,10 @@ export default function Dashboard({ user }) {
                     className="btn small"
                     onClick={() => setShowUsernameModal(true)}
                   >
-                    <FaUserEdit style={{ marginRight: '8px' }} />
+                    <FaUserEdit style={{ marginRight: "8px" }} />
                     Edit Username
                   </button>
                 </div>
-                {/* 👆 *** END OF UPDATE *** 👆 */}
 
                 <img
                   src={selectedMatch.imageUrl}
@@ -828,39 +851,79 @@ export default function Dashboard({ user }) {
           </>
         )}
 
+        {/* 👇 *** UPDATED: This is the new Topup tab *** 👇 */}
         {activeTab === "topup" && (
-          <section className="modern-card">
-            <h3 className="modern-title">Top-up Coins</h3>{" "}
-            <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p>
-            <div className="amount-options">
-              {[20, 50, 100, 200].map((amt) => (
-                <div
-                  key={amt}
-                  className={`amount-btn ${
-                    selectedAmount === amt ? "selected" : ""
-                  }`}
-                  onClick={() => setSelectedAmount(amt)}
-                >
-                  ₹{amt} = {amt * 10} Coins
+          <>
+            {/* 1. Select Amount View */}
+            {topupView === 'select' && (
+              <section className="modern-card">
+                <h3 className="modern-title">Top-up Coins</h3>
+                <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p>
+                <div className="amount-options">
+                  {[20, 50, 100, 200].map((amt) => (
+                    <div
+                      key={amt}
+                      className={`amount-btn ${
+                        selectedAmount === amt ? "selected" : ""
+                      }`}
+                      onClick={() => setSelectedAmount(amt)}
+                    >
+                      ₹{amt} = {amt * 10} Coins
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <input
-              type="number"
-              className="modern-input"
-              placeholder="Or enter custom amount ₹"
-              value={topupAmount}
-              onChange={(e) => {
-                setSelectedAmount(null);
-                setTopupAmount(e.target.value);
-              }}
-            />{" "}
-            <button className="btn glow large" onClick={handleTopup}>
-              {" "}
-              Submit Top-up Request{" "}
-            </button>
-          </section>
+                <input
+                  type="number"
+                  className="modern-input"
+                  placeholder="Or enter custom amount ₹"
+                  value={topupAmount}
+                  onChange={(e) => {
+                    setSelectedAmount(null);
+                    setTopupAmount(e.target.value);
+                  }}
+                />
+                <button className="btn glow large" onClick={handleTopup}>
+                  Pay
+                </button>
+              </section>
+            )}
+
+            {/* 2. Payment View */}
+            {topupView === 'pay' && (
+              <section className="modern-card payment-page">
+                <button className="back-btn" onClick={() => setTopupView('select')}>
+                  <FaArrowLeft /> Back
+                </button>
+                <h3 className="modern-title">Scan & Pay</h3>
+                <p className="modern-subtitle">
+                  Scan the QR code to pay ₹{selectedAmount || topupAmount}
+                </p>
+
+                <img src="/qr.jpg" alt="QR Code" className="qr-code-image" />
+
+                <div className="form-group" style={{marginTop: '24px'}}>
+                  <label>Enter Your UPI ID</label>
+                  <input
+                    type="text"
+                    className="modern-input"
+                    placeholder="Enter your UPI ID (e.g., name@ybl)"
+                    value={paymentUpiId}
+                    onChange={(e) => setPaymentUpiId(e.target.value)}
+                  />
+                  <button
+                    className="btn glow large"
+                    onClick={handleConfirmPayment}
+                    disabled={loading}
+                  >
+                    {loading ? "Submitting..." : "I Have Paid"}
+                  </button>
+                </div>
+              </section>
+            )}
+          </>
         )}
+        {/* 👆 *** END of new Topup tab *** 👆 */}
+
 
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
@@ -1072,9 +1135,10 @@ export default function Dashboard({ user }) {
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
                 {" "}
+                {/* 👇 NEW: Admin can now see the user's UPI ID */}
                 <span>
                   {" "}
-                  {r.email} | ₹{r.amount}{" "}
+                  {r.email} | ₹{r.amount} | UPI: {r.upiId}
                 </span>{" "}
                 <div>
                   {" "}
@@ -1250,8 +1314,6 @@ export default function Dashboard({ user }) {
               </section>
             )}
 
-            {/* (Removed HowToPlay view) */}
-
             {accountView === "refer" && (
               <section className="panel">
                 <button
@@ -1333,6 +1395,7 @@ export default function Dashboard({ user }) {
               setActiveTab(tab);
               setAccountView("main");
               setSelectedMatch(null);
+              setTopupView("select"); // 👈 NEW: Reset topup view when changing tabs
             }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -1342,7 +1405,10 @@ export default function Dashboard({ user }) {
 
       {showUsernameModal && (
         <div className="modal-overlay">
-          <div className="modal-content modern-card">
+          <div
+            className="modal-content modern-card"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="modern-title">
               {profile.username
                 ? "Edit Your Username"
