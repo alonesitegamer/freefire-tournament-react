@@ -2,6 +2,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+// 👇 ADD THIS IMPORT
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
@@ -14,6 +16,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// 👇 ADD THIS BLOCK (using your key from the screenshot)
+initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
+  isTokenAutoRefreshEnabled: true
+});
+
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
