@@ -1,17 +1,12 @@
 import React, { useState } from "react";
 import {
-  // --- REMOVED ---
-  // RecaptchaVerifier,
-  // signInWithPhoneNumber, 
-
-  // --- ADDED ---
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
-
-  // --- KEPT ---
   signInWithPopup,
   GoogleAuthProvider,
+  // --- 1. ADD THIS ---
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -20,28 +15,19 @@ import { Link } from "react-router-dom";
 const provider = new GoogleAuthProvider();
 
 export default function Login() {
-  // --- NEW STATE ---
-  const [isRegister, setIsRegister] = useState(false); // Toggles between Login and Register
+  const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  
+  // --- 2. ADD THIS STATE ---
+  // This will show a special view for password reset
+  const [isResetMode, setIsResetMode] = useState(false);
 
-  // --- KEPT STATE ---
   const [referral, setReferral] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-
-  // --- REMOVED STATE ---
-  // const [mobile, setMobile] = useState("");
-  // const [otp, setOtp] = useState("");
-  // const [showOtpInput, setShowOtpInput] = useState(false);
-  // const [confirmationResult, setConfirmationResult] = useState(null);
-
-  // --- REMOVED useEffect for reCAPTCHA ---
-  // (It's not needed for Email/Password)
-
   
-  // --- UPDATED saveInitialUser ---
-  // Removed 'phoneNumber' field to keep your database clean
+  // (This function is unchanged)
   async function saveInitialUser(user, referralCode = "") {
     try {
       const ref = doc(db, "users", user.uid);
@@ -49,7 +35,7 @@ export default function Login() {
       if (!snap.exists()) {
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
         await setDoc(ref, {
-          email: user.email, // Email is now the primary field
+          email: user.email,
           displayName: user.displayName || "",
           username: "", 
           coins: 0,
@@ -65,10 +51,7 @@ export default function Login() {
     }
   }
 
-  // --- REMOVED Phone Functions (handleSendOtp, handleVerifyOtp) ---
-
-
-  // --- NEW UNIFIED AUTH FUNCTION ---
+  // (This function is unchanged)
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErr("");
@@ -79,11 +62,7 @@ export default function Login() {
       try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
-        
-        // 1. Save their info to Firestore
         await saveInitialUser(user, referral);
-
-        // 2. Send the verification email (This is Step 2 from our plan)
         await sendEmailVerification(user);
         
         setErr("Registration successful! Please check your email to verify your account.");
@@ -98,7 +77,6 @@ export default function Login() {
       // --- LOGIN LOGIC ---
       try {
         await signInWithEmailAndPassword(auth, email, password);
-        // No need to do anything else, the Auth listener will redirect
         setLoading(false);
       } catch (error) {
         console.error("Login error:", error);
@@ -108,14 +86,12 @@ export default function Login() {
     }
   };
 
-
-  // --- Google Function (unchanged, but uses updated saveInitialUser) ---
+  // (This function is unchanged)
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
-      // We read the referral code from the state
       await saveInitialUser(res.user, referral);
     } catch (error) {
       console.error("Google Sign-In error:", error);
@@ -125,9 +101,34 @@ export default function Login() {
     }
   };
 
+  // --- 3. ADD THIS NEW FUNCTION ---
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    if (!email) {
+      setErr("Please enter your email address to reset your password.");
+      return;
+    }
+    setErr("");
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setLoading(false);
+      setErr("Password reset email sent! Check your inbox.");
+      // After 3 seconds, go back to the login form
+      setTimeout(() => {
+        setIsResetMode(false);
+        setErr("");
+      }, 3000);
+    } catch (error) {
+      console.error("Password Reset error:", error);
+      setErr(error.message);
+      setLoading(false);
+    }
+  };
+
+
   return (
     <div className="auth-root">
-      {/* --- REMOVED reCAPTCHA container --- */}
       
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
@@ -142,69 +143,120 @@ export default function Login() {
           onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
         />
         
-        {/* --- NEW UNIFIED FORM --- */}
-        <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
-        
-        <form onSubmit={handleAuthSubmit} className="form-col">
-          <input
-            placeholder="Email"
-            type="email"
-            className="field"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Password (6+ characters)"
-            type="password"
-            className="field"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+        {/* --- 4. ADDED A NEW UI 'if' BLOCK --- */}
+        {isResetMode ? (
+          // --- PASSWORD RESET VIEW ---
+          <>
+            <h2>Reset Password</h2>
+            <p className="text-muted">
+              Enter your email and we'll send you a link to get back into your account.
+            </p>
+            <form onSubmit={handlePasswordReset} className="form-col">
+              <input
+                placeholder="Email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              {err && <div className={err.includes("sent") ? "error success" : "error"}>{err}</div>}
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+            <p className="text-muted">
+              Remembered it?{" "}
+              <span
+                className="link"
+                onClick={() => {
+                  setIsResetMode(false);
+                  setErr("");
+                }}
+              >
+                Back to Sign In
+              </span>
+            </p>
+          </>
 
-          {/* Only show referral input on the Register form */}
-          {isRegister && (
-            <input
-              placeholder="Referral Code (optional)"
-              type="text"
-              className="field"
-              value={referral}
-              onChange={(e) => setReferral(e.target.value)}
-            />
-          )}
+        ) : (
+          // --- ORIGINAL LOGIN/REGISTER VIEW ---
+          <>
+            <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
+            <form onSubmit={handleAuthSubmit} className="form-col">
+              {/* (inputs are unchanged) */}
+              <input
+                placeholder="Email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <input
+                placeholder="Password (6+ characters)"
+                type="password"
+                className="field"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              {isRegister && (
+                <input
+                  placeholder="Referral Code (optional)"
+                  type="text"
+                  className="field"
+                  value={referral}
+                  onChange={(e) => setReferral(e.target.value)}
+                />
+              )}
 
-          {err && <div className="error">{err}</div>}
-          
-          <button className="btn" type="submit" disabled={loading}>
-            {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
-          </button>
-        </form>
+              {/* --- 5. ADD 'FORGOT PASSWORD' LINK --- */}
+              {!isRegister && (
+                <div className="forgot-password">
+                  <span
+                    className="link"
+                    onClick={() => {
+                      setIsResetMode(true);
+                      setErr("");
+                    }}
+                  >
+                    Forgot Password?
+                  </span>
+                </div>
+              )}
+              
+              {err && <div className="error">{err}</div>}
+              
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
+              </button>
+            </form>
 
-        <p className="text-muted">
-          {isRegister ? "Already have an account? " : "Don't have an account? "}
-          <span
-            className="link"
-            onClick={() => {
-              setIsRegister(!isRegister); // Toggle the mode
-              setErr(""); // Clear any errors
-            }}
-          >
-            {isRegister ? "Sign In" : "Register"}
-          </span>
-        </p>
+            <p className="text-muted">
+              {isRegister ? "Already have an account? " : "Don't have an account? "}
+              <span
+                className="link"
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setErr("");
+                }}
+              >
+                {isRegister ? "Sign In" : "Register"}
+              </span>
+            </p>
 
-        {/* --- END NEW FORM --- */}
+            <div className="sep">OR</div>
 
-
-        <div className="sep">OR</div>
-
-        <button className="btn google" onClick={handleGoogle} disabled={loading}>
-          Sign in with Google
-        </button>
+            <button className="btn google" onClick={handleGoogle} disabled={loading}>
+              Sign in with Google
+            </button>
+          </>
+        )}
       </div>
 
       <div className="login-footer-links">
+        {/* (This section is unchanged) */}
         <Link to="/privacy-policy">Privacy Policy</Link>
         <span>•</span>
         <Link to="/terms-of-service">Terms of Service</Link>
