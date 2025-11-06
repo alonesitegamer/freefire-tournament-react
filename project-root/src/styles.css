@@ -833,3 +833,34 @@ body,
   background-color: rgba(72, 187, 120, 0.1);
   border-left: 4px solid #48bb78;
 }
+/* === ADDED: Profile Settings Page === */
+.form-group {
+  width: 100%;
+  margin-bottom: 20px;
+}
+.form-group label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.form-group .btn {
+  margin-top: 10px;
+}
+
+/* Style for read-only fields */
+.form-group input:disabled {
+  background: rgba(0,0,0,0.2);
+  color: var(--muted);
+  border: 1px solid var(--panel);
+  cursor: not-allowed;
+}
+
+/* Style for the divider lines */
+.profile-settings-form hr {
+  border: none;
+  height: 1px;
+  background: var(--panel);
+  margin: 24px 0;
+}
