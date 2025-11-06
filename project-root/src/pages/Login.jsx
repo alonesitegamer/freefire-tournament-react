@@ -1,59 +1,55 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  RecaptchaVerifier,
-  signInWithPhoneNumber, 
+  // --- REMOVED ---
+  // RecaptchaVerifier,
+  // signInWithPhoneNumber, 
+
+  // --- ADDED ---
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+
+  // --- KEPT ---
   signInWithPopup,
   GoogleAuthProvider,
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { Link } from "react-router-dom"; // <-- 1. IMPORT LINK
+import { Link } from "react-router-dom"; 
 
 const provider = new GoogleAuthProvider();
 
 export default function Login() {
-  // ... (All your existing state and functions remain unchanged) ...
-  const [mobile, setMobile] = useState("");
-  const [otp, setOtp] = useState("");
+  // --- NEW STATE ---
+  const [isRegister, setIsRegister] = useState(false); // Toggles between Login and Register
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // --- KEPT STATE ---
   const [referral, setReferral] = useState("");
-  const [showOtpInput, setShowOtpInput] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  useEffect(() => {
-    try {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          'size': 'invisible',
-          'callback': (response) => {
-            console.log("reCAPTCHA solved");
-          }
-        });
-        window.recaptchaVerifier.render();
-      }
-    } catch (error) {
-      console.error("Error setting up reCAPTCHA:", error);
-      setErr("Failed to initialize login. Please refresh the page.");
-    }
-    return () => {
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-      }
-    };
-  }, []);
+  // --- REMOVED STATE ---
+  // const [mobile, setMobile] = useState("");
+  // const [otp, setOtp] = useState("");
+  // const [showOtpInput, setShowOtpInput] = useState(false);
+  // const [confirmationResult, setConfirmationResult] = useState(null);
+
+  // --- REMOVED useEffect for reCAPTCHA ---
+  // (It's not needed for Email/Password)
 
   
+  // --- UPDATED saveInitialUser ---
+  // Removed 'phoneNumber' field to keep your database clean
   async function saveInitialUser(user, referralCode = "") {
-    // ... (This function is unchanged) ...
     try {
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
         await setDoc(ref, {
-          email: user.email || null,
-          phoneNumber: user.phoneNumber || null,
+          email: user.email, // Email is now the primary field
           displayName: user.displayName || "",
           username: "", 
           coins: 0,
@@ -69,68 +65,57 @@ export default function Login() {
     }
   }
 
-  const handleSendOtp = async (e) => {
-    // ... (This function is unchanged) ...
+  // --- REMOVED Phone Functions (handleSendOtp, handleVerifyOtp) ---
+
+
+  // --- NEW UNIFIED AUTH FUNCTION ---
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
-    try {
-      const appVerifier = window.recaptchaVerifier;
-      const formattedMobile = "+91" + mobile;
-      if (mobile.length !== 10) {
-        setErr("Please enter a valid 10-digit mobile number.");
+
+    if (isRegister) {
+      // --- REGISTER LOGIC ---
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        
+        // 1. Save their info to Firestore
+        await saveInitialUser(user, referral);
+
+        // 2. Send the verification email (This is Step 2 from our plan)
+        await sendEmailVerification(user);
+        
+        setErr("Registration successful! Please check your email to verify your account.");
         setLoading(false);
-        return;
+
+      } catch (error) {
+        console.error("Registration error:", error);
+        setErr(error.message);
+        setLoading(false);
       }
-      const confResult = await signInWithPhoneNumber(auth, formattedMobile, appVerifier);
-      setConfirmationResult(confResult);
-      setShowOtpInput(true);
-      setLoading(false);
-      setErr("An OTP has been sent to your number.");
-    } catch (error) {
-      console.error("SMS Send error:", error);
-      setErr(error.message);
-      setLoading(false);
-      if (error.message.includes("reCAPTCHA")) {
-        if(window.grecaptcha && window.recaptchaVerifier) {
-            window.grecaptcha.reset(window.recaptchaVerifier.widgetId);
-        }
+    } else {
+      // --- LOGIN LOGIC ---
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        // No need to do anything else, the Auth listener will redirect
+        setLoading(false);
+      } catch (error) {
+        console.error("Login error:", error);
+        setErr(error.message);
+        setLoading(false);
       }
     }
   };
 
-  const handleVerifyOtp = async (e) => {
-    // ... (This function is unchanged) ...
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    if (!confirmationResult) {
-      setErr("Something went wrong. Please try sending the OTP again.");
-      setLoading(false);
-      return;
-    }
-    if (otp.length !== 6) {
-      setErr("Please enter a valid 6-digit OTP.");
-      setLoading(false);
-      return;
-    }
-    try {
-      const res = await confirmationResult.confirm(otp);
-      await saveInitialUser(res.user, referral);
-      setLoading(false);
-    } catch (error) {
-      console.error("OTP Verify error:", error);
-      setErr(error.message);
-      setLoading(false);
-    }
-  };
 
+  // --- Google Function (unchanged, but uses updated saveInitialUser) ---
   const handleGoogle = async () => {
-    // ... (This function is unchanged) ...
     setErr("");
     setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
+      // We read the referral code from the state
       await saveInitialUser(res.user, referral);
     } catch (error) {
       console.error("Google Sign-In error:", error);
@@ -142,7 +127,7 @@ export default function Login() {
 
   return (
     <div className="auth-root">
-      <div id="recaptcha-container"></div>
+      {/* --- REMOVED reCAPTCHA container --- */}
       
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
@@ -150,7 +135,6 @@ export default function Login() {
       <div className="auth-overlay" />
 
       <div className="auth-card">
-        {/* ... (Your existing login card UI is unchanged) ... */}
         <img
           src="/icon.jpg"
           className="logo-small"
@@ -158,69 +142,60 @@ export default function Login() {
           onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
         />
         
-        {!showOtpInput ? (
-          <>
-            <h2>Sign In or Register</h2>
-            <form onSubmit={handleSendOtp} className="form-col">
-              {/* ... (inputs) ... */}
-              <div className="tel-input-group">
-                <span className="country-code">+91</span>
-                <input
-                  placeholder="10-digit Mobile Number"
-                  type="tel"
-                  className="field"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  required
-                />
-              </div>
-              <input
-                placeholder="Referral Code (optional)"
-                type="text"
-                className="field"
-                value={referral}
-                onChange={(e) => setReferral(e.target.value)}
-              />
-              {err && <div className="error">{err}</div>}
-              <button className="btn" type="submit" disabled={loading}>
-                {loading ? "Sending..." : "Send OTP"}
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <h2>Verify Your Number</h2>
-            <p className="text-muted">Enter the 6-digit code sent to +91 {mobile}</p>
-            <form onSubmit={handleVerifyOtp} className="form-col">
-              {/* ... (inputs) ... */}
-              <input
-                placeholder="6-digit OTP"
-                type="number"
-                className="field"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                required
-              />
-              {err && <div className="error">{err}</div>}
-              <button className="btn" type="submit" disabled={loading}>
-                {loading ? "Verifying..." : "Verify & Login"}
-              </button>
-            </form>
-            <p className="text-muted">
-              Wrong number?{" "}
-              <span
-                className="link"
-                onClick={() => {
-                  setShowOtpInput(false);
-                  setErr("");
-                  setOtp("");
-                }}
-              >
-                Change
-              </span>
-            </p>
-          </>
-        )}
+        {/* --- NEW UNIFIED FORM --- */}
+        <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
+        
+        <form onSubmit={handleAuthSubmit} className="form-col">
+          <input
+            placeholder="Email"
+            type="email"
+            className="field"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            placeholder="Password (6+ characters)"
+            type="password"
+            className="field"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          {/* Only show referral input on the Register form */}
+          {isRegister && (
+            <input
+              placeholder="Referral Code (optional)"
+              type="text"
+              className="field"
+              value={referral}
+              onChange={(e) => setReferral(e.target.value)}
+            />
+          )}
+
+          {err && <div className="error">{err}</div>}
+          
+          <button className="btn" type="submit" disabled={loading}>
+            {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
+          </button>
+        </form>
+
+        <p className="text-muted">
+          {isRegister ? "Already have an account? " : "Don't have an account? "}
+          <span
+            className="link"
+            onClick={() => {
+              setIsRegister(!isRegister); // Toggle the mode
+              setErr(""); // Clear any errors
+            }}
+          >
+            {isRegister ? "Sign In" : "Register"}
+          </span>
+        </p>
+
+        {/* --- END NEW FORM --- */}
+
 
         <div className="sep">OR</div>
 
@@ -229,7 +204,6 @@ export default function Login() {
         </button>
       </div>
 
-      {/* --- 2. ADD THIS NEW FOOTER SECTION --- */}
       <div className="login-footer-links">
         <Link to="/privacy-policy">Privacy Policy</Link>
         <span>•</span>
@@ -239,8 +213,7 @@ export default function Login() {
         <span>•</span>
         <Link to="/contact">Contact</Link>
       </div>
-      {/* --- END NEW SECTION --- */}
-
+      
     </div>
   );
 }
