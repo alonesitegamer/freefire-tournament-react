@@ -30,7 +30,7 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle, // 👈 REMOVED (How to Play)
+  FaQuestionCircle, 
   FaUserCog 
 } from "react-icons/fa";
 
@@ -101,6 +101,9 @@ export default function Dashboard({ user }) {
   const [adLoading, setAdLoading] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
 
+  // 👇 NEW: State for the message modal
+  const [modalMessage, setModalMessage] = useState(null);
+
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
   const adminPassword = "imperialx";
@@ -140,7 +143,6 @@ export default function Dashboard({ user }) {
             }
           }
         } else {
-          // This is a brand new user, create their document
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           const initialData = {
             email: user.email,
@@ -212,9 +214,9 @@ export default function Dashboard({ user }) {
 
   // Referral function with 20/50 coins
   async function handleRedeemReferral() {
-    if (!referralInput) return alert("Please enter a referral code.");
-    if (profile.hasRedeemedReferral) return alert("You have already redeemed a referral code.");
-    if (referralInput.toUpperCase() === profile.referralCode) return alert("You cannot use your own referral code.");
+    if (!referralInput) return setModalMessage("Please enter a referral code.");
+    if (profile.hasRedeemedReferral) return setModalMessage("You have already redeemed a referral code.");
+    if (referralInput.toUpperCase() === profile.referralCode) return setModalMessage("You cannot use your own referral code.");
 
     try {
       setLoading(true);
@@ -222,7 +224,7 @@ export default function Dashboard({ user }) {
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) { 
         setLoading(false); 
-        return alert("Invalid referral code."); 
+        return setModalMessage("Invalid referral code."); 
       }
 
       const referrerDoc = querySnapshot.docs[0];
@@ -230,16 +232,15 @@ export default function Dashboard({ user }) {
       const referrerCurrentCoins = referrerDoc.data().coins || 0;
 
       await updateDoc(referrerRef, { coins: referrerCurrentCoins + 20 });
-
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, { coins: profile.coins + 50, hasRedeemedReferral: true });
 
       setProfile({ ...profile, coins: profile.coins + 50, hasRedeemedReferral: true });
-      alert("Success! You received 50 coins, and your friend received 20 coins.");
+      setModalMessage("Success! You received 50 coins, and your friend received 20 coins.");
       setReferralInput("");
     } catch (err) {
       console.error("Referral Error:", err);
-      alert("An error occurred. Please try again.");
+      setModalMessage("An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -258,7 +259,7 @@ export default function Dashboard({ user }) {
     const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null;
     const now = new Date();
     const isSameDay = last && last.toDateString() === now.toDateString();
-    if (isSameDay) return alert("You already claimed today's coin.");
+    if (isSameDay) return setModalMessage("You already claimed today's coin.");
 
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, {
@@ -267,7 +268,7 @@ export default function Dashboard({ user }) {
     });
     const snap = await getDoc(ref);
     setProfile({ id: snap.id, ...snap.data() });
-    alert("+10 coins credited!"); 
+    setModalMessage("+10 coins credited!"); 
   }
 
   // FIXED AD FUNCTION
@@ -275,7 +276,7 @@ export default function Dashboard({ user }) {
     if (adLoading) return; 
     if (!window.adsbygoogle || !window.adbreak) {
       console.error("AdSense script not loaded.");
-      alert("Ads are not available right now. Please try again later.");
+      setModalMessage("Ads are not available right now. Please try again later.");
       return;
     }
     setAdLoading(true);
@@ -290,27 +291,27 @@ export default function Dashboard({ user }) {
           if (placementInfo.breakStatus !== 'viewed' && placementInfo.breakStatus !== 'dismissed') {
             console.error("Ad failed to load:", placementInfo.breakError);
             if(placementInfo.breakStatus !== 'unfilled') {
-              alert("Ads failed to load. Please try again later.");
+              setModalMessage("Ads failed to load. Please try again later.");
             }
           }
           setAdLoading(false);
         },
         beforeReward: (showAdFn) => {
           addCoin(5);
-          alert("+5 coins for watching the ad!");
+          setModalMessage("+5 coins for watching the ad!");
           showAdFn(); 
         }
       });
     } catch (err) {
       console.error("AdSense error:", err);
-      alert("An ad error occurred.");
+      setModalMessage("An ad error occurred.");
       setAdLoading(false);
     }
   }
   
   async function handleTopup() {
     const amt = parseInt(selectedAmount || topupAmount);
-    if (!amt || amt < 20) return alert("Minimum top-up is ₹20.");
+    if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
     try {
       await addDoc(collection(db, "topupRequests"), {
         userId: user.uid,
@@ -320,7 +321,7 @@ export default function Dashboard({ user }) {
         status: "pending",
         createdAt: serverTimestamp(),
       });
-      alert("Top-up request submitted! Admin will verify it soon.");
+      setModalMessage("Top-up request submitted! Admin will verify it soon.");
       setTopupAmount("");
       setSelectedAmount(null);
     } catch (err) {
@@ -331,12 +332,12 @@ export default function Dashboard({ user }) {
   // Function for redeeming rewards (UPI, Gift Cards)
   async function handleRedeemReward(reward) {
     if (!profile) return;
-    if (profile.coins < reward.cost) return alert("You don't have enough coins for this reward.");
+    if (profile.coins < reward.cost) return setModalMessage("You don't have enough coins for this reward.");
 
     let upiId = ''; 
     if (reward.type === 'UPI') {
       upiId = window.prompt(`Enter your UPI ID to receive ₹${reward.amount}:`);
-      if (!upiId) return alert("UPI ID is required. Redemption cancelled.");
+      if (!upiId) return setModalMessage("UPI ID is required. Redemption cancelled.");
     } else {
       if (!window.confirm(`Redeem ${reward.type} Gift Card (₹${reward.amount}) for ${reward.cost} coins?`)) {
         return;
@@ -367,13 +368,13 @@ export default function Dashboard({ user }) {
       });
 
       if (reward.type === 'UPI') {
-        alert("Withdrawal request submitted! Admin will process it shortly.");
+        setModalMessage("Withdrawal request submitted! Admin will process it shortly.");
       } else {
-        alert("Redemption request submitted! Admin will email your code within 24 hours.");
+        setModalMessage("Redemption request submitted! Admin will email your code within 24 hours.");
       }
     } catch (err) {
       console.error("Withdraw error:", err);
-      alert("An error occurred. Please try again.");
+      setModalMessage("An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -382,7 +383,7 @@ export default function Dashboard({ user }) {
   async function handleJoinMatch(match) {
     if (!profile) return; 
     if (!profile.username) {
-      alert("Please set your in-game username before joining a match.");
+      setModalMessage("Please set your in-game username before joining a match.");
       setShowUsernameModal(true);
       return; 
     }
@@ -394,8 +395,8 @@ export default function Dashboard({ user }) {
       return;
     }
     
-    if (playersJoined.length >= maxPlayers) return alert("Sorry, this match is full.");
-    if (profile.coins < entryFee) return alert("You don't have enough coins to join this match.");
+    if (playersJoined.length >= maxPlayers) return setModalMessage("Sorry, this match is full.");
+    if (profile.coins < entryFee) return setModalMessage("You don't have enough coins to join this match.");
     if (!window.confirm(`Join this match for ${entryFee} coins?`)) return;
 
     try {
@@ -415,11 +416,11 @@ export default function Dashboard({ user }) {
         prevMatches.map((m) => (m.id === matchId ? updatedMatch : m))
       );
       
-      alert("You have successfully joined the match!");
+      setModalMessage("You have successfully joined the match!");
       setSelectedMatch(updatedMatch); 
     } catch (err) {
       console.error("Error joining match:", err);
-      alert("An error occurred while joining. Please try again.");
+      setModalMessage("An error occurred while joining. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -452,10 +453,10 @@ export default function Dashboard({ user }) {
         await updateDoc(userDocRef, { coins: userCurrentCoins + req.coins });
       } else {
         console.error("User document not found for approval!");
-        alert("Error: User not found.");
+        setModalMessage("Error: User not found.");
       }
     }
-    alert(`${type} approved.`);
+    setModalMessage(`${type} approved.`);
     setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id) }));
   }
 
@@ -463,7 +464,7 @@ export default function Dashboard({ user }) {
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected" });
-    alert(`${type} rejected.`);
+    setModalMessage(`${type} rejected.`);
     setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id) }));
   }
 
@@ -474,7 +475,7 @@ export default function Dashboard({ user }) {
   async function handleCreateMatch(e) {
     e.preventDefault(); 
     if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) { 
-      return alert("Please fill in Title, Image URL, and Start Time.");
+      return setModalMessage("Please fill in Title, Image URL, and Start Time.");
     }
 
     try {
@@ -498,11 +499,11 @@ export default function Dashboard({ user }) {
       }
 
       await addDoc(collection(db, "matches"), matchData);
-      alert("Match created successfully!");
+      setModalMessage("Match created successfully!");
       setNewMatch(initialMatchState); 
     } catch (err) {
       console.error("Error creating match:", err);
-      alert("Failed to create match. Check console for error.");
+      setModalMessage("Failed to create match. Check console for error.");
     } finally {
       setLoading(false);
     }
@@ -511,7 +512,7 @@ export default function Dashboard({ user }) {
   // Function to save the new username
   async function handleSetUsername(e) {
     e.preventDefault();
-    if (!newUsername) return alert("Username cannot be blank.");
+    if (!newUsername) return setModalMessage("Username cannot be blank.");
 
     try {
       setLoading(true);
@@ -521,11 +522,11 @@ export default function Dashboard({ user }) {
       });
 
       setProfile({ ...profile, username: newUsername });
-      alert("Username updated. Please restart the app to see changes.");
+      setModalMessage("Username updated successfully!");
       setShowUsernameModal(false);
     } catch (err) {
       console.error("Error setting username:", err);
-      alert("Failed to set username.");
+      setModalMessage("Failed to set username.");
     } finally {
       setLoading(false);
     }
@@ -533,9 +534,9 @@ export default function Dashboard({ user }) {
 
   // Function to update display name
   async function handleUpdateDisplayName(e) {
-    e.preventDefault(); // Added this
-    if (!newDisplayName) return alert("Display name cannot be blank.");
-    if (newDisplayName === profile.displayName) return alert("No changes made.");
+    e.preventDefault(); 
+    if (!newDisplayName) return setModalMessage("Display name cannot be blank.");
+    if (newDisplayName === profile.displayName) return setModalMessage("No changes made.");
 
     setLoading(true);
     try {
@@ -555,37 +556,32 @@ export default function Dashboard({ user }) {
         displayName: newDisplayName
       });
 
-      alert("Display name updated successfully!");
+      setModalMessage("Display name updated successfully!");
     } catch (err) {
       console.error("Error updating display name:", err);
-      alert("Failed to update display name.");
+      setModalMessage("Failed to update display name.");
     } finally {
       setLoading(false);
     }
   }
 
-
-  // 👇 *** THIS IS THE FIXED PASSWORD RESET FUNCTION *** 👇
+  // FIXED PASSWORD RESET FUNCTION
   async function handlePasswordReset() {
-    if (!user?.email) return alert("Could not find user email.");
+    if (!user?.email) return setModalMessage("Could not find user email.");
     
-    // 1. Get the list of sign-in methods for the user
     const providerIds = auth.currentUser.providerData.map(p => p.providerId);
     
-    // 2. Check if "password" is NOT in their list of methods
     if (!providerIds.includes('password')) {
       console.log("Password reset blocked. User providers:", providerIds);
-      return alert("Password reset is not available. You signed in using Google.");
+      return setModalMessage("Password reset is not available. You signed in using Google.");
     }
 
-    // 3. If 'password' IS in the list, proceed.
     try {
       await sendPasswordResetEmail(auth, user.email);
-      alert("Password reset email sent! Please check your inbox to set a new password.");
+      setModalMessage("Password reset email sent! Please check your inbox to set a new password.");
     } catch (err) {
       console.error("Password reset error:", err);
-      // This is the error you are seeing
-      alert("Failed to send password reset email. Please try again later.");
+      setModalMessage("Failed to send password reset email. Please try again later.");
     }
   }
 
@@ -654,7 +650,6 @@ export default function Dashboard({ user }) {
         {activeTab === "matches" && (
           <>
             {!selectedMatch ? (
-              // 1. MATCH LIST VIEW (Default)
               <section className="panel">
                 <h3>Available Matches</h3>
                 {loadingMatches && <p>Loading matches...</p>}
@@ -687,7 +682,6 @@ export default function Dashboard({ user }) {
                 </div>
               </section>
             ) : (
-              // 2. MATCH DETAILS VIEW
               <section className="panel match-details-view">
                 <button className="back-btn" onClick={() => setSelectedMatch(null)}>
                   <FaArrowLeft /> Back to Matches
@@ -740,7 +734,6 @@ export default function Dashboard({ user }) {
 
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
-            {/* 1. UPI Section */}
             <section className="panel">
               <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem Coins as UPI</h3>
               <p className="modern-subtitle" style={{ paddingLeft: '10px' }}>10% commission fee</p>
@@ -763,7 +756,6 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
-            {/* 2. Google Play Section */}
             <section className="panel">
               <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Google Gift Card</h3>
               <div className="reward-grid">
@@ -785,7 +777,6 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
-            {/* 3. Amazon Section */}
             <section className="panel">
               <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Amazon Gift Card</h3>
               <div className="reward-grid">
@@ -850,10 +841,11 @@ export default function Dashboard({ user }) {
                 </section>
                 
                 <section className="panel account-menu">
+                  {/* (Removed How to Play button) */}
                   <button
                     className="account-option"
                     onClick={() => {
-                      setNewDisplayName(profile.displayName || ""); // Pre-fill form
+                      setNewDisplayName(profile.displayName || ""); 
                       setAccountView("profile");
                     }}
                   >
@@ -909,8 +901,6 @@ export default function Dashboard({ user }) {
                 </div>
               </section>
             )}
-
-            {/* (Removed HowToPlay view) */}
 
             {accountView === "refer" && (
               <section className="panel">
@@ -997,6 +987,24 @@ export default function Dashboard({ user }) {
                 Cancel
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 👇 NEW: Custom Message Modal */}
+      {modalMessage && (
+        <div className="modal-overlay" onClick={() => setModalMessage(null)}>
+          <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modern-title">Notification</h3>
+            <p className="modern-subtitle" style={{textAlign: 'center', marginBottom: '24px'}}>
+              {modalMessage}
+            </p>
+            <button
+              className="btn glow large"
+              onClick={() => setModalMessage(null)}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
