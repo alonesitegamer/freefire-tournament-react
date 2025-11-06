@@ -823,3 +823,16 @@ body,
 .back-btn {
   margin-bottom: 0;
 }
+/* === ADDED: Top-up Payment Page === */
+.payment-page .modern-subtitle {
+  text-align: center;
+}
+.qr-code-image {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 16px auto;
+  display: block;
+  border-radius: 12px;
+  background: white; /* Add a white background in case QR is transparent */
+}
