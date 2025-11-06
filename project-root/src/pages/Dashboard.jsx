@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase";
-import { signOut } from "firebase/auth";
+import { 
+  signOut, 
+  updateProfile, // 👈 NEW: For changing display name
+  sendPasswordResetEmail // 👈 NEW: For changing password
+} from "firebase/auth"; 
 import {
   doc,
   getDoc,
@@ -26,13 +30,15 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  // FaQuestionCircle, // Removed HowToPlay icon
+  FaQuestionCircle,
+  FaUserCog // 👈 NEW: Icon for Profile Settings
 } from "react-icons/fa";
 
 // Import your history page components
 import MatchHistoryPage from './MatchHistoryPage';
 import WithdrawalHistoryPage from './WithdrawalHistoryPage';
-// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
+// Removed HowToPlay import to fix build
+// import HowToPlay from './HowToPlay'; 
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -94,6 +100,9 @@ export default function Dashboard({ user }) {
   const [newUsername, setNewUsername] = useState("");
   const [adLoading, setAdLoading] = useState(false);
 
+  // 👇 NEW: State for the Profile Settings form
+  const [newDisplayName, setNewDisplayName] = useState("");
+
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
   const adminPassword = "imperialx";
@@ -107,21 +116,28 @@ export default function Dashboard({ user }) {
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
-          if (mounted) setProfile({ id: snap.id, ...snap.data() });
+          const data = snap.data();
+          if (mounted) {
+            setProfile({ id: snap.id, ...data });
+            setNewDisplayName(data.displayName || ""); // 👈 NEW: Pre-fill display name
+          }
         } else {
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-          await setDoc(ref, {
+          const initialData = {
             email: user.email,
             coins: 0,
             displayName: user.displayName || "",
-            username: "", // Add blank username field
+            username: "", 
             lastDaily: null,
             createdAt: serverTimestamp(),
             referralCode: newReferralCode, 
             hasRedeemedReferral: false, 
-          });
-          const s2 = await getDoc(ref);
-          if (mounted) setProfile({ id: s2.id, ...s2.data() });
+          };
+          await setDoc(ref, initialData);
+          if (mounted) {
+            setProfile({ id: ref.id, ...initialData });
+            setNewDisplayName(initialData.displayName); // 👈 NEW: Pre-fill display name
+          }
         }
       } catch (err) {
         console.error("Dashboard load error:", err);
@@ -131,7 +147,7 @@ export default function Dashboard({ user }) {
     }
     load();
     return () => (mounted = false);
-  }, [user.uid, user.email]);
+  }, [user.uid, user.email, user.displayName]);
 
   // useEffect TO LOAD MATCHES
   useEffect(() => {
@@ -215,7 +231,6 @@ export default function Dashboard({ user }) {
     const ref = doc(db, "users", user.uid);
     const newCoins = (profile.coins || 0) + n;
     await updateDoc(ref, { coins: newCoins });
-    // Update local state immediately for instant feedback
     setProfile(prevProfile => ({ ...prevProfile, coins: newCoins }));
   }
   
@@ -228,7 +243,7 @@ export default function Dashboard({ user }) {
 
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, {
-      coins: (profile.coins || 0) + 10, // 10 coins
+      coins: (profile.coins || 0) + 10, 
       lastDaily: serverTimestamp(),
     });
     const snap = await getDoc(ref);
@@ -238,29 +253,20 @@ export default function Dashboard({ user }) {
 
   // FIXED AD FUNCTION
   async function watchAd() {
-    if (adLoading) return; // Don't let them click twice
-
-    // Check if AdSense is loaded
+    if (adLoading) return; 
     if (!window.adsbygoogle || !window.adbreak) {
       console.error("AdSense script not loaded.");
       alert("Ads are not available right now. Please try again later.");
       return;
     }
-
     setAdLoading(true);
-
     try {
-      // This is the correct way to call the ad
       window.adbreak({
         type: 'reward',
         name: 'watch-ad-reward',
-        
-        // Ad is finished or skipped
         adDismissed: () => {
           setAdLoading(false);
         },
-
-        // Ad failed to load
         adBreakDone: (placementInfo) => {
           if (placementInfo.breakStatus !== 'viewed' && placementInfo.breakStatus !== 'dismissed') {
             console.error("Ad failed to load:", placementInfo.breakError);
@@ -270,12 +276,10 @@ export default function Dashboard({ user }) {
           }
           setAdLoading(false);
         },
-
-        // User watched the ad!
         beforeReward: (showAdFn) => {
           addCoin(5);
           alert("+5 coins for watching the ad!");
-          showAdFn(); // Confirm the reward
+          showAdFn(); 
         }
       });
     } catch (err) {
@@ -293,7 +297,7 @@ export default function Dashboard({ user }) {
         userId: user.uid,
         email: profile.email,
         amount: amt,
-        coins: amt * 10, // 1 Rupee = 10 Coins
+        coins: amt * 10, 
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -513,6 +517,25 @@ export default function Dashboard({ user }) {
     }
   }
 
+  // 👇 NEW: Function to send a password reset email
+  async function handlePasswordReset() {
+    if (!user?.email) return alert("Could not find user email.");
+    
+    // Only works for users who signed up with Email/Password
+    // Google-signed-in users must manage their password via Google
+    if (auth.currentUser.providerData.some(p => p.providerId === 'google.com')) {
+      return alert("You are logged in with Google. You must change your password through your Google account.");
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      alert("Password reset email sent! Please check your inbox to set a new password.");
+    } catch (err) {
+      console.error("Password reset error:", err);
+      alert("Failed to send password reset email. Please try again later.");
+    }
+  }
+
   async function handleLogout() {
     await signOut(auth);
     navigate("/login");
@@ -534,7 +557,8 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            <div className="subtitle">{profile.username || profile.email}</div>
+            {/* Show username OR display name OR email */}
+            <div className="subtitle">{profile.username || profile.displayName || profile.email}</div>
           </div>
         </div>
         <div className="header-actions">
@@ -746,7 +770,7 @@ export default function Dashboard({ user }) {
               <label>Match Type</label>
               <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange} > <option value="BR">Battle Royale</option> <option value="CS">Clash Squad</option> </select>
               <label>Prize Model</label>
-              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option value="Fixed">Fixed (CS - fixed prize)</option> </select>
+              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option valueT="Fixed">Fixed (CS - fixed prize)</option> </select>
               <label>Entry Fee (Coins)</label>
               <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={handleNewMatchChange} />
               <label>Max Players</label>
@@ -774,15 +798,19 @@ export default function Dashboard({ user }) {
                 </section>
                 
                 <section className="panel account-menu">
+                  {/* 👇 NEW: "Profile Settings" button */}
                   <button
                     className="account-option"
-                    onClick={() => setAccountView("how_to_play")}
+                    onClick={() => {
+                      setNewDisplayName(profile.displayName || ""); // Pre-fill form
+                      setAccountView("profile");
+                    }}
                   >
-                    <FaQuestionCircle size={20} />
-                    <span>How to Play</span>
+                    <FaUserCog size={20} />
+                    <span>Profile Settings</span>
                     <span className="arrow">&gt;</span>
                   </button>
-                  <button className="account-option" onClick={() => setShowUsernameModal(true)} > <FaUserEdit size={20} /> <span>Edit Username</span> <span className="arrow">&gt;</span> </button>
+                  <button className="account-option" onClick={() => setShowUsernameModal(true)} > <FaUserEdit size={20} /> <span>Edit In-Game Username</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
                   <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
@@ -791,14 +819,53 @@ export default function Dashboard({ user }) {
               </>
             )}
 
-            {accountView === "how_to_play" && (
+            {/* 👇 NEW: "Profile Settings" view */}
+            {accountView === "profile" && (
               <section className="panel">
                 <button className="back-btn" onClick={() => setAccountView("main")}>
                   <FaArrowLeft /> Back
                 </button>
-                <HowToPlay />
+                <h3 className="modern-title">Profile Settings</h3>
+
+                <div className="profile-settings-form">
+                  <div className="form-group">
+                    <label>Email</label>
+                    <input type="text" className="modern-input" value={user.email} disabled />
+                  </div>
+                  <div className="form-group">
+                    <label>User ID</label>
+                    <input type="text" className="modern-input" value={user.uid} disabled />
+                  </div>
+
+                  <hr />
+
+                  <form className="form-group" onSubmit={(e) => { e.preventDefault(); handleUpdateDisplayName(); }}>
+                    <label>Display Name</label>
+                    <input
+                      type="text"
+                      className="modern-input"
+                      value={newDisplayName}
+                      onChange={(e) => setNewDisplayName(e.target.value)}
+                      placeholder="Enter your display name"
+                    />
+                    <button type="submit" className="btn" disabled={loading}>
+                      {loading ? "Saving..." : "Save Name"}
+                    </button>
+                  </form>
+
+                  <hr />
+
+                  <div className="form-group">
+                    <label>Password</label>
+                    <button className="btn ghost" onClick={handlePasswordReset}>
+                      Send Password Reset Email
+                    </button>
+                  </div>
+                </div>
               </section>
             )}
+
+            {/* (Removed HowToPlay view) */}
 
             {accountView === "refer" && (
               <section className="panel">
