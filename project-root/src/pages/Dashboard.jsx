@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase";
-import { signOut } from "firebase/auth";
+import { 
+  signOut, 
+  updateProfile, 
+  sendPasswordResetEmail 
+} from "firebase/auth"; 
 import {
   doc,
   getDoc,
@@ -113,17 +117,13 @@ export default function Dashboard({ user }) {
         if (snap.exists()) {
           const data = snap.data();
           
-          // 👇 *** THIS IS THE FIX *** 👇
-          // Check if the user is old and is missing a referral code
           if (!data.referralCode) {
             const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-            // Go update their document in Firestore with the new code
             await updateDoc(ref, {
               referralCode: newReferralCode,
-              hasRedeemedReferral: data.hasRedeemedReferral || false // Add this field too
+              hasRedeemedReferral: data.hasRedeemedReferral || false
             });
             
-            // Set the profile state with the *new* data
             if (mounted) {
               setProfile({ 
                 id: snap.id, 
@@ -134,14 +134,11 @@ export default function Dashboard({ user }) {
               setNewDisplayName(data.displayName || "");
             }
           } else {
-            // User already has a code, load as normal
             if (mounted) {
               setProfile({ id: snap.id, ...data });
               setNewDisplayName(data.displayName || ""); 
             }
           }
-          // 👆 *** END OF FIX *** 👆
-
         } else {
           // This is a brand new user, create their document
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
@@ -232,14 +229,11 @@ export default function Dashboard({ user }) {
       const referrerRef = doc(db, "users", referrerDoc.id);
       const referrerCurrentCoins = referrerDoc.data().coins || 0;
 
-      // 1. Pay the referrer 20 coins
       await updateDoc(referrerRef, { coins: referrerCurrentCoins + 20 });
 
-      // 2. Pay the current user (referee) 50 coins and mark as redeemed
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, { coins: profile.coins + 50, hasRedeemedReferral: true });
 
-      // 3. Update local state
       setProfile({ ...profile, coins: profile.coins + 50, hasRedeemedReferral: true });
       alert("Success! You received 50 coins, and your friend received 20 coins.");
       setReferralInput("");
@@ -527,7 +521,7 @@ export default function Dashboard({ user }) {
       });
 
       setProfile({ ...profile, username: newUsername });
-      alert("Username updated successfully!");
+      alert("Username updated. Please restart the app to see changes.");
       setShowUsernameModal(false);
     } catch (err) {
       console.error("Error setting username:", err);
@@ -538,26 +532,24 @@ export default function Dashboard({ user }) {
   }
 
   // Function to update display name
-  async function handleUpdateDisplayName() {
+  async function handleUpdateDisplayName(e) {
+    e.preventDefault(); // Added this
     if (!newDisplayName) return alert("Display name cannot be blank.");
     if (newDisplayName === profile.displayName) return alert("No changes made.");
 
     setLoading(true);
     try {
-      // 1. Update Firebase Auth profile
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, {
           displayName: newDisplayName
         });
       }
       
-      // 2. Update Firestore profile
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         displayName: newDisplayName
       });
 
-      // 3. Update local state
       setProfile({
         ...profile,
         displayName: newDisplayName
@@ -573,19 +565,26 @@ export default function Dashboard({ user }) {
   }
 
 
-  // Function to send a password reset email
+  // 👇 *** THIS IS THE FIXED PASSWORD RESET FUNCTION *** 👇
   async function handlePasswordReset() {
     if (!user?.email) return alert("Could not find user email.");
     
-    if (auth.currentUser.providerData.some(p => p.providerId === 'google.com')) {
-      return alert("You are logged in with Google. You must change your password through your Google account.");
+    // 1. Get the list of sign-in methods for the user
+    const providerIds = auth.currentUser.providerData.map(p => p.providerId);
+    
+    // 2. Check if "password" is NOT in their list of methods
+    if (!providerIds.includes('password')) {
+      console.log("Password reset blocked. User providers:", providerIds);
+      return alert("Password reset is not available. You signed in using Google.");
     }
 
+    // 3. If 'password' IS in the list, proceed.
     try {
       await sendPasswordResetEmail(auth, user.email);
       alert("Password reset email sent! Please check your inbox to set a new password.");
     } catch (err) {
       console.error("Password reset error:", err);
+      // This is the error you are seeing
       alert("Failed to send password reset email. Please try again later.");
     }
   }
@@ -887,7 +886,7 @@ export default function Dashboard({ user }) {
                     <input type="text" className="modern-input" value={user.uid} disabled />
                   </div>
                   <hr />
-                  <form className="form-group" onSubmit={(e) => { e.preventDefault(); handleUpdateDisplayName(); }}>
+                  <form className="form-group" onSubmit={handleUpdateDisplayName}>
                     <label>Display Name</label>
                     <input
                       type="text"
@@ -920,10 +919,8 @@ export default function Dashboard({ user }) {
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
                   <div className="referral-code">
-                    {/* 👇 NEW: Added loading check */}
                     {profile.referralCode ? profile.referralCode : "Loading..."}
                   </div>
-                  {/* 👇 *** UPDATED: Text for 20/50 coins *** */}
                   <p className="modern-subtitle" style={{ textAlign: "center" }}>
                     Share this code with your friends. When they use it, they get
                     50 coins and you get 20 coins!
