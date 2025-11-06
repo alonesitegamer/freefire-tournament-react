@@ -1,10 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase";
-import { 
-  signOut, 
-  updateProfile, 
-  sendPasswordResetEmail 
-} from "firebase/auth"; 
+import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -18,6 +14,7 @@ import {
   where,
   orderBy,
   arrayUnion,
+  increment, // 👈 *** NEW: IMPORTED 'increment' ***
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
@@ -30,15 +27,14 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle, 
-  FaUserCog 
+  FaQuestionCircle,
+  FaUserCog,
 } from "react-icons/fa";
 
 // Import your history page components
-import MatchHistoryPage from './MatchHistoryPage';
-import WithdrawalHistoryPage from './WithdrawalHistoryPage';
-// Removed HowToPlay import to fix build
-// import HowToPlay from './HowToPlay'; 
+import MatchHistoryPage from "./MatchHistoryPage";
+import WithdrawalHistoryPage from "./WithdrawalHistoryPage";
+// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -52,34 +48,33 @@ const initialMatchState = {
   perKillReward: 75,
   booyahPrize: 0,
   teamType: "Solo",
-  startTime: "", 
-  rules: "", 
+  startTime: "",
+  rules: "",
 };
 
 // List of available gift cards
 const rewardOptions = [
-  { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
-  { type: 'UPI', amount: 50, cost: 550, icon: '/upi.png' },
-  { type: 'Google Play', amount: 50, cost: 550, icon: '/google-play.png' },
-  { type: 'Google Play', amount: 100, cost: 1100, icon: '/google-play.png' },
-  { type: 'Amazon', amount: 50, cost: 550, icon: '/amazon.png' },
-  { type: 'Amazon', amount: 100, cost: 1100, icon: '/amazon.png' },
+  { type: "UPI", amount: 25, cost: 275, icon: "/upi.png" },
+  { type: "UPI", amount: 50, cost: 550, icon: "/upi.png" },
+  { type: "Google Play", amount: 50, cost: 550, icon: "/google-play.png" },
+  { type: "Google Play", amount: 100, cost: 1100, icon: "/google-play.png" },
+  { type: "Amazon", amount: 50, cost: 550, icon: "/amazon.png" },
+  { type: "Amazon", amount: 100, cost: 1100, icon: "/amazon.png" },
 ];
 
 // Helper function to format timestamps nicely
 function formatMatchTime(timestamp) {
-  if (!timestamp || typeof timestamp.toDate !== 'function') {
+  if (!timestamp || typeof timestamp.toDate !== "function") {
     return "Time TBD";
   }
-  return timestamp.toDate().toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
+  return timestamp.toDate().toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   });
 }
-
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -101,7 +96,7 @@ export default function Dashboard({ user }) {
   const [adLoading, setAdLoading] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
 
-  // 👇 NEW: State for the message modal
+  // NEW: State for the message modal
   const [modalMessage, setModalMessage] = useState(null);
 
   const navigate = useNavigate();
@@ -116,48 +111,49 @@ export default function Dashboard({ user }) {
         setLoading(true);
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
-        
+
         if (snap.exists()) {
           const data = snap.data();
-          
+
           if (!data.referralCode) {
             const newReferralCode = user.uid.substring(0, 8).toUpperCase();
             await updateDoc(ref, {
               referralCode: newReferralCode,
-              hasRedeemedReferral: data.hasRedeemedReferral || false
+              hasRedeemedReferral: data.hasRedeemedReferral || false,
             });
-            
+
             if (mounted) {
-              setProfile({ 
-                id: snap.id, 
-                ...data, 
-                referralCode: newReferralCode, 
-                hasRedeemedReferral: data.hasRedeemedReferral || false 
+              setProfile({
+                id: snap.id,
+                ...data,
+                referralCode: newReferralCode,
+                hasRedeemedReferral: data.hasRedeemedReferral || false,
               });
               setNewDisplayName(data.displayName || "");
             }
           } else {
             if (mounted) {
               setProfile({ id: snap.id, ...data });
-              setNewDisplayName(data.displayName || ""); 
+              setNewDisplayName(data.displayName || "");
             }
           }
         } else {
+          // This is a brand new user, create their document
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           const initialData = {
             email: user.email,
             coins: 0,
             displayName: user.displayName || "",
-            username: "", 
+            username: "",
             lastDaily: null,
             createdAt: serverTimestamp(),
-            referralCode: newReferralCode, 
-            hasRedeemedReferral: false, 
+            referralCode: newReferralCode,
+            hasRedeemedReferral: false,
           };
           await setDoc(ref, initialData);
           if (mounted) {
             setProfile({ id: ref.id, ...initialData });
-            setNewDisplayName(initialData.displayName); 
+            setNewDisplayName(initialData.displayName);
           }
         }
       } catch (err) {
@@ -182,7 +178,10 @@ export default function Dashboard({ user }) {
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(q);
-        const matchesData = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const matchesData = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -212,30 +211,49 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // Referral function with 20/50 coins
+  // 👇 *** UPDATED: Referral function with 'increment' ***
   async function handleRedeemReferral() {
     if (!referralInput) return setModalMessage("Please enter a referral code.");
-    if (profile.hasRedeemedReferral) return setModalMessage("You have already redeemed a referral code.");
-    if (referralInput.toUpperCase() === profile.referralCode) return setModalMessage("You cannot use your own referral code.");
+    if (profile.hasRedeemedReferral)
+      return setModalMessage("You have already redeemed a referral code.");
+    if (referralInput.toUpperCase() === profile.referralCode)
+      return setModalMessage("You cannot use your own referral code.");
 
     try {
       setLoading(true);
-      const q = query(collection(db, "users"), where("referralCode", "==", referralInput.toUpperCase()));
+      // 1. Find the user who owns the code
+      const q = query(
+        collection(db, "users"),
+        where("referralCode", "==", referralInput.toUpperCase())
+      );
       const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) { 
-        setLoading(false); 
-        return setModalMessage("Invalid referral code."); 
+      
+      if (querySnapshot.empty) {
+        setLoading(false);
+        return setModalMessage("Invalid referral code.");
       }
 
+      // 2. Get the referrer (the person who gave the code)
       const referrerDoc = querySnapshot.docs[0];
       const referrerRef = doc(db, "users", referrerDoc.id);
-      const referrerCurrentCoins = referrerDoc.data().coins || 0;
 
-      await updateDoc(referrerRef, { coins: referrerCurrentCoins + 20 });
+      // 3. Pay the referrer 20 coins (using increment)
+      //    This no longer requires us to *read* their document first
+      await updateDoc(referrerRef, { coins: increment(20) });
+
+      // 4. Pay the current user (referee) 50 coins and mark as redeemed
       const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { coins: profile.coins + 50, hasRedeemedReferral: true });
+      await updateDoc(userRef, {
+        coins: profile.coins + 50,
+        hasRedeemedReferral: true,
+      });
 
-      setProfile({ ...profile, coins: profile.coins + 50, hasRedeemedReferral: true });
+      // 5. Update local state
+      setProfile({
+        ...profile,
+        coins: profile.coins + 50,
+        hasRedeemedReferral: true,
+      });
       setModalMessage("Success! You received 50 coins, and your friend received 20 coins.");
       setReferralInput("");
     } catch (err) {
@@ -245,35 +263,38 @@ export default function Dashboard({ user }) {
       setLoading(false);
     }
   }
-  
+
   async function addCoin(n = 1) {
     if (!profile) return;
     const ref = doc(db, "users", user.uid);
     const newCoins = (profile.coins || 0) + n;
     await updateDoc(ref, { coins: newCoins });
-    setProfile(prevProfile => ({ ...prevProfile, coins: newCoins }));
+    setProfile((prevProfile) => ({ ...prevProfile, coins: newCoins }));
   }
-  
+
   async function claimDaily() {
     if (!profile) return;
-    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null;
+    const last =
+      profile.lastDaily && typeof profile.lastDaily.toDate === "function"
+        ? profile.lastDaily.toDate()
+        : null;
     const now = new Date();
     const isSameDay = last && last.toDateString() === now.toDateString();
     if (isSameDay) return setModalMessage("You already claimed today's coin.");
 
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, {
-      coins: (profile.coins || 0) + 10, 
+      coins: (profile.coins || 0) + 10,
       lastDaily: serverTimestamp(),
     });
     const snap = await getDoc(ref);
     setProfile({ id: snap.id, ...snap.data() });
-    setModalMessage("+10 coins credited!"); 
+    setModalMessage("+10 coins credited!");
   }
 
   // FIXED AD FUNCTION
   async function watchAd() {
-    if (adLoading) return; 
+    if (adLoading) return;
     if (!window.adsbygoogle || !window.adbreak) {
       console.error("AdSense script not loaded.");
       setModalMessage("Ads are not available right now. Please try again later.");
@@ -282,15 +303,18 @@ export default function Dashboard({ user }) {
     setAdLoading(true);
     try {
       window.adbreak({
-        type: 'reward',
-        name: 'watch-ad-reward',
+        type: "reward",
+        name: "watch-ad-reward",
         adDismissed: () => {
           setAdLoading(false);
         },
         adBreakDone: (placementInfo) => {
-          if (placementInfo.breakStatus !== 'viewed' && placementInfo.breakStatus !== 'dismissed') {
+          if (
+            placementInfo.breakStatus !== "viewed" &&
+            placementInfo.breakStatus !== "dismissed"
+          ) {
             console.error("Ad failed to load:", placementInfo.breakError);
-            if(placementInfo.breakStatus !== 'unfilled') {
+            if (placementInfo.breakStatus !== "unfilled") {
               setModalMessage("Ads failed to load. Please try again later.");
             }
           }
@@ -299,8 +323,8 @@ export default function Dashboard({ user }) {
         beforeReward: (showAdFn) => {
           addCoin(5);
           setModalMessage("+5 coins for watching the ad!");
-          showAdFn(); 
-        }
+          showAdFn();
+        },
       });
     } catch (err) {
       console.error("AdSense error:", err);
@@ -308,7 +332,7 @@ export default function Dashboard({ user }) {
       setAdLoading(false);
     }
   }
-  
+
   async function handleTopup() {
     const amt = parseInt(selectedAmount || topupAmount);
     if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
@@ -317,7 +341,7 @@ export default function Dashboard({ user }) {
         userId: user.uid,
         email: profile.email,
         amount: amt,
-        coins: amt * 10, 
+        coins: amt * 10,
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -332,14 +356,19 @@ export default function Dashboard({ user }) {
   // Function for redeeming rewards (UPI, Gift Cards)
   async function handleRedeemReward(reward) {
     if (!profile) return;
-    if (profile.coins < reward.cost) return setModalMessage("You don't have enough coins for this reward.");
+    if (profile.coins < reward.cost)
+      return setModalMessage("You don't have enough coins for this reward.");
 
-    let upiId = ''; 
-    if (reward.type === 'UPI') {
+    let upiId = "";
+    if (reward.type === "UPI") {
       upiId = window.prompt(`Enter your UPI ID to receive ₹${reward.amount}:`);
       if (!upiId) return setModalMessage("UPI ID is required. Redemption cancelled.");
     } else {
-      if (!window.confirm(`Redeem ${reward.type} Gift Card (₹${reward.amount}) for ${reward.cost} coins?`)) {
+      if (
+        !window.confirm(
+          `Redeem ${reward.type} Gift Card (₹${reward.amount}) for ${reward.cost} coins?`
+        )
+      ) {
         return;
       }
     }
@@ -353,7 +382,7 @@ export default function Dashboard({ user }) {
         coinsDeducted: reward.cost,
         status: "pending",
         type: reward.type,
-        upiId: upiId, 
+        upiId: upiId,
         createdAt: serverTimestamp(),
       });
 
@@ -367,7 +396,7 @@ export default function Dashboard({ user }) {
         coins: profile.coins - reward.cost,
       });
 
-      if (reward.type === 'UPI') {
+      if (reward.type === "UPI") {
         setModalMessage("Withdrawal request submitted! Admin will process it shortly.");
       } else {
         setModalMessage("Redemption request submitted! Admin will email your code within 24 hours.");
@@ -379,45 +408,47 @@ export default function Dashboard({ user }) {
       setLoading(false);
     }
   }
-  
+
   async function handleJoinMatch(match) {
-    if (!profile) return; 
+    if (!profile) return;
     if (!profile.username) {
       setModalMessage("Please set your in-game username before joining a match.");
       setShowUsernameModal(true);
-      return; 
+      return;
     }
-    
+
     const { entryFee, id: matchId, playersJoined = [], maxPlayers } = match;
 
     if (playersJoined.includes(user.uid)) {
       setSelectedMatch(match);
       return;
     }
-    
-    if (playersJoined.length >= maxPlayers) return setModalMessage("Sorry, this match is full.");
-    if (profile.coins < entryFee) return setModalMessage("You don't have enough coins to join this match.");
+
+    if (playersJoined.length >= maxPlayers)
+      return setModalMessage("Sorry, this match is full.");
+    if (profile.coins < entryFee)
+      return setModalMessage("You don't have enough coins to join this match.");
     if (!window.confirm(`Join this match for ${entryFee} coins?`)) return;
 
     try {
-      setLoading(true); 
-      const userDocRef = doc(db, 'users', user.uid);
-      const matchDocRef = doc(db, 'matches', matchId);
+      setLoading(true);
+      const userDocRef = doc(db, "users", user.uid);
+      const matchDocRef = doc(db, "matches", matchId);
 
       await updateDoc(userDocRef, { coins: profile.coins - entryFee });
       await updateDoc(matchDocRef, { playersJoined: arrayUnion(user.uid) });
 
       setProfile({ ...profile, coins: profile.coins - entryFee });
-      
+
       const updatedPlayers = [...playersJoined, user.uid];
       const updatedMatch = { ...match, playersJoined: updatedPlayers };
 
       setMatches((prevMatches) =>
         prevMatches.map((m) => (m.id === matchId ? updatedMatch : m))
       );
-      
+
       setModalMessage("You have successfully joined the match!");
-      setSelectedMatch(updatedMatch); 
+      setSelectedMatch(updatedMatch);
     } catch (err) {
       console.error("Error joining match:", err);
       setModalMessage("An error occurred while joining. Please try again.");
@@ -425,14 +456,20 @@ export default function Dashboard({ user }) {
       setLoading(false);
     }
   }
-  
+
   // Admin fetch
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
-      const topupQuery = query(collection(db, "topupRequests"), where("status", "==", "pending"));
+      const topupQuery = query(
+        collection(db, "topupRequests"),
+        where("status", "==", "pending")
+      );
       const topupSnap = await getDocs(topupQuery);
-      const withdrawQuery = query(collection(db, "withdrawRequests"), where("status", "==", "pending"));
+      const withdrawQuery = query(
+        collection(db, "withdrawRequests"),
+        where("status", "==", "pending")
+      );
       const withdrawSnap = await getDocs(withdrawQuery);
       setRequests({
         topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
@@ -457,7 +494,10 @@ export default function Dashboard({ user }) {
       }
     }
     setModalMessage(`${type} approved.`);
-    setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id) }));
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
   }
 
   // FIXED REJECT FUNCTION
@@ -465,34 +505,41 @@ export default function Dashboard({ user }) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected" });
     setModalMessage(`${type} rejected.`);
-    setRequests((prev) => ({ ...prev, [type]: prev[type].filter((item) => item.id !== req.id) }));
+    setRequests((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((item) => item.id !== req.id),
+    }));
   }
 
   // Helper function to update the newMatch state
-  const handleNewMatchChange = (e) => { const { name, value, type } = e.target; const val = type === "number" ? parseInt(value) || 0 : value; setNewMatch((prev) => ({ ...prev, [name]: val, })); };
-  
+  const handleNewMatchChange = (e) => {
+    const { name, value, type } = e.target;
+    const val = type === "number" ? parseInt(value) || 0 : value;
+    setNewMatch((prev) => ({ ...prev, [name]: val }));
+  };
+
   // Function to handle creating the match
   async function handleCreateMatch(e) {
-    e.preventDefault(); 
-    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) { 
+    e.preventDefault();
+    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) {
       return setModalMessage("Please fill in Title, Image URL, and Start Time.");
     }
 
     try {
-      setLoading(true); 
+      setLoading(true);
 
       let matchData = {
         ...newMatch,
-        startTime: new Date(newMatch.startTime), 
+        startTime: new Date(newMatch.startTime),
         status: "upcoming",
         playersJoined: [],
         createdAt: serverTimestamp(),
         roomID: "",
         roomPassword: "",
-      }; 
+      };
 
       if (matchData.prizeModel === "Scalable") {
-        delete matchData.booyahPrize; 
+        delete matchData.booyahPrize;
       } else {
         delete matchData.commissionPercent;
         delete matchData.perKillReward;
@@ -500,7 +547,7 @@ export default function Dashboard({ user }) {
 
       await addDoc(collection(db, "matches"), matchData);
       setModalMessage("Match created successfully!");
-      setNewMatch(initialMatchState); 
+      setNewMatch(initialMatchState);
     } catch (err) {
       console.error("Error creating match:", err);
       setModalMessage("Failed to create match. Check console for error.");
@@ -534,26 +581,27 @@ export default function Dashboard({ user }) {
 
   // Function to update display name
   async function handleUpdateDisplayName(e) {
-    e.preventDefault(); 
+    e.preventDefault();
     if (!newDisplayName) return setModalMessage("Display name cannot be blank.");
-    if (newDisplayName === profile.displayName) return setModalMessage("No changes made.");
+    if (newDisplayName === profile.displayName)
+      return setModalMessage("No changes made.");
 
     setLoading(true);
     try {
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, {
-          displayName: newDisplayName
+          displayName: newDisplayName,
         });
       }
-      
+
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
-        displayName: newDisplayName
+        displayName: newDisplayName,
       });
 
       setProfile({
         ...profile,
-        displayName: newDisplayName
+        displayName: newDisplayName,
       });
 
       setModalMessage("Display name updated successfully!");
@@ -568,17 +616,21 @@ export default function Dashboard({ user }) {
   // FIXED PASSWORD RESET FUNCTION
   async function handlePasswordReset() {
     if (!user?.email) return setModalMessage("Could not find user email.");
-    
-    const providerIds = auth.currentUser.providerData.map(p => p.providerId);
-    
-    if (!providerIds.includes('password')) {
+
+    const providerIds = auth.currentUser.providerData.map((p) => p.providerId);
+
+    if (!providerIds.includes("password")) {
       console.log("Password reset blocked. User providers:", providerIds);
-      return setModalMessage("Password reset is not available. You signed in using Google.");
+      return setModalMessage(
+        "Password reset is not available. You signed in using Google."
+      );
     }
 
     try {
       await sendPasswordResetEmail(auth, user.email);
-      setModalMessage("Password reset email sent! Please check your inbox to set a new password.");
+      setModalMessage(
+        "Password reset email sent! Please check your inbox to set a new password."
+      );
     } catch (err) {
       console.error("Password reset error:", err);
       setModalMessage("Failed to send password reset email. Please try again later.");
@@ -606,7 +658,9 @@ export default function Dashboard({ user }) {
           <img src="/icon.jpg" alt="logo" className="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
-            <div className="subtitle">{profile.username || profile.displayName || profile.email}</div>
+            <div className="subtitle">
+              {profile.username || profile.displayName || profile.email}
+            </div>
           </div>
         </div>
         <div className="header-actions">
@@ -629,7 +683,17 @@ export default function Dashboard({ user }) {
                 <div>
                   <div className="muted">Coins</div>
                   <div className="big coin-row">
-                    <img src="/coin.jpg" alt="coin" className="coin-icon" style={{ width: "28px", height: "28px", borderRadius: "50%", animation: "spinCoin 3s linear infinite", }} />
+                    <img
+                      src="/coin.jpg"
+                      alt="coin"
+                      className="coin-icon"
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        animation: "spinCoin 3s linear infinite",
+                      }}
+                    />
                     <span>{profile.coins ?? 0}</span>
                   </div>
                 </div>
@@ -637,19 +701,27 @@ export default function Dashboard({ user }) {
                   <button className="btn" onClick={claimDaily}>
                     Claim Daily (+10)
                   </button>
-                  <button className="btn ghost" onClick={watchAd} disabled={adLoading}>
+                  <button
+                    className="btn ghost"
+                    onClick={watchAd}
+                    disabled={adLoading}
+                  >
                     {adLoading ? "Loading Ad..." : "Watch Ad (+5)"}
                   </button>
                 </div>
               </div>
             </section>
-            <section className="panel"> <h3>Welcome!</h3> <p>Check the matches tab to join a game.</p> </section>
+            <section className="panel">
+              {" "}
+              <h3>Welcome!</h3> <p>Check the matches tab to join a game.</p>{" "}
+            </section>
           </>
         )}
 
         {activeTab === "matches" && (
           <>
             {!selectedMatch ? (
+              // 1. MATCH LIST VIEW (Default)
               <section className="panel">
                 <h3>Available Matches</h3>
                 {loadingMatches && <p>Loading matches...</p>}
@@ -659,9 +731,14 @@ export default function Dashboard({ user }) {
                 <div className="grid">
                   {matches.map((match) => {
                     const hasJoined = match.playersJoined?.includes(user.uid);
-                    const isFull = match.playersJoined?.length >= match.maxPlayers;
+                    const isFull =
+                      match.playersJoined?.length >= match.maxPlayers;
                     return (
-                      <div key={match.id} className="match-card" onClick={() => setSelectedMatch(match)}>
+                      <div
+                        key={match.id}
+                        className="match-card"
+                        onClick={() => setSelectedMatch(match)}
+                      >
                         <img src={match.imageUrl} alt={match.title} />
                         <div className="match-info">
                           <div className="match-title">{match.title}</div>
@@ -670,9 +747,17 @@ export default function Dashboard({ user }) {
                           </div>
                           <div className="match-meta">
                             Entry: {match.entryFee} Coins | Joined:{" "}
-                            {match.playersJoined?.length || 0} / {match.maxPlayers}
+                            {match.playersJoined?.length || 0} /{" "}
+                            {match.maxPlayers}
                           </div>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); handleJoinMatch(match); }} disabled={hasJoined || isFull} >
+                          <button
+                            className="btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleJoinMatch(match);
+                            }}
+                            disabled={hasJoined || isFull}
+                          >
                             {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
                           </button>
                         </div>
@@ -682,33 +767,52 @@ export default function Dashboard({ user }) {
                 </div>
               </section>
             ) : (
+              // 2. MATCH DETAILS VIEW
               <section className="panel match-details-view">
-                <button className="back-btn" onClick={() => setSelectedMatch(null)}>
+                <button
+                  className="back-btn"
+                  onClick={() => setSelectedMatch(null)}
+                >
                   <FaArrowLeft /> Back to Matches
                 </button>
-                <img src={selectedMatch.imageUrl} alt="match" className="match-details-image" />
+                <img
+                  src={selectedMatch.imageUrl}
+                  alt="match"
+                  className="match-details-image"
+                />
                 <h3 className="modern-title">{selectedMatch.title}</h3>
                 <p className="match-details-time">
                   Starts: {formatMatchTime(selectedMatch.startTime)}
                 </p>
                 {(() => {
-                  const hasJoined = selectedMatch.playersJoined?.includes(user.uid);
+                  const hasJoined =
+                    selectedMatch.playersJoined?.includes(user.uid);
                   return (
                     <>
                       {hasJoined && selectedMatch.roomID ? (
                         <div className="room-details">
                           <h4>Room Details</h4>
-                          <p><span>Room ID:</span> {selectedMatch.roomID}</p>
-                          <p><span>Password:</span> {selectedMatch.roomPassword}</p>
+                          <p>
+                            <span>Room ID:</span> {selectedMatch.roomID}
+                          </p>
+                          <p>
+                            <span>Password:</span> {selectedMatch.roomPassword}
+                          </p>
                         </div>
                       ) : hasJoined ? (
                         <div className="room-details pending">
-                          <p>You have joined! Room ID and Password will be revealed here 15 minutes before the match starts.</p>
+                          <p>
+                            You have joined! Room ID and Password will be
+                            revealed here 15 minutes before the match starts.
+                          </p>
                         </div>
                       ) : null}
                       <div className="match-rules">
                         <h4>Match Rules</h4>
-                        <p>{selectedMatch.rules || "No specific rules provided for this match."}</p>
+                        <p>
+                          {selectedMatch.rules ||
+                            "No specific rules provided for this match."}
+                        </p>
                       </div>
                     </>
                   );
@@ -720,33 +824,62 @@ export default function Dashboard({ user }) {
 
         {activeTab === "topup" && (
           <section className="modern-card">
-            <h3 className="modern-title">Top-up Coins</h3> <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p> 
-            <div className="amount-options"> 
-              {[20, 50, 100, 200].map((amt) => ( 
-                <div key={amt} className={`amount-btn ${ selectedAmount === amt ? "selected" : "" }`} onClick={() => setSelectedAmount(amt)} > 
-                  ₹{amt} = {amt * 10} Coins 
-                </div> 
-              ))} 
-            </div> 
-            <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={topupAmount} onChange={(e) => { setSelectedAmount(null); setTopupAmount(e.target.value); }} /> <button className="btn glow large" onClick={handleTopup}> Submit Top-up Request </button>
+            <h3 className="modern-title">Top-up Coins</h3>{" "}
+            <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p>
+            <div className="amount-options">
+              {[20, 50, 100, 200].map((amt) => (
+                <div
+                  key={amt}
+                  className={`amount-btn ${
+                    selectedAmount === amt ? "selected" : ""
+                  }`}
+                  onClick={() => setSelectedAmount(amt)}
+                >
+                  ₹{amt} = {amt * 10} Coins
+                </div>
+              ))}
+            </div>
+            <input
+              type="number"
+              className="modern-input"
+              placeholder="Or enter custom amount ₹"
+              value={topupAmount}
+              onChange={(e) => {
+                setSelectedAmount(null);
+                setTopupAmount(e.target.value);
+              }}
+            />{" "}
+            <button className="btn glow large" onClick={handleTopup}>
+              {" "}
+              Submit Top-up Request{" "}
+            </button>
           </section>
         )}
 
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
+            {/* 1. UPI Section */}
             <section className="panel">
-              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem Coins as UPI</h3>
-              <p className="modern-subtitle" style={{ paddingLeft: '10px' }}>10% commission fee</p>
+              <h3 className="modern-title" style={{ paddingLeft: "10px" }}>
+                Redeem Coins as UPI
+              </h3>
+              <p className="modern-subtitle" style={{ paddingLeft: "10px" }}>
+                10% commission fee
+              </p>
               <div className="reward-grid">
                 {rewardOptions
-                  .filter((opt) => opt.type === 'UPI')
+                  .filter((opt) => opt.type === "UPI")
                   .map((reward) => (
                     <div
                       key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
-                      <img src={reward.icon} alt="UPI" className="reward-icon" />
+                      <img
+                        src={reward.icon}
+                        alt="UPI"
+                        className="reward-icon"
+                      />
                       <div className="reward-cost">
                         <img src="/coin.jpg" alt="coin" />
                         <span>{reward.cost}</span>
@@ -756,18 +889,25 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
+            {/* 2. Google Play Section */}
             <section className="panel">
-              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Google Gift Card</h3>
+              <h3 className="modern-title" style={{ paddingLeft: "10px" }}>
+                Redeem as Google Gift Card
+              </h3>
               <div className="reward-grid">
                 {rewardOptions
-                  .filter((opt) => opt.type === 'Google Play')
+                  .filter((opt) => opt.type === "Google Play")
                   .map((reward) => (
                     <div
                       key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
-                      <img src={reward.icon} alt="Google Play" className="reward-icon" />
+                      <img
+                        src={reward.icon}
+                        alt="Google Play"
+                        className="reward-icon"
+                      />
                       <div className="reward-cost">
                         <img src="/coin.jpg" alt="coin" />
                         <span>{reward.cost}</span>
@@ -777,18 +917,25 @@ export default function Dashboard({ user }) {
                   ))}
               </div>
             </section>
+            {/* 3. Amazon Section */}
             <section className="panel">
-              <h3 className="modern-title" style={{ paddingLeft: '10px' }}>Redeem as Amazon Gift Card</h3>
+              <h3 className="modern-title" style={{ paddingLeft: "10px" }}>
+                Redeem as Amazon Gift Card
+              </h3>
               <div className="reward-grid">
                 {rewardOptions
-                  .filter((opt) => opt.type === 'Amazon')
+                  .filter((opt) => opt.type === "Amazon")
                   .map((reward) => (
                     <div
                       key={`${reward.type}-${reward.amount}`}
                       className="reward-card"
                       onClick={() => handleRedeemReward(reward)}
                     >
-                      <img src={reward.icon} alt="Amazon" className="reward-icon" />
+                      <img
+                        src={reward.icon}
+                        alt="Amazon"
+                        className="reward-icon"
+                      />
                       <div className="reward-cost">
                         <img src="/coin.jpg" alt="coin" />
                         <span>{reward.cost}</span>
@@ -806,28 +953,170 @@ export default function Dashboard({ user }) {
             <h3>Admin Panel</h3>
             <form onSubmit={handleCreateMatch} className="admin-form">
               <h4>Create New Match</h4>
-              <input name="title" className="modern-input" placeholder="Match Title (e.g., 1v1 Clash Squad)" value={newMatch.title} onChange={handleNewMatchChange} />
-              <input name="imageUrl" className="modern-input" placeholder="Image URL (e.g., /cs.jpg)" value={newMatch.imageUrl} onChange={handleNewMatchChange} />
+              <input
+                name="title"
+                className="modern-input"
+                placeholder="Match Title (e.g., 1v1 Clash Squad)"
+                value={newMatch.title}
+                onChange={handleNewMatchChange}
+              />
+              <input
+                name="imageUrl"
+                className="modern-input"
+                placeholder="Image URL (e.g., /cs.jpg)"
+                value={newMatch.imageUrl}
+                onChange={handleNewMatchChange}
+              />
               <label>Start Time</label>
-              <input name="startTime" type="datetime-local" className="modern-input" value={newMatch.startTime} onChange={handleNewMatchChange} />
+              <input
+                name="startTime"
+                type="datetime-local"
+                className="modern-input"
+                value={newMatch.startTime}
+                onChange={handleNewMatchChange}
+              />
               <label>Match Type</label>
-              <select name="type" className="modern-input" value={newMatch.type} onChange={handleNewMatchChange} > <option value="BR">Battle Royale</option> <option value="CS">Clash Squad</option> </select>
+              <select
+                name="type"
+                className="modern-input"
+                value={newMatch.type}
+                onChange={handleNewMatchChange}
+              >
+                {" "}
+                <option value="BR">Battle Royale</option>{" "}
+                <option value="CS">Clash Squad</option>{" "}
+              </select>
               <label>Prize Model</label>
-              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={handleNewMatchChange} > <option value="Scalable">Scalable (BR - % commission)</option> <option value="Fixed">Fixed (CS - fixed prize)</option> </select>
+              <select
+                name="prizeModel"
+                className="modern-input"
+                value={newMatch.prizeModel}
+                onChange={handleNewMatchChange}
+              >
+                {" "}
+                <option value="Scalable">
+                  Scalable (BR - % commission)
+                </option>{" "}
+                <option value="Fixed">Fixed (CS - fixed prize)</option>{" "}
+              </select>
               <label>Entry Fee (Coins)</label>
-              <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={handleNewMatchChange} />
+              <input
+                name="entryFee"
+                type="number"
+                className="modern-input"
+                value={newMatch.entryFee}
+                onChange={handleNewMatchChange}
+              />
               <label>Max Players</label>
-              <input name="maxPlayers" type="number" className="modern-input" value={newMatch.maxPlayers} onChange={handleNewMatchChange} />
-              {newMatch.prizeModel === "Scalable" ? ( <> <label>Per Kill Reward (Coins)</label> <input name="perKillReward" type="number" className="modern-input" value={newMatch.perKillReward} onChange={handleNewMatchChange} /> <label>Commission (%)</label> <input name="commissionPercent" type="number" className="modern-input" value={newMatch.commissionPercent} onChange={handleNewMatchChange} /> </> ) : ( <> <label>Booyah Prize (Fixed Total)</label> <input name="booyahPrize" type="number" className="modern-input" value={newMatch.booyahPrize} onChange={handleNewMatchChange} /> </> )}
+              <input
+                name="maxPlayers"
+                type="number"
+                className="modern-input"
+                value={newMatch.maxPlayers}
+                onChange={handleNewMatchChange}
+              />
+              {newMatch.prizeModel === "Scalable" ? (
+                <>
+                  {" "}
+                  <label>Per Kill Reward (Coins)</label>{" "}
+                  <input
+                    name="perKillReward"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.perKillReward}
+                    onChange={handleNewMatchChange}
+                  />{" "}
+                  <label>Commission (%)</label>{" "}
+                  <input
+                    name="commissionPercent"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.commissionPercent}
+                    onChange={handleNewMatchChange}
+                  />{" "}
+                </>
+              ) : (
+                <>
+                  {" "}
+                  <label>Booyah Prize (Fixed Total)</label>{" "}
+                  <input
+                    name="booyahPrize"
+                    type="number"
+                    className="modern-input"
+                    value={newMatch.booyahPrize}
+                    onChange={handleNewMatchChange}
+                  />{" "}
+                </>
+              )}
               <label>Rules</label>
-              <textarea name="rules" className="modern-input" placeholder="Enter match rules..." value={newMatch.rules} onChange={handleNewMatchChange} />
-              <button type="submit" className="btn glow"> Create Match </button>
+              <textarea
+                name="rules"
+                className="modern-input"
+                placeholder="Enter match rules..."
+                value={newMatch.rules}
+                onChange={handleNewMatchChange}
+              />
+              <button type="submit" className="btn glow">
+                {" "}
+                Create Match{" "}
+              </button>
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
             <h4>Top-up Requests</h4>
-            {requests.topup.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} </span> <div> <button className="btn small" onClick={() => approveRequest("topup", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("topup", r)} > Reject </button> </div> </div> ))}
+            {requests.topup.map((r) => (
+              <div key={r.id} className="admin-row">
+                {" "}
+                <span>
+                  {" "}
+                  {r.email} | ₹{r.amount}{" "}
+                </span>{" "}
+                <div>
+                  {" "}
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("topup", r)}
+                  >
+                    {" "}
+                    Approve{" "}
+                  </button>{" "}
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("topup", r)}
+                  >
+                    {" "}
+                    Reject{" "}
+                  </button>{" "}
+                </div>{" "}
+              </div>
+            ))}
             <h4>Withdraw Requests</h4>
-            {requests.withdraw.map((r) => ( <div key={r.id} className="admin-row"> <span> {r.email} | ₹{r.amount} | {r.type === 'UPI' ? `UPI: ${r.upiId}` : `Type: ${r.type}`} </span> <div> <button className="btn small" onClick={() => approveRequest("withdraw", r)} > Approve </button> <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)} > Reject </button> </div> </div> ))}
+            {requests.withdraw.map((r) => (
+              <div key={r.id} className="admin-row">
+                {" "}
+                <span>
+                  {" "}
+                  {r.email} | ₹{r.amount} |{" "}
+                  {r.type === "UPI" ? `UPI: ${r.upiId}` : `Type: ${r.type}`}{" "}
+                </span>{" "}
+                <div>
+                  {" "}
+                  <button
+                    className="btn small"
+                    onClick={() => approveRequest("withdraw", r)}
+                  >
+                    {" "}
+                    Approve{" "}
+                  </button>{" "}
+                  <button
+                    className="btn small ghost"
+                    onClick={() => rejectRequest("withdraw", r)}
+                  >
+                    {" "}
+                    Reject{" "}
+                  </button>{" "}
+                </div>{" "}
+              </div>
+            ))}
           </section>
         )}
 
@@ -836,16 +1125,17 @@ export default function Dashboard({ user }) {
             {accountView === "main" && (
               <>
                 <section className="panel account-profile-card">
-                  <h3 className="modern-title">{profile.username || "Set Your Username"}</h3>
+                  <h3 className="modern-title">
+                    {profile.username || "Set Your Username"}
+                  </h3>
                   <p className="modern-subtitle">{profile.email}</p>
                 </section>
-                
+
                 <section className="panel account-menu">
-                  {/* (Removed How to Play button) */}
                   <button
                     className="account-option"
                     onClick={() => {
-                      setNewDisplayName(profile.displayName || ""); 
+                      setNewDisplayName(profile.displayName || ""); // Pre-fill form
                       setAccountView("profile");
                     }}
                   >
@@ -853,32 +1143,84 @@ export default function Dashboard({ user }) {
                     <span>Profile Settings</span>
                     <span className="arrow">&gt;</span>
                   </button>
-                  <button className="account-option" onClick={() => setShowUsernameModal(true)} > <FaUserEdit size={20} /> <span>Edit In-Game Username</span> <span className="arrow">&gt;</span> </button>
-                  <button className="account-option" onClick={() => setAccountView("refer")} > <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span> </button>
-                  <button className="account-option" onClick={() => setAccountView("match_history")} > <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span> </button>
-                  <button className="account-option" onClick={() => setAccountView("withdraw_history")} > <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span> </button>
-                  <button className="account-option logout" onClick={handleLogout}> <FaSignOutAlt size={20} /> <span>Logout</span> <span className="arrow">&gt;</span> </button>
+                  <button
+                    className="account-option"
+                    onClick={() => setShowUsernameModal(true)}
+                  >
+                    {" "}
+                    <FaUserEdit size={20} /> <span>Edit In-Game Username</span>{" "}
+                    <span className="arrow">&gt;</span>{" "}
+                  </button>
+                  <button
+                    className="account-option"
+                    onClick={() => setAccountView("refer")}
+                  >
+                    {" "}
+                    <FaGift size={20} /> <span>Refer a Friend</span>{" "}
+                    <span className="arrow">&gt;</span>{" "}
+                  </button>
+                  <button
+                    className="account-option"
+                    onClick={() => setAccountView("match_history")}
+                  >
+                    {" "}
+                    <FaHistory size={20} /> <span>Match History</span>{" "}
+                    <span className="arrow">&gt;</span>{" "}
+                  </button>
+                  <button
+                    className="account-option"
+                    onClick={() => setAccountView("withdraw_history")}
+                  >
+                    {" "}
+                    <FaMoneyBillWave size={20} />{" "}
+                    <span>Withdrawal History</span>{" "}
+                    <span className="arrow">&gt;</span>{" "}
+                  </button>
+                  <button
+                    className="account-option logout"
+                    onClick={handleLogout}
+                  >
+                    {" "}
+                    <FaSignOutAlt size={20} /> <span>Logout</span>{" "}
+                    <span className="arrow">&gt;</span>{" "}
+                  </button>
                 </section>
               </>
             )}
 
             {accountView === "profile" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}>
+                <button
+                  className="back-btn"
+                  onClick={() => setAccountView("main")}
+                >
                   <FaArrowLeft /> Back
                 </button>
                 <h3 className="modern-title">Profile Settings</h3>
                 <div className="profile-settings-form">
                   <div className="form-group">
                     <label>Email</label>
-                    <input type="text" className="modern-input" value={user.email} disabled />
+                    <input
+                      type="text"
+                      className="modern-input"
+                      value={user.email}
+                      disabled
+                    />
                   </div>
                   <div className="form-group">
                     <label>User ID</label>
-                    <input type="text" className="modern-input" value={user.uid} disabled />
+                    <input
+                      type="text"
+                      className="modern-input"
+                      value={user.uid}
+                      disabled
+                    />
                   </div>
                   <hr />
-                  <form className="form-group" onSubmit={handleUpdateDisplayName}>
+                  <form
+                    className="form-group"
+                    onSubmit={handleUpdateDisplayName}
+                  >
                     <label>Display Name</label>
                     <input
                       type="text"
@@ -902,16 +1244,27 @@ export default function Dashboard({ user }) {
               </section>
             )}
 
+            {/* (Removed HowToPlay view) */}
+
             {accountView === "refer" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
+                <button
+                  className="back-btn"
+                  onClick={() => setAccountView("main")}
+                >
+                  {" "}
+                  <FaArrowLeft /> Back{" "}
+                </button>
                 <h3 className="modern-title">Refer a Friend</h3>
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
                   <div className="referral-code">
                     {profile.referralCode ? profile.referralCode : "Loading..."}
                   </div>
-                  <p className="modern-subtitle" style={{ textAlign: "center" }}>
+                  <p
+                    className="modern-subtitle"
+                    style={{ textAlign: "center" }}
+                  >
                     Share this code with your friends. When they use it, they get
                     50 coins and you get 20 coins!
                   </p>
@@ -919,21 +1272,45 @@ export default function Dashboard({ user }) {
                 {!profile.hasRedeemedReferral && (
                   <div className="referral-form">
                     <p>Have a friend's code?</p>
-                    <input type="text" className="modern-input" placeholder="Enter referral code" value={referralInput} onChange={(e) => setReferralInput(e.target.value)} />
-                    <button className="btn glow large" onClick={handleRedeemReferral} > Redeem Code </button>
+                    <input
+                      type="text"
+                      className="modern-input"
+                      placeholder="Enter referral code"
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value)}
+                    />
+                    <button
+                      className="btn glow large"
+                      onClick={handleRedeemReferral}
+                    >
+                      {" "}
+                      Redeem Code{" "}
+                    </button>
                   </div>
                 )}
               </section>
             )}
             {accountView === "match_history" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
+                <button
+                  className="back-btn"
+                  onClick={() => setAccountView("main")}
+                >
+                  {" "}
+                  <FaArrowLeft /> Back{" "}
+                </button>
                 <MatchHistoryPage user={user} />
               </section>
             )}
             {accountView === "withdraw_history" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setAccountView("main")}> <FaArrowLeft /> Back </button>
+                <button
+                  className="back-btn"
+                  onClick={() => setAccountView("main")}
+                >
+                  {" "}
+                  <FaArrowLeft /> Back{" "}
+                </button>
                 <WithdrawalHistoryPage user={user} />
               </section>
             )}
@@ -948,8 +1325,8 @@ export default function Dashboard({ user }) {
             className={`nav-btn ${activeTab === tab ? "active" : ""}`}
             onClick={() => {
               setActiveTab(tab);
-              setAccountView("main"); 
-              setSelectedMatch(null); 
+              setAccountView("main");
+              setSelectedMatch(null);
             }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -961,7 +1338,9 @@ export default function Dashboard({ user }) {
         <div className="modal-overlay">
           <div className="modal-content modern-card">
             <h3 className="modern-title">
-              {profile.username ? "Edit Your Username" : "Set Your In-Game Username"}
+              {profile.username
+                ? "Edit Your Username"
+                : "Set Your In-Game Username"}
             </h3>
             <p className="modern-subtitle">
               You must set a username before joining a match. This name will be
@@ -975,13 +1354,17 @@ export default function Dashboard({ user }) {
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
               />
-              <button type="submit" className="btn glow large" disabled={loading}>
+              <button
+                type="submit"
+                className="btn glow large"
+                disabled={loading}
+              >
                 {loading ? "Saving..." : "Save"}
               </button>
               <button
                 type="button"
                 className="btn large ghost"
-                style={{marginTop: '10px'}}
+                style={{ marginTop: "10px" }}
                 onClick={() => setShowUsernameModal(false)}
               >
                 Cancel
