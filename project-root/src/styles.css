@@ -804,3 +804,22 @@ body,
 
 /* (Removed HowToPlay styles) */
   
+/* === ADDED: Match Details Header === */
+.match-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* Make the new edit button look right */
+.match-details-header .btn.small {
+  display: flex;
+  align-items: center;
+  margin-top: 0; /* Override default button margin */
+}
+
+/* Remove margin from back button since the header now has it */
+.back-btn {
+  margin-bottom: 0;
+}
