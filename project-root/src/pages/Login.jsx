@@ -4,30 +4,28 @@ import {
   signInWithEmailAndPassword,
   sendEmailVerification,
   signInWithPopup,
-  GoogleAuthProvider,
-  // --- 1. ADD THIS ---
+  // --- REMOVED 'GoogleAuthProvider' from here ---
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { auth, db } from "../firebase";
+
+// --- 1. IMPORT 'provider' FROM FIREBASE.JS ---
+import { auth, db, provider } from "../firebase"; 
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link } from "react-router-dom"; 
 
-const provider = new GoogleAuthProvider();
+// --- 2. REMOVED THIS LINE (it's now imported) ---
+// const provider = new GoogleAuthProvider();
 
 export default function Login() {
+  // (All the rest of the code is 100% the same as I sent before)
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  
-  // --- 2. ADD THIS STATE ---
-  // This will show a special view for password reset
   const [isResetMode, setIsResetMode] = useState(false);
-
   const [referral, setReferral] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   
-  // (This function is unchanged)
   async function saveInitialUser(user, referralCode = "") {
     try {
       const ref = doc(db, "users", user.uid);
@@ -51,30 +49,24 @@ export default function Login() {
     }
   }
 
-  // (This function is unchanged)
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
-
     if (isRegister) {
-      // --- REGISTER LOGIC ---
       try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         await saveInitialUser(user, referral);
         await sendEmailVerification(user);
-        
         setErr("Registration successful! Please check your email to verify your account.");
         setLoading(false);
-
       } catch (error) {
         console.error("Registration error:", error);
         setErr(error.message);
         setLoading(false);
       }
     } else {
-      // --- LOGIN LOGIC ---
       try {
         await signInWithEmailAndPassword(auth, email, password);
         setLoading(false);
@@ -86,11 +78,11 @@ export default function Login() {
     }
   };
 
-  // (This function is unchanged)
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
+      // This 'provider' is now the one imported from firebase.js
       const res = await signInWithPopup(auth, provider);
       await saveInitialUser(res.user, referral);
     } catch (error) {
@@ -101,7 +93,6 @@ export default function Login() {
     }
   };
 
-  // --- 3. ADD THIS NEW FUNCTION ---
   const handlePasswordReset = async (e) => {
     e.preventDefault();
     if (!email) {
@@ -114,7 +105,6 @@ export default function Login() {
       await sendPasswordResetEmail(auth, email);
       setLoading(false);
       setErr("Password reset email sent! Check your inbox.");
-      // After 3 seconds, go back to the login form
       setTimeout(() => {
         setIsResetMode(false);
         setErr("");
@@ -126,15 +116,13 @@ export default function Login() {
     }
   };
 
-
+  // (The entire 'return' (UI) part is exactly the same, no changes)
   return (
     <div className="auth-root">
-      
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
       <div className="auth-overlay" />
-
       <div className="auth-card">
         <img
           src="/icon.jpg"
@@ -143,9 +131,7 @@ export default function Login() {
           onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
         />
         
-        {/* --- 4. ADDED A NEW UI 'if' BLOCK --- */}
         {isResetMode ? (
-          // --- PASSWORD RESET VIEW ---
           <>
             <h2>Reset Password</h2>
             <p className="text-muted">
@@ -178,13 +164,10 @@ export default function Login() {
               </span>
             </p>
           </>
-
         ) : (
-          // --- ORIGINAL LOGIN/REGISTER VIEW ---
           <>
             <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
             <form onSubmit={handleAuthSubmit} className="form-col">
-              {/* (inputs are unchanged) */}
               <input
                 placeholder="Email"
                 type="email"
@@ -210,8 +193,6 @@ export default function Login() {
                   onChange={(e) => setReferral(e.target.value)}
                 />
               )}
-
-              {/* --- 5. ADD 'FORGOT PASSWORD' LINK --- */}
               {!isRegister && (
                 <div className="forgot-password">
                   <span
@@ -225,14 +206,11 @@ export default function Login() {
                   </span>
                 </div>
               )}
-              
               {err && <div className="error">{err}</div>}
-              
               <button className="btn" type="submit" disabled={loading}>
                 {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
               </button>
             </form>
-
             <p className="text-muted">
               {isRegister ? "Already have an account? " : "Don't have an account? "}
               <span
@@ -245,18 +223,14 @@ export default function Login() {
                 {isRegister ? "Sign In" : "Register"}
               </span>
             </p>
-
             <div className="sep">OR</div>
-
             <button className="btn google" onClick={handleGoogle} disabled={loading}>
               Sign in with Google
             </button>
           </>
         )}
       </div>
-
       <div className="login-footer-links">
-        {/* (This section is unchanged) */}
         <Link to="/privacy-policy">Privacy Policy</Link>
         <span>•</span>
         <Link to="/terms-of-service">Terms of Service</Link>
@@ -265,7 +239,6 @@ export default function Login() {
         <span>•</span>
         <Link to="/contact">Contact</Link>
       </div>
-      
     </div>
   );
 }
