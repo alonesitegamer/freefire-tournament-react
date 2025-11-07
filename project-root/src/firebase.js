@@ -1,7 +1,8 @@
+// firebase.js - initialize and export auth + firestore
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-// We also need to import App Check
+// 👇 *** ADD THIS IMPORT ***
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
@@ -16,13 +17,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+// 👇 *** ADD THIS BLOCK ***
 // Initialize App Check
 const appCheck = initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
   isTokenAutoRefreshEnabled: true
 });
 
+// Your existing exports
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
-export const appCheckInstance = appCheck; // 👈 *** THIS IS THE NEW LINE ***
+
+// 👇 *** ADD THIS EXPORT ***
+export const appCheckInstance = appCheck; 
