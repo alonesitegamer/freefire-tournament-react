@@ -18,7 +18,6 @@ import {
 } from "firebase/firestore";
 import { getToken } from "firebase/app-check";
 import { useNavigate } from "react-router-dom";
-import DashboardUI from './DashboardUI'; // 👈 *** IMPORT YOUR NEW UI FILE ***
 
 // --- ALL LOGIC AND STATE MOVED HERE ---
 
