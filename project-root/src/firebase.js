@@ -17,7 +17,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize App Check
-// This is your site key from the screenshot
 const appCheck = initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
   isTokenAutoRefreshEnabled: true
@@ -26,4 +25,4 @@ const appCheck = initializeAppCheck(app, {
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
-export const appCheckInstance = appCheck; // 👈 *** THIS IS THE NEW LINE ***
+export const appCheckInstance = appCheck; // 👈 *** THIS IS THE FIX ***
