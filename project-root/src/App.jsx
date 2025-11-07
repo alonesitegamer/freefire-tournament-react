@@ -35,14 +35,12 @@ export default function App() {
           // If App Check fails, we can't let them in
           setUser(null);
         } finally {
-          // 👇 *** THIS IS THE FIX ***
           // We only stop loading *after* the check is done.
           setLoading(false);
         }
       } else {
         // User is logged out
         setUser(null);
-        // 👇 *** THIS IS THE FIX ***
         // Stop loading
         setLoading(false);
       }
