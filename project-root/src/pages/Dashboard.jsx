@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebase"; // 👈 No 'functions'
-// 👈 No 'httpsCallable'
+import { auth, db, appCheckInstance } from "../firebase"; // 👈 *** IMPORT appCheckInstance ***
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
@@ -15,10 +14,10 @@ import {
   where,
   orderBy,
   arrayUnion,
-  // increment, // 👈 *** THIS WAS THE BUG. I've removed it. ***
+  increment, 
 } from "firebase/firestore";
-import { getApp } from "firebase/app"; 
-import { getAppCheck, getToken } from "firebase/app-check"; 
+// 👇 *** REMOVED getApp and getAppCheck, ADDED getToken ***
+import { getToken } from "firebase/app-check"; 
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
 import {
@@ -229,10 +228,10 @@ export default function Dashboard({ user }) {
     setLoading(true);
     try {
       // 1. Get the App Check token
-      const appCheck = getAppCheck(getApp());
       let appCheckToken;
       try {
-        appCheckToken = await getToken(appCheck, false); // false = don't force refresh
+        // 👇 *** THIS IS THE FIX ***
+        appCheckToken = await getToken(appCheckInstance, false); // Use the imported instance
       } catch (err) {
         console.error("Failed to get App Check token:", err);
         setModalMessage("Security check failed. Please refresh and try again.");
@@ -697,10 +696,10 @@ export default function Dashboard({ user }) {
     setLoading(true);
     try {
       // 1. Get App Check token
-      const appCheck = getAppCheck(getApp());
       let appCheckToken;
       try {
-        appCheckToken = await getToken(appCheck, false);
+        // 👇 *** THIS IS THE FIX ***
+        appCheckToken = await getToken(appCheckInstance, false); // Use the imported instance
       } catch (err) {
         throw new Error("Failed to get App Check token.");
       }
@@ -1211,7 +1210,7 @@ export default function Dashboard({ user }) {
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
             
-            {/* 👇 NEW: Section to Settle Matches */}
+            {/* Settle Matches */}
             <h4>Settle Upcoming Matches</h4>
             <div className="admin-match-list">
               {matches.filter(m => m.status === 'upcoming').length > 0 ? (
