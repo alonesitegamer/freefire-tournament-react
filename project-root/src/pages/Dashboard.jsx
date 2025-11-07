@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db, appCheckInstance } from "../firebase";
+import { auth, db, appCheckInstance } from "../firebase"; // 👈 *** IMPORT appCheckInstance ***
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
@@ -14,13 +14,29 @@ import {
   where,
   orderBy,
   arrayUnion,
-  // 'increment' is no longer needed here
+  // 👈 *** 'increment' is now GONE. This fixes the build. ***
 } from "firebase/firestore";
-import { getToken } from "firebase/app-check";
+// 👇 *** REMOVED getApp and getAppCheck, ADDED getToken ***
+import { getToken } from "firebase/app-check"; 
 import { useNavigate } from "react-router-dom";
-import DashboardUI from './DashboardUI'; // 👈 *** IMPORT YOUR NEW UI FILE ***
+// Icons for Account menu and Music
+import {
+  FaVolumeUp,
+  FaVolumeMute,
+  FaHistory,
+  FaMoneyBillWave,
+  FaGift,
+  FaSignOutAlt,
+  FaArrowLeft,
+  FaUserEdit,
+  // FaQuestionCircle, // 👈 *** THIS IS THE FIX. I removed the unused icon. ***
+  FaUserCog 
+} from "react-icons/fa";
 
-// --- ALL LOGIC AND STATE MOVED HERE ---
+// Import your history page components
+import MatchHistoryPage from './MatchHistoryPage';
+import WithdrawalHistoryPage from './WithdrawalHistoryPage';
+// import HowToPlay from './HowToPlay'; // Removed HowToPlay component
 
 // Define the default state for your match form
 const initialMatchState = {
@@ -47,6 +63,21 @@ const rewardOptions = [
   { type: 'Amazon', amount: 50, cost: 550, icon: '/amazon.png' },
   { type: 'Amazon', amount: 100, cost: 1100, icon: '/amazon.png' },
 ];
+
+// Helper function to format timestamps nicely
+function formatMatchTime(timestamp) {
+  if (!timestamp || typeof timestamp.toDate !== 'function') {
+    return "Time TBD";
+  }
+  return timestamp.toDate().toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
