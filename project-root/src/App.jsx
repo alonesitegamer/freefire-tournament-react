@@ -1,102 +1,79 @@
-import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { onIdTokenChanged } from "firebase/auth";
+import { auth, appCheckInstance } from "./firebase"; // Import appCheckInstance
+import { getToken } from "firebase/app-check"; // Import getToken
+
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Splash from "./components/Splash";
-import MatchHistoryPage from "./pages/MatchHistoryPage";
-import WithdrawalHistoryPage from "./pages/WithdrawalHistoryPage";
-import { auth } from "./firebase";
-import { onAuthStateChanged } from "firebase/auth";
 
-// --- IMPORTS FOR NEW PAGES (Paths fixed) ---
-import PrivacyPolicy from "./components/PrivacyPolicy.jsx"; 
-import TermsOfService from "./components/TermOfService.jsx"; 
-import About from "./components/About.jsx"; 
-import Contact from "./components/Contact.jsx"; 
-// Footer import has been REMOVED
+// Private route component
+function Private({ user, children }) {
+  return user ? children : <Navigate to="/login" replace />;
+}
 
 export default function App() {
-  const [user, setUser] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    try {
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
+  useEffect(() => {
+    // This listens for user login changes
+    const unsubscribeAuth = onIdTokenChanged(auth, async (user) => {
+      if (user) {
+        // User is logged in.
+        // NOW, we must wait for the App Check token.
+        try {
+          console.log("User found, waiting for App Check token...");
+          // Wait for the token to be ready
+          await getToken(appCheckInstance, false);
+          console.log("App Check token is ready!");
+          // Once we have the token, set the user
+          setUser(user);
+        } catch (err) {
+          console.error("App Check error, logging out:", err);
+          // If App Check fails, we can't let them in
+          setUser(null);
+        } finally {
+          // 👇 *** THIS IS THE FIX ***
+          // We only stop loading *after* the check is done.
+          setLoading(false);
+        }
+      } else {
+        // User is logged out
+        setUser(null);
+        // 👇 *** THIS IS THE FIX ***
+        // Stop loading
         setLoading(false);
-      });
-      return () => unsubscribe();
-    } catch (err) {
-      console.error("Auth listener error:", err);
-      setError(err.message);
-      setLoading(false);
-    }
-  }, []);
+      }
+    });
 
-  // Error display (Original code, unchanged)
-  if (error) {
-    return (
-      <div
-        style={{
-          height: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#111",
-          color: "white",
-          fontFamily: "monospace",
-        }}
-      >
-        <h2>⚠️ App crashed</h2>
-        <p>{error}</p>
-      </div>
-    );
+    // Cleanup listener on unmount
+    return () => unsubscribeAuth();
+  }, []); // Only run this once
+
+  // Show the splash screen while checking login & App Check
+  if (loading) {
+    return <Splash />;
   }
 
-  // Loading state (Original code, unchanged)
-  if (loading) return <Splash />;
-
-  // We only need Routes. The Footer component is gone.
   return (
-    <Routes>
-      {/* --- YOUR ORIGINAL AUTH-PROTECTED ROUTES (Unchanged) --- */}
-      <Route
-        path="/"
-        element={
-          user ? (
-            <Dashboard user={user} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/match-history"
-        element={
-          user ? <MatchHistoryPage /> : <Navigate to="/login" replace />
-        }
-      />
-      <Route
-        path="/withdrawal-history"
-        element={
-          user ? <WithdrawalHistoryPage /> : <Navigate to="/login" replace />
-        }
-      />
-      <Route
-        path="/login"
-        element={user ? <Navigate to="/" replace /> : <Login />}
-      />
-
-      {/* --- NEW PUBLIC ROUTES (Unchanged, these need to exist) --- */}
-      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-      <Route path="/terms-of-service" element={<TermsOfService />} />
-      <Route path="/about" element={<About />} />
-      <Route path="/contact" element={<Contact />} />
-
-      {/* Original catch-all route (Unchanged) */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Private user={user}>
+              <Dashboard user={user} />
+            </Private>
+          }
+        />
+        <Route
+          path="/login"
+          element={user ? <Navigate to="/" replace /> : <Login />}
+        />
+        {/* Add your other public routes here */}
+      </Routes>
+    </BrowserRouter>
   );
 }
