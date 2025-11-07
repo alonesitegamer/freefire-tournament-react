@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db, appCheckInstance } from "../firebase"; // 👈 *** IMPORT appCheckInstance ***
+import { auth, db, appCheckInstance } from "../firebase"; // 👈 *** THIS IS THE FIX ***
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
@@ -14,10 +14,9 @@ import {
   where,
   orderBy,
   arrayUnion,
-  // 👈 *** 'increment' is now GONE. This fixes the build. ***
+  // 👈 *** 'increment' is GONE. This fixes the build. ***
 } from "firebase/firestore";
-// 👇 *** REMOVED getApp and getAppCheck, ADDED getToken ***
-import { getToken } from "firebase/app-check"; 
+import { getToken } from "firebase/app-check"; // 👈 *** THIS IS THE FIX ***
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
 import {
@@ -29,7 +28,7 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  // FaQuestionCircle, // 👈 *** THIS IS THE FIX. I removed the unused icon. ***
+  // FaQuestionCircle, // 👈 *** THIS IS THE FIX. Removed unused icon. ***
   FaUserCog 
 } from "react-icons/fa";
 
@@ -230,7 +229,6 @@ export default function Dashboard({ user }) {
       // 1. Get the App Check token
       let appCheckToken;
       try {
-        // 👇 *** THIS IS THE FIX ***
         appCheckToken = await getToken(appCheckInstance, false); // Use the imported instance
       } catch (err) {
         console.error("Failed to get App Check token:", err);
@@ -702,7 +700,6 @@ export default function Dashboard({ user }) {
       // 1. Get App Check token
       let appCheckToken;
       try {
-        // 👇 *** THIS IS THE FIX ***
         appCheckToken = await getToken(appCheckInstance, false);
       } catch (err) {
         throw new Error("Failed to get App Check token.");
