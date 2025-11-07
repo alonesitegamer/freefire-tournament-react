@@ -29,7 +29,7 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle, 
+  // FaQuestionCircle, // 👈 *** THIS IS THE FIX. I removed the unused icon. ***
   FaUserCog 
 } from "react-icons/fa";
 
@@ -239,19 +239,23 @@ export default function Dashboard({ user }) {
         return;
       }
       
-      // 2. Call the new API endpoint
+      // 2. Get the User Auth token
+      const idToken = await user.getIdToken();
+      
+      // 3. Call the new API endpoint
       const response = await fetch('/api/redeemReferralCode', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Firebase-AppCheck': appCheckToken.token, // Send the token in the header
+          'Authorization': `Bearer ${idToken}`, // Send the User token
+          'X-Firebase-AppCheck': appCheckToken.token, // Send the App Check token
         },
         body: JSON.stringify({ code: referralInput.toUpperCase() }),
       });
 
       const data = await response.json();
 
-      // 3. Show success or error from the server
+      // 4. Show success or error from the server
       if (data.success) {
         // Update local state to match
         setProfile({
@@ -704,11 +708,15 @@ export default function Dashboard({ user }) {
         throw new Error("Failed to get App Check token.");
       }
 
-      // 2. Call the new API endpoint
+      // 2. Get the User Auth token
+      const idToken = await user.getIdToken();
+
+      // 3. Call the new API endpoint
       const response = await fetch('/api/settleMatch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
           'X-Firebase-AppCheck': appCheckToken.token,
         },
         body: JSON.stringify({
