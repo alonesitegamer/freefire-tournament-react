@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onIdTokenChanged } from "firebase/auth";
-import { auth, appCheckInstance } from "./firebase"; // Import appCheckInstance
-import { getToken } from "firebase/app-check"; // Import getToken
+import { auth } from "./firebase"; // Removed appCheckInstance
+
+// Removed getToken
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -19,38 +20,17 @@ export default function App() {
 
   useEffect(() => {
     // This listens for user login changes
-    const unsubscribeAuth = onIdTokenChanged(auth, async (user) => {
-      if (user) {
-        // User is logged in.
-        // NOW, we must wait for the App Check token.
-        try {
-          console.log("User found, waiting for App Check token...");
-          // Wait for the token to be ready
-          await getToken(appCheckInstance, false);
-          console.log("App Check token is ready!");
-          // Once we have the token, set the user
-          setUser(user);
-        } catch (err) {
-          console.error("App Check error, logging out:", err);
-          // If App Check fails, we can't let them in
-          setUser(null);
-        } finally {
-          // We only stop loading *after* the check is done.
-          setLoading(false);
-        }
-      } else {
-        // User is logged out
-        setUser(null);
-        // Stop loading
-        setLoading(false);
-      }
+    const unsubscribeAuth = onIdTokenChanged(auth, (user) => {
+      // This is now simple
+      setUser(user);
+      setLoading(false);
     });
 
     // Cleanup listener on unmount
     return () => unsubscribeAuth();
   }, []); // Only run this once
 
-  // Show the splash screen while checking login & App Check
+  // Show the splash screen while checking login
   if (loading) {
     return <Splash />;
   }
