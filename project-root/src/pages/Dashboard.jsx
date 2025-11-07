@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebase"; // 👈 We don't need 'functions' here
+import { auth, db } from "../firebase"; // 👈 No 'functions'
 // 👈 No 'httpsCallable'
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
@@ -15,10 +15,10 @@ import {
   where,
   orderBy,
   arrayUnion,
-  increment, // 👈 Keep this
+  // increment, // 👈 *** THIS WAS THE BUG. I've removed it. ***
 } from "firebase/firestore";
-import { getApp } from "firebase/app"; // 👈 Keep this
-import { getAppCheck, getToken } from "firebase/app-check"; // 👈 Keep this
+import { getApp } from "firebase/app"; 
+import { getAppCheck, getToken } from "firebase/app-check"; 
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
 import {
@@ -103,7 +103,7 @@ export default function Dashboard({ user }) {
   const [topupView, setTopupView] = useState("select"); 
   const [paymentUpiId, setPaymentUpiId] = useState("");
 
-  // 👇 NEW: State for Settle Match
+  // State for Settle Match
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [matchToSettle, setMatchToSettle] = useState(null);
   const [winnerUsername, setWinnerUsername] = useState("");
@@ -501,7 +501,7 @@ export default function Dashboard({ user }) {
         where("status", "==", "pending")
       );
       
-      // 👇 NEW: Get upcoming matches for admin
+      // Get upcoming matches for admin
       const matchesQuery = query(
         collection(db, "matches"),
         where("status", "==", "upcoming"),
@@ -518,7 +518,7 @@ export default function Dashboard({ user }) {
         topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
         withdraw: withdrawSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
       });
-      // 👇 NEW: Set upcoming matches to state (for admin)
+      // Set upcoming matches to state (for admin)
       setMatches(matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     })();
   }, [profile?.email, activeTab]);
@@ -589,7 +589,7 @@ export default function Dashboard({ user }) {
       await addDoc(collection(db, "matches"), matchData);
       setModalMessage("Match created successfully!");
       setNewMatch(initialMatchState);
-      // 👇 NEW: Refresh matches list after creating one
+      // Refresh matches list after creating one
       setMatches(prev => [ { ...matchData, id: 'new' }, ...prev ]);
     } catch (err) {
       console.error("Error creating match:", err);
@@ -679,7 +679,7 @@ export default function Dashboard({ user }) {
     navigate("/login");
   }
 
-  // 👇 NEW: Function to open the Settle Match modal
+  // Function to open the Settle Match modal
   const openSettleModal = (match) => {
     setMatchToSettle(match);
     setWinnerUsername("");
@@ -687,7 +687,7 @@ export default function Dashboard({ user }) {
     setShowSettleModal(true);
   };
   
-  // 👇 NEW: Function to call the Settle Match API
+  // Function to call the Settle Match API
   async function handleSettleMatch(e) {
     e.preventDefault();
     if (!matchToSettle || !winnerUsername) {
@@ -1224,7 +1224,7 @@ export default function Dashboard({ user }) {
                   </div>
                 ))
               ) : (
-                <p className="muted-small">No matches to settle.</p>
+                <p className="muted-small" style={{textAlign: 'center'}}>No matches to settle.</p>
               )}
             </div>
             
@@ -1570,7 +1570,7 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
-      {/* 👇 NEW: Settle Match Modal */}
+      {/* Settle Match Modal */}
       {showSettleModal && matchToSettle && (
         <div className="modal-overlay">
           <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
@@ -1589,7 +1589,6 @@ export default function Dashboard({ user }) {
                   onChange={(e) => setWinnerUsername(e.target.value)}
                 />
               </div>
-              {/* Only show Kills input for BR matches */}
               {matchToSettle.prizeModel === 'Scalable' && (
                 <div className="form-group">
                   <label>Winner's Kills</label>
