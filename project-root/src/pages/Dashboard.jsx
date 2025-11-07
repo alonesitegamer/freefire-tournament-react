@@ -716,7 +716,6 @@ export default function Dashboard({ user }) {
   if (loading || !profile)
     return <div className="center-screen">Loading Dashboard...</div>;
 
-  // 👇 *** THIS IS THE FINAL CHANGE ***
   // Pass all state and functions to the UI component
   return (
     <DashboardUI
