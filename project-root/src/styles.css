@@ -836,3 +836,25 @@ body,
   border-radius: 12px;
   background: white; /* Add a white background in case QR is transparent */
 }
+/* === ADDED: Admin Settle Match List === */
+.admin-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-match-list .admin-row {
+  /* We can re-use the style from your top-up requests! */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  border: 1px solid var(--panel);
+}
+.admin-match-list .admin-row span {
+  font-weight: 500;
+}
+.admin-match-list .admin-row .btn.small {
+  margin-top: 0;
+}
