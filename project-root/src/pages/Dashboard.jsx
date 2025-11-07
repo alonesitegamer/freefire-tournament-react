@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebase";
+import { auth, db } from "../firebase"; // 👈 No more 'functions' import
+// 👈 No more 'httpsCallable' import
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
@@ -14,8 +15,10 @@ import {
   where,
   orderBy,
   arrayUnion,
-  increment,
+  increment, // 👈 We can remove 'increment' if it's not used elsewhere
 } from "firebase/firestore";
+import { getApp } from "firebase/app"; // 👈 NEW: Import getApp
+import { getAppCheck, getToken } from "firebase/app-check"; // 👈 NEW: Imports for App Check
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
 import {
@@ -27,13 +30,13 @@ import {
   FaSignOutAlt,
   FaArrowLeft,
   FaUserEdit,
-  FaQuestionCircle,
-  FaUserCog,
+  FaQuestionCircle, 
+  FaUserCog 
 } from "react-icons/fa";
 
 // Import your history page components
-import MatchHistoryPage from "./MatchHistoryPage";
-import WithdrawalHistoryPage from "./WithdrawalHistoryPage";
+import MatchHistoryPage from './MatchHistoryPage';
+import WithdrawalHistoryPage from './WithdrawalHistoryPage';
 // import HowToPlay from './HowToPlay'; // Removed HowToPlay component
 
 // Define the default state for your match form
@@ -48,33 +51,34 @@ const initialMatchState = {
   perKillReward: 75,
   booyahPrize: 0,
   teamType: "Solo",
-  startTime: "",
-  rules: "",
+  startTime: "", 
+  rules: "", 
 };
 
 // List of available gift cards
 const rewardOptions = [
-  { type: "UPI", amount: 25, cost: 275, icon: "/upi.png" },
-  { type: "UPI", amount: 50, cost: 550, icon: "/upi.png" },
-  { type: "Google Play", amount: 50, cost: 550, icon: "/google-play.png" },
-  { type: "Google Play", amount: 100, cost: 1100, icon: "/google-play.png" },
-  { type: "Amazon", amount: 50, cost: 550, icon: "/amazon.png" },
-  { type: "Amazon", amount: 100, cost: 1100, icon: "/amazon.png" },
+  { type: 'UPI', amount: 25, cost: 275, icon: '/upi.png' },
+  { type: 'UPI', amount: 50, cost: 550, icon: '/upi.png' },
+  { type: 'Google Play', amount: 50, cost: 550, icon: '/google-play.png' },
+  { type: 'Google Play', amount: 100, cost: 1100, icon: '/google-play.png' },
+  { type: 'Amazon', amount: 50, cost: 550, icon: '/amazon.png' },
+  { type: 'Amazon', amount: 100, cost: 1100, icon: '/amazon.png' },
 ];
 
 // Helper function to format timestamps nicely
 function formatMatchTime(timestamp) {
-  if (!timestamp || typeof timestamp.toDate !== "function") {
+  if (!timestamp || typeof timestamp.toDate !== 'function') {
     return "Time TBD";
   }
-  return timestamp.toDate().toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
+  return timestamp.toDate().toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
   });
 }
+
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -96,9 +100,7 @@ export default function Dashboard({ user }) {
   const [adLoading, setAdLoading] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
   const [modalMessage, setModalMessage] = useState(null);
-
-  // 👇 NEW: State for the Topup page
-  const [topupView, setTopupView] = useState("select"); // 'select' or 'pay'
+  const [topupView, setTopupView] = useState("select"); 
   const [paymentUpiId, setPaymentUpiId] = useState("");
 
   const navigate = useNavigate();
@@ -113,28 +115,30 @@ export default function Dashboard({ user }) {
         setLoading(true);
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
-
+        
         if (snap.exists()) {
           const data = snap.data();
+          
           if (!data.referralCode) {
             const newReferralCode = user.uid.substring(0, 8).toUpperCase();
             await updateDoc(ref, {
               referralCode: newReferralCode,
-              hasRedeemedReferral: data.hasRedeemedReferral || false,
+              hasRedeemedReferral: data.hasRedeemedReferral || false
             });
+            
             if (mounted) {
-              setProfile({
-                id: snap.id,
-                ...data,
-                referralCode: newReferralCode,
-                hasRedeemedReferral: data.hasRedeemedReferral || false,
+              setProfile({ 
+                id: snap.id, 
+                ...data, 
+                referralCode: newReferralCode, 
+                hasRedeemedReferral: data.hasRedeemedReferral || false 
               });
               setNewDisplayName(data.displayName || "");
             }
           } else {
             if (mounted) {
               setProfile({ id: snap.id, ...data });
-              setNewDisplayName(data.displayName || "");
+              setNewDisplayName(data.displayName || ""); 
             }
           }
         } else {
@@ -144,16 +148,16 @@ export default function Dashboard({ user }) {
             email: user.email,
             coins: 0,
             displayName: user.displayName || "",
-            username: "",
+            username: "", 
             lastDaily: null,
             createdAt: serverTimestamp(),
-            referralCode: newReferralCode,
-            hasRedeemedReferral: false,
+            referralCode: newReferralCode, 
+            hasRedeemedReferral: false, 
           };
           await setDoc(ref, initialData);
           if (mounted) {
             setProfile({ id: ref.id, ...initialData });
-            setNewDisplayName(initialData.displayName);
+            setNewDisplayName(initialData.displayName); 
           }
         }
       } catch (err) {
@@ -178,10 +182,7 @@ export default function Dashboard({ user }) {
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(q);
-        const matchesData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const matchesData = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         setMatches(matchesData);
       } catch (err) {
         console.error("Error loading matches:", err);
@@ -211,7 +212,7 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // Referral function with 20/50 coins
+  // 👇 *** THIS IS THE NEW REFERRAL FUNCTION (Vercel API) *** 👇
   async function handleRedeemReferral() {
     if (!referralInput) return setModalMessage("Please enter a referral code.");
     if (profile.hasRedeemedReferral)
@@ -219,39 +220,47 @@ export default function Dashboard({ user }) {
     if (referralInput.toUpperCase() === profile.referralCode)
       return setModalMessage("You cannot use your own referral code.");
 
+    setLoading(true);
     try {
-      setLoading(true);
-      const q = query(
-        collection(db, "users"),
-        where("referralCode", "==", referralInput.toUpperCase())
-      );
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
+      // 1. Get the App Check token
+      const appCheck = getAppCheck(getApp());
+      let appCheckToken;
+      try {
+        appCheckToken = await getToken(appCheck, false); // false = don't force refresh
+      } catch (err) {
+        console.error("Failed to get App Check token:", err);
+        setModalMessage("Security check failed. Please refresh and try again.");
         setLoading(false);
-        return setModalMessage("Invalid referral code.");
+        return;
       }
-
-      const referrerDoc = querySnapshot.docs[0];
-      const referrerRef = doc(db, "users", referrerDoc.id);
-
-      await updateDoc(referrerRef, { coins: increment(20) });
-
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        coins: profile.coins + 50,
-        hasRedeemedReferral: true,
+      
+      // 2. Call the new API endpoint
+      const response = await fetch('/api/redeemReferralCode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Firebase-AppCheck': appCheckToken.token, // Send the token in the header
+        },
+        body: JSON.stringify({ code: referralInput.toUpperCase() }),
       });
 
-      setProfile({
-        ...profile,
-        coins: profile.coins + 50,
-        hasRedeemedReferral: true,
-      });
-      setModalMessage("Success! You received 50 coins, and your friend received 20 coins.");
-      setReferralInput("");
+      const data = await response.json();
+
+      // 3. Show success or error from the server
+      if (data.success) {
+        // Update local state to match
+        setProfile({
+          ...profile,
+          coins: profile.coins + 50,
+          hasRedeemedReferral: true,
+        });
+        setReferralInput("");
+        setModalMessage(data.message);
+      } else {
+        setModalMessage(data.message);
+      }
     } catch (err) {
-      console.error("Referral Error:", err);
+      console.error("Vercel Function Error:", err);
       setModalMessage("An error occurred. Please try again.");
     } finally {
       setLoading(false);
@@ -327,19 +336,16 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // 👇 UPDATED: This function no longer submits, it just switches the view
+  // Topup screen logic
   async function handleTopup() {
     const amt = parseInt(selectedAmount || topupAmount);
     if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
-    
-    // All checks passed, go to payment screen
     setTopupView('pay');
   }
 
-  // 👇 NEW: This function runs when the user clicks "I Paid"
+  // Topup "I Paid" logic
   async function handleConfirmPayment() {
     const amt = parseInt(selectedAmount || topupAmount);
-
     if (!paymentUpiId) {
       return setModalMessage("Please enter your UPI ID so we can verify your payment.");
     }
@@ -351,13 +357,12 @@ export default function Dashboard({ user }) {
         email: profile.email,
         amount: amt,
         coins: amt * 10,
-        upiId: paymentUpiId, // Send the UPI ID with the request
+        upiId: paymentUpiId, 
         status: "pending",
         createdAt: serverTimestamp(),
       });
       setModalMessage("Top-up request submitted! Admin will verify it soon.");
       
-      // Reset everything and go home
       setTopupAmount("");
       setSelectedAmount(null);
       setPaymentUpiId("");
@@ -851,14 +856,15 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* 👇 *** UPDATED: This is the new Topup tab *** 👇 */}
         {activeTab === "topup" && (
           <>
             {/* 1. Select Amount View */}
-            {topupView === 'select' && (
+            {topupView === "select" && (
               <section className="modern-card">
                 <h3 className="modern-title">Top-up Coins</h3>
-                <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p>
+                <p className="modern-subtitle">
+                  1 ₹ = 10 Coins | Choose an amount
+                </p>
                 <div className="amount-options">
                   {[20, 50, 100, 200].map((amt) => (
                     <div
@@ -889,9 +895,12 @@ export default function Dashboard({ user }) {
             )}
 
             {/* 2. Payment View */}
-            {topupView === 'pay' && (
+            {topupView === "pay" && (
               <section className="modern-card payment-page">
-                <button className="back-btn" onClick={() => setTopupView('select')}>
+                <button
+                  className="back-btn"
+                  onClick={() => setTopupView("select")}
+                >
                   <FaArrowLeft /> Back
                 </button>
                 <h3 className="modern-title">Scan & Pay</h3>
@@ -901,7 +910,7 @@ export default function Dashboard({ user }) {
 
                 <img src="/qr.jpg" alt="QR Code" className="qr-code-image" />
 
-                <div className="form-group" style={{marginTop: '24px'}}>
+                <div className="form-group" style={{ marginTop: "24px" }}>
                   <label>Enter Your UPI ID</label>
                   <input
                     type="text"
@@ -922,8 +931,6 @@ export default function Dashboard({ user }) {
             )}
           </>
         )}
-        {/* 👆 *** END of new Topup tab *** 👆 */}
-
 
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
@@ -1135,7 +1142,6 @@ export default function Dashboard({ user }) {
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
                 {" "}
-                {/* 👇 NEW: Admin can now see the user's UPI ID */}
                 <span>
                   {" "}
                   {r.email} | ₹{r.amount} | UPI: {r.upiId}
@@ -1314,6 +1320,8 @@ export default function Dashboard({ user }) {
               </section>
             )}
 
+            {/* (Removed HowToPlay view) */}
+
             {accountView === "refer" && (
               <section className="panel">
                 <button
@@ -1395,7 +1403,7 @@ export default function Dashboard({ user }) {
               setActiveTab(tab);
               setAccountView("main");
               setSelectedMatch(null);
-              setTopupView("select"); // 👈 NEW: Reset topup view when changing tabs
+              setTopupView("select");
             }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
