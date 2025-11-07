@@ -16,8 +16,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize App Check
+// Initialize App Check with the FREE v3 provider
 const appCheck = initializeAppCheck(app, {
+  // This is your FREE key from the reCAPTCHA console
   provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
   isTokenAutoRefreshEnabled: true
 });
@@ -25,4 +26,4 @@ const appCheck = initializeAppCheck(app, {
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
-export const appCheckInstance = appCheck; // 👈 *** THIS IS THE FIX ***
+export const appCheckInstance = appCheck; // Export the instance
