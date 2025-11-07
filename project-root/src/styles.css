@@ -80,6 +80,7 @@ body,
 .auth-root {
   min-height: 100vh;
   display: flex;
+  flex-direction: column; /* Changed for footer */
   align-items: center;
   justify-content: center;
   padding: 20px;
@@ -145,6 +146,32 @@ body,
   color: #ff7a7a;
   margin: 8px 0;
 }
+.form-col {
+  display: flex;
+  flex-direction: column;
+}
+.forgot-password {
+  text-align: right;
+  margin: -4px 0 12px;
+  font-size: 0.9rem;
+}
+.login-footer-links {
+  padding: 20px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.login-footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.login-footer-links a:hover {
+  color: var(--accent);
+}
+
 
 /* Dashboard */
 .dash-root {
@@ -179,9 +206,15 @@ body,
   font-size: 13px;
   color: #bfc7d1;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .header-actions .btn.small {
   padding: 8px 10px;
   font-size: 13px;
+  margin-top: 0; /* Override btn margin */
 }
 .btn.small.ghost {
   background: transparent;
@@ -291,48 +324,9 @@ body,
   color: var(--accent2);
 }
 
-/* Withdraw / Deposit cards */
+/* Withdraw / Deposit cards (DEPRECATED) */
 .money-card {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.05),
-    rgba(255, 255, 255, 0.02)
-  );
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 18px;
-  text-align: center;
-  transition: 0.3s ease;
-  box-shadow: 0 0 10px rgba(0, 230, 168, 0.1);
-}
-.money-card:hover {
-  box-shadow: 0 0 20px var(--accent);
-  transform: translateY(-4px);
-}
-.money-title {
-  font-size: 1.1rem;
-  color: var(--accent);
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-.money-amount {
-  font-size: 1.6rem;
-  font-weight: 800;
-  margin-bottom: 12px;
-}
-.money-btn {
-  background: linear-gradient(90deg, var(--accent), #33ffc2);
-  color: #000;
-  font-weight: 700;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: 0.3s ease;
-}
-.money-btn:hover {
-  filter: brightness(1.2);
-  box-shadow: 0 0 10px var(--accent);
+  display: none;
 }
 
 /* Coin Animation */
@@ -382,7 +376,6 @@ body,
   .dash-header { padding: 10px; }
   .auth-card { padding: 16px; }
   .match-card img { height: 100px; }
-  .money-card { padding: 14px; }
 }
 
 /* === Topup & Withdraw Page Styles === */
@@ -517,6 +510,31 @@ body,
   min-height: 80px;
   resize: vertical;
 }
+/* Styles for Admin Lists */
+.admin-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  border: 1px solid var(--panel);
+  font-size: 0.9rem;
+}
+.admin-row span {
+  font-weight: 500;
+  word-break: break-all; /* Fix long emails */
+}
+.admin-row .btn.small {
+  margin-top: 0;
+  flex-shrink: 0; /* Stop buttons from shrinking */
+  margin-left: 8px;
+}
 
 
 /* === Account Page Styles === */
@@ -580,8 +598,6 @@ body,
   text-align: center;
   border: 1px solid var(--panel);
 }
-
-/* 👇 *** UPDATED: Referral Code Style *** 👇 */
 .referral-code {
   background: rgba(0, 0, 0, 0.2); /* Transparent background */
   backdrop-filter: blur(5px); /* Blurred background */
@@ -595,12 +611,23 @@ body,
   border: 1px solid rgba(255, 255, 255, 0.1); /* Transparent border */
   margin-bottom: 16px;
 }
-
 .referral-form {
   margin-top: 24px;
 }
 
 /* === Match Details Page Styles === */
+.match-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.match-details-header .btn.small {
+  display: flex;
+  align-items: center;
+  margin-top: 0; /* Override default button margin */
+  flex-shrink: 0;
+}
 .match-details-view .match-details-image {
   width: 100%;
   height: 150px;
@@ -662,8 +689,6 @@ body,
   gap: 10px; /* Add space between them */
   align-items: flex-end; /* Align them to the right */
 }
-
-/* Make buttons in that container fill the space */
 .home-actions .btn {
   width: 100%;
   min-width: 140px; /* Stop them from getting too small */
@@ -678,7 +703,6 @@ body,
   gap: 12px;
   margin-top: 12px;
 }
-
 .reward-card {
   background: var(--panel);
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -688,12 +712,10 @@ body,
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
 .reward-card:hover {
   transform: translateY(-4px);
   border-color: var(--accent);
 }
-
 .reward-icon {
   width: 48px;
   height: 48px;
@@ -701,7 +723,6 @@ body,
   margin-bottom: 12px;
   border-radius: 8px;
 }
-
 .reward-cost {
   display: flex;
   align-items: center;
@@ -714,25 +735,22 @@ body,
   border-radius: 20px;
   padding: 6px 10px;
   margin-bottom: 8px;
-  /* Keep it from getting too wide on small cards */
   max-width: 100px;
   margin-left: auto;
   margin-right: auto;
 }
-
 .reward-cost img {
   width: 16px;
   height: 16px;
   border-radius: 50%;
 }
-
 .reward-amount {
   font-size: 1rem;
   font-weight: 600;
   color: var(--muted);
 }
 
-/* === Username Modal Styles === */
+/* === Username/Message Modal Styles === */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -740,18 +758,22 @@ body,
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
   padding: 20px;
 }
-
 .modal-content {
   width: 100%;
   max-width: 500px;
+  /* Re-uses modern-card */
 }
-
+.modal-content .modern-title {
+  text-align: center;
+}
 .modal-content .modern-subtitle {
   text-align: center;
 }
@@ -785,16 +807,12 @@ body,
 .form-group .btn {
   margin-top: 10px;
 }
-
-/* Style for read-only fields */
 .form-group input:disabled {
   background: rgba(0,0,0,0.2);
   color: var(--muted);
   border: 1px solid var(--panel);
   cursor: not-allowed;
 }
-
-/* Style for the divider lines */
 .profile-settings-form hr {
   border: none;
   height: 1px;
@@ -802,28 +820,7 @@ body,
   margin: 24px 0;
 }
 
-/* (Removed HowToPlay styles) */
-  
-/* === ADDED: Match Details Header === */
-.match-details-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-/* Make the new edit button look right */
-.match-details-header .btn.small {
-  display: flex;
-  align-items: center;
-  margin-top: 0; /* Override default button margin */
-}
-
-/* Remove margin from back button since the header now has it */
-.back-btn {
-  margin-bottom: 0;
-}
-/* === ADDED: Top-up Payment Page === */
+/* === Top-up Payment Page === */
 .payment-page .modern-subtitle {
   text-align: center;
 }
@@ -835,26 +832,4 @@ body,
   display: block;
   border-radius: 12px;
   background: white; /* Add a white background in case QR is transparent */
-}
-/* === ADDED: Admin Settle Match List === */
-.admin-match-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.admin-match-list .admin-row {
-  /* We can re-use the style from your top-up requests! */
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: rgba(0,0,0,0.2);
-  border-radius: 8px;
-  border: 1px solid var(--panel);
-}
-.admin-match-list .admin-row span {
-  font-weight: 500;
-}
-.admin-match-list .admin-row .btn.small {
-  margin-top: 0;
 }
