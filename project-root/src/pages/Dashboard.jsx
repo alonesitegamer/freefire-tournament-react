@@ -14,7 +14,7 @@ import {
   where,
   orderBy,
   arrayUnion,
-  increment, 
+  // 👈 *** 'increment' is now GONE. This fixes the build. ***
 } from "firebase/firestore";
 // 👇 *** REMOVED getApp and getAppCheck, ADDED getToken ***
 import { getToken } from "firebase/app-check"; 
@@ -699,7 +699,7 @@ export default function Dashboard({ user }) {
       let appCheckToken;
       try {
         // 👇 *** THIS IS THE FIX ***
-        appCheckToken = await getToken(appCheckInstance, false); // Use the imported instance
+        appCheckToken = await getToken(appCheckInstance, false);
       } catch (err) {
         throw new Error("Failed to get App Check token.");
       }
@@ -1596,7 +1596,7 @@ export default function Dashboard({ user }) {
                     className="modern-input"
                     placeholder="Enter kill count"
                     value={winnerKills}
-                    onChange={(e) => setWinnerKills(e.target.value)}
+                    onChange={(e) => setWinnerKills(parseInt(e.target.value) || 0)}
                   />
                 </div>
               )}
