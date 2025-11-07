@@ -324,26 +324,6 @@ body,
   color: var(--accent2);
 }
 
-/* Withdraw / Deposit cards (DEPRECATED) */
-.money-card {
-  display: none;
-}
-
-/* Coin Animation */
-.coin-img {
-  width: 28px;
-  height: 28px;
-  margin-right: 6px;
-  vertical-align: middle;
-  animation: spinCoin 2s linear infinite;
-  transform-origin: center;
-  filter: drop-shadow(0 0 6px gold);
-}
-@keyframes spinCoin {
-  0% { transform: rotateY(0deg); }
-  100% { transform: rotateY(360deg); }
-}
-
 /* History List */
 .history-list {
   list-style: none;
