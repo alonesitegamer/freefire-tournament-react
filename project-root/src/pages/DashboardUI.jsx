@@ -78,7 +78,8 @@ export default function DashboardUI(props) {
     handleLogout,
     openSettleModal,
     handleSettleMatch,
-    user
+    user,
+    rewardOptions // Pass rewardOptions as a prop
   } = props;
 
   return (
