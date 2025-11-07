@@ -1,15 +1,14 @@
-// firebase.js - initialize and export auth + firestore
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-// 👇 ADD THIS IMPORT
+// We also need to import App Check
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
   authDomain: "imperial-esports-da816.firebaseapp.com",
   projectId: "imperial-esports-da816",
-  storageBucket: "imperial-esports-da816.appspot.com", // ✅ fixed here
+  storageBucket: "imperial-esports-da816.appspot.com",
   messagingSenderId: "599688885836",
   appId: "1:599688885836:web:bbd08bb6b1984b45eea6e9",
   measurementId: "G-9D09P3EWRG"
@@ -17,8 +16,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// 👇 ADD THIS BLOCK (using your key from the screenshot)
-initializeAppCheck(app, {
+// Initialize App Check
+const appCheck = initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
   isTokenAutoRefreshEnabled: true
 });
@@ -26,3 +25,4 @@ initializeAppCheck(app, {
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
+export const appCheckInstance = appCheck; // 👈 *** THIS IS THE NEW LINE ***
