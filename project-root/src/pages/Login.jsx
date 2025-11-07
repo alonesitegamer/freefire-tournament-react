@@ -3,21 +3,17 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
-  signInWithPopup,
-  // --- REMOVED 'GoogleAuthProvider' from here ---
+  // --- THIS IS THE FIX (Part 1) ---
+  signInWithRedirect, // Changed from signInWithPopup
+  // ---
   sendPasswordResetEmail,
 } from "firebase/auth";
 
-// --- 1. IMPORT 'provider' FROM FIREBASE.JS ---
 import { auth, db, provider } from "../firebase"; 
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link } from "react-router-dom"; 
 
-// --- 2. REMOVED THIS LINE (it's now imported) ---
-// const provider = new GoogleAuthProvider();
-
 export default function Login() {
-  // (All the rest of the code is 100% the same as I sent before)
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,13 +74,16 @@ export default function Login() {
     }
   };
 
+  // --- THIS IS THE FIX (Part 2) ---
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
-      // This 'provider' is now the one imported from firebase.js
-      const res = await signInWithPopup(auth, provider);
-      await saveInitialUser(res.user, referral);
+      // We no longer wait for a "result"
+      // This will navigate the user away and then back
+      await signInWithRedirect(auth, provider);
+      // We don't need the saveInitialUser call here anymore,
+      // because our main Dashboard loader will handle it.
     } catch (error) {
       console.error("Google Sign-In error:", error);
       setErr(error.message);
@@ -92,6 +91,7 @@ export default function Login() {
       setLoading(false);
     }
   };
+  // ---
 
   const handlePasswordReset = async (e) => {
     e.preventDefault();
@@ -116,7 +116,6 @@ export default function Login() {
     }
   };
 
-  // (The entire 'return' (UI) part is exactly the same, no changes)
   return (
     <div className="auth-root">
       <video className="bg-video" autoPlay loop muted playsInline>
