@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebase"; // 👈 No more 'functions' import
-// 👈 No more 'httpsCallable' import
+import { auth, db } from "../firebase"; // 👈 We don't need 'functions' here
+// 👈 No 'httpsCallable'
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
@@ -15,10 +15,10 @@ import {
   where,
   orderBy,
   arrayUnion,
-  increment, // 👈 We can remove 'increment' if it's not used elsewhere
+  increment, // 👈 Keep this
 } from "firebase/firestore";
-import { getApp } from "firebase/app"; // 👈 NEW: Import getApp
-import { getAppCheck, getToken } from "firebase/app-check"; // 👈 NEW: Imports for App Check
+import { getApp } from "firebase/app"; // 👈 Keep this
+import { getAppCheck, getToken } from "firebase/app-check"; // 👈 Keep this
 import { useNavigate } from "react-router-dom";
 // Icons for Account menu and Music
 import {
@@ -103,6 +103,12 @@ export default function Dashboard({ user }) {
   const [topupView, setTopupView] = useState("select"); 
   const [paymentUpiId, setPaymentUpiId] = useState("");
 
+  // 👇 NEW: State for Settle Match
+  const [showSettleModal, setShowSettleModal] = useState(false);
+  const [matchToSettle, setMatchToSettle] = useState(null);
+  const [winnerUsername, setWinnerUsername] = useState("");
+  const [winnerKills, setWinnerKills] = useState(0);
+
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
   const adminPassword = "imperialx";
@@ -170,7 +176,7 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email, user.displayName]);
 
-  // useEffect TO LOAD MATCHES
+  // useEffect TO LOAD MATCHES (For users)
   useEffect(() => {
     async function loadMatches() {
       setLoadingMatches(true);
@@ -212,7 +218,7 @@ export default function Dashboard({ user }) {
     setIsPlaying(!isPlaying);
   };
 
-  // 👇 *** THIS IS THE NEW REFERRAL FUNCTION (Vercel API) *** 👇
+  // Vercel API Referral function
   async function handleRedeemReferral() {
     if (!referralInput) return setModalMessage("Please enter a referral code.");
     if (profile.hasRedeemedReferral)
@@ -481,24 +487,39 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // Admin fetch
+  // Admin fetch (now also fetches upcoming matches for settling)
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
+      // Get pending requests
       const topupQuery = query(
         collection(db, "topupRequests"),
         where("status", "==", "pending")
       );
-      const topupSnap = await getDocs(topupQuery);
       const withdrawQuery = query(
         collection(db, "withdrawRequests"),
         where("status", "==", "pending")
       );
-      const withdrawSnap = await getDocs(withdrawQuery);
+      
+      // 👇 NEW: Get upcoming matches for admin
+      const matchesQuery = query(
+        collection(db, "matches"),
+        where("status", "==", "upcoming"),
+        orderBy("createdAt", "desc")
+      );
+
+      const [topupSnap, withdrawSnap, matchesSnap] = await Promise.all([
+        getDocs(topupQuery),
+        getDocs(withdrawQuery),
+        getDocs(matchesQuery)
+      ]);
+
       setRequests({
         topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
         withdraw: withdrawSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
       });
+      // 👇 NEW: Set upcoming matches to state (for admin)
+      setMatches(matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     })();
   }, [profile?.email, activeTab]);
 
@@ -551,7 +572,6 @@ export default function Dashboard({ user }) {
 
     try {
       setLoading(true);
-
       let matchData = {
         ...newMatch,
         startTime: new Date(newMatch.startTime),
@@ -561,17 +581,16 @@ export default function Dashboard({ user }) {
         roomID: "",
         roomPassword: "",
       };
-
-      if (matchData.prizeModel === "Scalable") {
-        delete matchData.booyahPrize;
-      } else {
+      if (matchData.prizeModel === "Scalable") delete matchData.booyahPrize;
+      else {
         delete matchData.commissionPercent;
         delete matchData.perKillReward;
       }
-
       await addDoc(collection(db, "matches"), matchData);
       setModalMessage("Match created successfully!");
       setNewMatch(initialMatchState);
+      // 👇 NEW: Refresh matches list after creating one
+      setMatches(prev => [ { ...matchData, id: 'new' }, ...prev ]);
     } catch (err) {
       console.error("Error creating match:", err);
       setModalMessage("Failed to create match. Check console for error.");
@@ -617,17 +636,14 @@ export default function Dashboard({ user }) {
           displayName: newDisplayName,
         });
       }
-
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         displayName: newDisplayName,
       });
-
       setProfile({
         ...profile,
         displayName: newDisplayName,
       });
-
       setModalMessage("Display name updated successfully!");
     } catch (err) {
       console.error("Error updating display name:", err);
@@ -640,16 +656,13 @@ export default function Dashboard({ user }) {
   // FIXED PASSWORD RESET FUNCTION
   async function handlePasswordReset() {
     if (!user?.email) return setModalMessage("Could not find user email.");
-
     const providerIds = auth.currentUser.providerData.map((p) => p.providerId);
-
     if (!providerIds.includes("password")) {
       console.log("Password reset blocked. User providers:", providerIds);
       return setModalMessage(
         "Password reset is not available. You signed in using Google."
       );
     }
-
     try {
       await sendPasswordResetEmail(auth, user.email);
       setModalMessage(
@@ -665,6 +678,65 @@ export default function Dashboard({ user }) {
     await signOut(auth);
     navigate("/login");
   }
+
+  // 👇 NEW: Function to open the Settle Match modal
+  const openSettleModal = (match) => {
+    setMatchToSettle(match);
+    setWinnerUsername("");
+    setWinnerKills(0);
+    setShowSettleModal(true);
+  };
+  
+  // 👇 NEW: Function to call the Settle Match API
+  async function handleSettleMatch(e) {
+    e.preventDefault();
+    if (!matchToSettle || !winnerUsername) {
+      return setModalMessage("Winner username is required.");
+    }
+
+    setLoading(true);
+    try {
+      // 1. Get App Check token
+      const appCheck = getAppCheck(getApp());
+      let appCheckToken;
+      try {
+        appCheckToken = await getToken(appCheck, false);
+      } catch (err) {
+        throw new Error("Failed to get App Check token.");
+      }
+
+      // 2. Call the new API endpoint
+      const response = await fetch('/api/settleMatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Firebase-AppCheck': appCheckToken.token,
+        },
+        body: JSON.stringify({
+          matchId: matchToSettle.id,
+          winnerUsername: winnerUsername,
+          kills: winnerKills,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setModalMessage(data.message);
+        // Remove the match from the local list
+        setMatches(prev => prev.filter(m => m.id !== matchToSettle.id));
+        setShowSettleModal(false);
+      } else {
+        setModalMessage(data.message);
+      }
+    } catch (err) {
+      console.error("Settle Match error:", err);
+      setModalMessage("An error occurred: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
 
   if (loading || !profile)
     return <div className="center-screen">Loading Dashboard...</div>;
@@ -1138,6 +1210,26 @@ export default function Dashboard({ user }) {
               </button>
             </form>
             <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
+            
+            {/* 👇 NEW: Section to Settle Matches */}
+            <h4>Settle Upcoming Matches</h4>
+            <div className="admin-match-list">
+              {matches.filter(m => m.status === 'upcoming').length > 0 ? (
+                matches.filter(m => m.status === 'upcoming').map(match => (
+                  <div key={match.id} className="admin-row">
+                    <span>{match.title}</span>
+                    <button className="btn small" onClick={() => openSettleModal(match)}>
+                      Settle
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="muted-small">No matches to settle.</p>
+              )}
+            </div>
+            
+            <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
+            
             <h4>Top-up Requests</h4>
             {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
@@ -1477,6 +1569,55 @@ export default function Dashboard({ user }) {
           </div>
         </div>
       )}
+
+      {/* 👇 NEW: Settle Match Modal */}
+      {showSettleModal && matchToSettle && (
+        <div className="modal-overlay">
+          <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modern-title">Settle Match</h3>
+            <p className="modern-subtitle">
+              Settle: {matchToSettle.title}
+            </p>
+            <form onSubmit={handleSettleMatch}>
+              <div className="form-group">
+                <label>Winner's Username</label>
+                <input
+                  type="text"
+                  className="modern-input"
+                  placeholder="Enter winner's in-game username"
+                  value={winnerUsername}
+                  onChange={(e) => setWinnerUsername(e.target.value)}
+                />
+              </div>
+              {/* Only show Kills input for BR matches */}
+              {matchToSettle.prizeModel === 'Scalable' && (
+                <div className="form-group">
+                  <label>Winner's Kills</label>
+                  <input
+                    type="number"
+                    className="modern-input"
+                    placeholder="Enter kill count"
+                    value={winnerKills}
+                    onChange={(e) => setWinnerKills(e.target.value)}
+                  />
+                </div>
+              )}
+              <button type="submit" className="btn glow large" disabled={loading}>
+                {loading ? "Submitting..." : "Award Prize & End Match"}
+              </button>
+              <button
+                type="button"
+                className="btn large ghost"
+                style={{marginTop: '10px'}}
+                onClick={() => setShowSettleModal(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
