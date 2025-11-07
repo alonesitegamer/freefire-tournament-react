@@ -3,13 +3,16 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
-  signInWithPopup, // 👈 *** REVERTED to signInWithPopup ***
+  signInWithPopup, // 👈 *** We are using POPUP (not redirect) ***
   sendPasswordResetEmail,
 } from "firebase/auth";
 
+// --- 1. IMPORT 'provider' FROM FIREBASE.JS ---
 import { auth, db, provider } from "../firebase"; 
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link } from "react-router-dom"; 
+
+// --- 2. We no longer define 'provider' here, we import it ---
 
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
@@ -20,13 +23,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   
-  // This function now handles *all* user profile creation/checks
   async function saveInitialUser(user, referralCode = "") {
     try {
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        // This is a NEW user
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
         await setDoc(ref, {
           email: user.email,
@@ -36,14 +37,12 @@ export default function Login() {
           lastDaily: null,
           referral: referralCode || null, 
           referralCode: newReferralCode,  
-          hasRedeemedReferral: !!referralCode, // Becomes true if they used a code
+          hasRedeemedReferral: !!referralCode, 
           createdAt: serverTimestamp(),
         });
       }
-      // If snap.exists(), the user is just logging in, so we do nothing.
-      // The Dashboard.jsx loader will handle checking for their referral code.
     } catch (e) {
-      console.error("Firestore user creation/check failed:", e);
+      console.error("Firestore user creation failed:", e);
     }
   }
 
@@ -67,7 +66,6 @@ export default function Login() {
     } else {
       try {
         await signInWithEmailAndPassword(auth, email, password);
-        // Login is successful, no need to save user, just let it redirect.
         setLoading(false);
       } catch (error) {
         console.error("Login error:", error);
@@ -77,15 +75,13 @@ export default function Login() {
     }
   };
 
-  // --- THIS IS THE FIX ---
-  // Reverted back to signInWithPopup
+  // --- 3. This function now uses the imported 'provider' ---
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
-      const res = await signInWithPopup(auth, provider);
-      // We MUST check and save the user *here*
-      // This is what `signInWithRedirect` was failing to do.
+      // This 'provider' is now the one imported from firebase.js
+      const res = await signInWithPopup(auth, provider); 
       await saveInitialUser(res.user, referral);
     } catch (error) {
       console.error("Google Sign-In error:", error);
@@ -94,7 +90,6 @@ export default function Login() {
       setLoading(false);
     }
   };
-  // ---
 
   const handlePasswordReset = async (e) => {
     e.preventDefault();
@@ -236,11 +231,10 @@ export default function Login() {
         <Link to="/privacy-policy">Privacy Policy</Link>
         <span>•</span>
         <Link to="/terms-of-service">Terms of Service</Link>
-        {/* We can add these back later when the pages exist */}
-        {/* <span>•</span>
+        <span>•</span>
         <Link to="/about">About Us</Link>
         <span>•</span>
-        <Link to="/contact">Contact</Link> */}
+        <Link to="/contact">Contact</Link>
       </div>
     </div>
   );
