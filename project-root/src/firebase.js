@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-// All App Check code has been removed
+// We also need to import App Check
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
@@ -15,9 +16,14 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// App Check is GONE
+// Initialize App Check
+const appCheck = initializeAppCheck(app, {
+  // This is your FREE key from the reCAPTCHA console
+  provider: new ReCaptchaV3Provider('6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq'),
+  isTokenAutoRefreshEnabled: true
+});
 
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
-// appCheckInstance is GONE
+export const appCheckInstance = appCheck; // 👈 *** THIS IS THE FIX ***
