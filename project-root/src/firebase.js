@@ -1,30 +1,28 @@
-// firebase.js — full setup for Auth + Firestore + optional Analytics
+// src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 
+// ✅ Your Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
   authDomain: "imperial-esports-da816.firebaseapp.com",
   projectId: "imperial-esports-da816",
-  storageBucket: "imperial-esports-da816.appspot.com", // ✅ corrected
+  storageBucket: "imperial-esports-da816.firebasestorage.app",
   messagingSenderId: "599688885836",
   appId: "1:599688885836:web:775b92a0a8892172eea6e9",
   measurementId: "G-LQK20L1KBT"
 };
 
-// Initialize Firebase
+// ✅ Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Export Firebase services
-export const auth = getAuth(app);
-export const provider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+// ✅ Initialize core services
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+const db = getFirestore(app);
+const analytics = getAnalytics(app);
 
-// Optional: Initialize Analytics (won’t break anything if unavailable)
-try {
-  getAnalytics(app);
-} catch (e) {
-  console.warn("Analytics not supported in this environment:", e);
-}
+// ✅ Export everything used across the app
+export { auth, db, provider, analytics };
