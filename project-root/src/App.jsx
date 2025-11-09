@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom"; // ✅ removed BrowserRouter
+import { Routes, Route, Navigate } from "react-router-dom";
 import { onIdTokenChanged } from "firebase/auth";
 import { auth } from "./firebase";
 
@@ -12,18 +12,23 @@ function Private({ user, children }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(auth.currentUser); // ✅ Start with cached user
+  const [loading, setLoading] = useState(!auth.currentUser); // ✅ Only show splash if no cached user
 
   useEffect(() => {
-    const unsubscribeAuth = onIdTokenChanged(auth, (user) => {
-      setUser(user);
+    // Listen for user token or sign-in changes
+    const unsubscribe = onIdTokenChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
       setLoading(false);
     });
-    return () => unsubscribeAuth();
+
+    return unsubscribe;
   }, []);
 
-  if (loading) return <Splash />;
+  // ✅ Fast: Only show Splash when user = null AND loading = true
+  if (loading) {
+    return <Splash />;
+  }
 
   return (
     <Routes>
