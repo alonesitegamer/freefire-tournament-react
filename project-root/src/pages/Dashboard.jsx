@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db, } from "../firebase"; // 👈 *** IMPORT appCheckInstance ***
+import { auth, db, appCheckInstance } from "../firebase"; // 👈 *** IMPORT appCheckInstance ***
 import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
