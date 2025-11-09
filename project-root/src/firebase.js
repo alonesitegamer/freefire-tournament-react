@@ -7,7 +7,7 @@ import { getAnalytics } from "firebase/analytics";
 // ✅ Your Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
-  authDomain: "imperial-esports-da816.firebaseapp.com",
+  authDomain: "https://freefire-tournament-react.vercel.app",
   projectId: "imperial-esports-da816",
   storageBucket: "imperial-esports-da816.firebasestorage.app",
   messagingSenderId: "599688885836",
