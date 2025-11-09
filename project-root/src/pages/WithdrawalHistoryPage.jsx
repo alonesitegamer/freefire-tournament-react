@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchWithdrawalHistory } from '../utils/firestore'; // Check your path!
+import { getWithdrawHistory } from '../utils/firestore'; // ✅ fixed import
 import { auth } from '../firebase';
 
 export default function WithdrawalHistoryPage() {
@@ -18,7 +18,8 @@ export default function WithdrawalHistoryPage() {
     const loadHistory = async () => {
       setLoading(true);
       try {
-        const data = await fetchWithdrawalHistory(user.uid);
+        // ✅ updated function name
+        const data = await getWithdrawHistory(user.uid);
         setHistory(data);
       } catch (error) {
         console.error("Error loading withdrawal history:", error);
@@ -40,11 +41,15 @@ export default function WithdrawalHistoryPage() {
 
       {/* Simple Header with Back Button */}
       <header className="dash-header" style={{ justifyContent: 'flex-start' }}>
-        <button className="btn small ghost" onClick={() => navigate(-1)} style={{ marginRight: '15px' }}>
+        <button
+          className="btn small ghost"
+          onClick={() => navigate(-1)}
+          style={{ marginRight: '15px' }}
+        >
           &lt; Back
         </button>
         <div className="logo-row">
-            <div className="title">Withdrawal History</div>
+          <div className="title">Withdrawal History</div>
         </div>
       </header>
 
@@ -59,7 +64,7 @@ export default function WithdrawalHistoryPage() {
             <ul className="history-list full-list">
               {history.map((wd) => (
                 <li key={wd.id} className="history-item">
-                  <span>{wd.amount || 0} Coins</span>
+                  <span>{wd.amount || 0} ₹</span>
                   <span style={{ color: "var(--accent2)" }}>
                     {wd.status || "Pending"}
                   </span>
