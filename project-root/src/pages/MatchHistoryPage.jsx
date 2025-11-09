@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchMatchHistory } from '../utils/firestore'; // Check your path!
-import { auth } from '../firebase'; // To get the user's UID
+import { getMatchHistory } from '../utils/firestore'; // ✅ fixed import name
+import { auth } from '../firebase';
 
 export default function MatchHistoryPage() {
   const [history, setHistory] = useState([]);
@@ -11,7 +11,6 @@ export default function MatchHistoryPage() {
 
   useEffect(() => {
     if (!user) {
-      // Should not happen if App.jsx routing is correct, but good practice
       navigate('/login');
       return;
     }
@@ -19,8 +18,8 @@ export default function MatchHistoryPage() {
     const loadHistory = async () => {
       setLoading(true);
       try {
-        // Fetch the history using the reusable function
-        const data = await fetchMatchHistory(user.uid);
+        // ✅ updated function name
+        const data = await getMatchHistory(user.uid);
         setHistory(data);
       } catch (error) {
         console.error("Error loading match history:", error);
@@ -46,7 +45,7 @@ export default function MatchHistoryPage() {
           &lt; Back
         </button>
         <div className="logo-row">
-            <div className="title">Match History</div>
+          <div className="title">Match History</div>
         </div>
       </header>
 
@@ -58,7 +57,7 @@ export default function MatchHistoryPage() {
           ) : history.length === 0 ? (
             <p>No matches played yet. Go join a tournament!</p>
           ) : (
-            <ul className="history-list full-list"> 
+            <ul className="history-list full-list">
               {history.map((match) => (
                 <li key={match.id} className="history-item">
                   <span>{match.matchName || `Match ID: ${match.id.substring(0, 5)}...`}</span>
@@ -66,7 +65,7 @@ export default function MatchHistoryPage() {
                     {match.result || "N/A"}
                   </span>
                   <span className="muted-small">
-                    {match.createdAt?.toDate().toLocaleString()} {/* Use toLocaleString for full detail */}
+                    {match.createdAt?.toDate().toLocaleString()}
                   </span>
                 </li>
               ))}
