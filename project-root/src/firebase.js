@@ -2,9 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
-// 🔹 Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAIckZEyuVFr7aewkCNzIEmxB1uUjGJgEU",
   authDomain: "imperial-esports-da816.firebaseapp.com",
@@ -15,19 +13,8 @@ const firebaseConfig = {
   measurementId: "G-LQK20L1KBT",
 };
 
-// 🔹 Initialize core Firebase services
+// ✅ Initialize core Firebase services
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const provider = new GoogleAuthProvider();
-
-// 🔹 Enable App Check (safe & modern)
-export const appCheckInstance = initializeAppCheck(app, {
-  provider: new ReCaptchaV3Provider("6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq"), // 👈 replace with your **real reCAPTCHA v3 site key**
-  isTokenAutoRefreshEnabled: true, // refreshes App Check token automatically
-});
-
-// 👇 Optional: Debug mode for localhost / dev
-if (import.meta.env.DEV) {
-  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-}
