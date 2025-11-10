@@ -1,24 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getWithdrawHistory } from '../utils/firestore'; // ✅ fixed import
-import { auth } from '../firebase';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { getWithdrawHistory } from "../utils/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../firebase";
 
 export default function WithdrawalHistoryPage() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const user = auth.currentUser;
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
+    // Wait until Firebase auth is ready
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        navigate("/login");
+        return;
+      }
 
-    const loadHistory = async () => {
       setLoading(true);
       try {
-        // ✅ updated function name
         const data = await getWithdrawHistory(user.uid);
         setHistory(data);
       } catch (error) {
@@ -27,10 +27,10 @@ export default function WithdrawalHistoryPage() {
       } finally {
         setLoading(false);
       }
-    };
+    });
 
-    loadHistory();
-  }, [user, navigate]);
+    return () => unsubscribe();
+  }, [navigate]);
 
   return (
     <div className="dash-root">
@@ -40,11 +40,11 @@ export default function WithdrawalHistoryPage() {
       <div className="dash-overlay" />
 
       {/* Simple Header with Back Button */}
-      <header className="dash-header" style={{ justifyContent: 'flex-start' }}>
+      <header className="dash-header" style={{ justifyContent: "flex-start" }}>
         <button
           className="btn small ghost"
           onClick={() => navigate(-1)}
-          style={{ marginRight: '15px' }}
+          style={{ marginRight: "15px" }}
         >
           &lt; Back
         </button>
@@ -56,6 +56,7 @@ export default function WithdrawalHistoryPage() {
       <main className="dash-main">
         <section className="panel">
           <h3>Your Withdrawal Records</h3>
+
           {loading ? (
             <p>Loading records...</p>
           ) : history.length === 0 ? (
@@ -69,7 +70,9 @@ export default function WithdrawalHistoryPage() {
                     {wd.status || "Pending"}
                   </span>
                   <span className="muted-small">
-                    {wd.createdAt?.toDate().toLocaleString()}
+                    {wd.createdAt?.toDate
+                      ? wd.createdAt.toDate().toLocaleString()
+                      : "Date not available"}
                   </span>
                 </li>
               ))}
