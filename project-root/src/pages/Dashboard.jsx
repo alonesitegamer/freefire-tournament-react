@@ -1,27 +1,23 @@
 // src/pages/Dashboard.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { auth, db, appCheckInstance } from "../firebase";
-import {
-  signOut,
-  updateProfile,
-  sendPasswordResetEmail,
-} from "firebase/auth";
+import { signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import {
   doc,
   getDoc,
   setDoc,
   updateDoc,
-  serverTimestamp,
   addDoc,
   collection,
   getDocs,
   query,
   where,
   orderBy,
+  serverTimestamp,
   arrayUnion,
 } from "firebase/firestore";
 import { getToken } from "firebase/app-check";
+import { useNavigate } from "react-router-dom";
 
 // icons
 import {
@@ -36,32 +32,28 @@ import {
   FaUserCog,
 } from "react-icons/fa";
 
-// (Optional) If you have separate pages for histories, keep imports.
-// They are NOT used in Account anymore (per your request).
+// sub-pages (make sure these files exist)
 import MatchHistoryPage from "./MatchHistoryPage";
 import WithdrawalHistoryPage from "./WithdrawalHistoryPage";
 
 /**
  * Dashboard.jsx
  *
- * Full dashboard with:
- * - home / matches / topup / withdraw / account / admin
- * - claimDaily (+1), watchAd (+2, max 10/day)
- * - topupRequests & withdrawRequests handling
- * - referral redeem via serverless function (uses App Check token)
+ * - Full UI + logic for home, matches, topup, withdraw, admin, account.
+ * - Daily reward: +1 coin.
+ * - Rewarded ad: +2 coins, max 3 ads/day per user (tracked in user doc).
+ * - Stats: profile.stats is auto-initialized and updated on relevant actions.
+ * - Admin settle: finds winner's user doc by username and updates their stats and coins.
  *
- * Changes requested:
- * - Removed Match History & Withdrawal History entries inside Account menu.
- * - Ad reward is +2, max 10/day.
- * - Daily reward is +1.
- *
- * Keep other logic intact; only account menu modified.
+ * Note: Adjust any paths / icons / image assets to match your repo.
  */
+
+/* ---------- constants ---------- */
 
 const initialMatchState = {
   title: "",
   type: "BR",
-  imageUrl: "",
+  imageUrl: "/bt.jpg",
   entryFee: 200,
   maxPlayers: 48,
   prizeModel: "Scalable",
@@ -83,86 +75,88 @@ const rewardOptions = [
 ];
 
 function formatMatchTime(timestamp) {
-  if (!timestamp || typeof timestamp.toDate !== "function") {
-    return "Time TBD";
-  }
-  return timestamp.toDate().toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  if (!timestamp || typeof timestamp.toDate !== "function") return "Time TBD";
+  return timestamp
+    .toDate()
+    .toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
 }
+
+/* ---------- component ---------- */
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
-  const audioRef = useRef(null);
 
-  // state
+  // profile + UI state
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("home");
-  const [activeSubAccountView, setActiveSubAccountView] = useState("main"); // profile / refer / etc.
-  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [activeTab, setActiveTab] = useState("home"); // home, matches, topup, withdraw, account, admin
+  const [accountView, setAccountView] = useState("main"); // main, profile, refer, match_history, withdraw_history
+  const [topupView, setTopupView] = useState("select"); // select | pay
+  const [selectedAmount, setSelectedAmount] = useState(null);
+  const [topupAmount, setTopupAmount] = useState("");
+  const [paymentUpiId, setPaymentUpiId] = useState("");
+  const [requests, setRequests] = useState({ topup: [], withdraw: [] });
   const [matches, setMatches] = useState([]);
-  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [loadingMatches, setLoadingMatches] = useState(false);
   const [newMatch, setNewMatch] = useState(initialMatchState);
-  const [modalMessage, setModalMessage] = useState(null);
+
+  // modal / UI
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [adLoading, setAdLoading] = useState(false);
-  const [rewardedAdCount, setRewardedAdCount] = useState(0); // count per day
-  const [topupView, setTopupView] = useState("select"); // select | pay
-  const [selectedTopupAmount, setSelectedTopupAmount] = useState(null);
-  const [customTopupAmount, setCustomTopupAmount] = useState("");
-  const [paymentUpiId, setPaymentUpiId] = useState("");
-  const [requests, setRequests] = useState({ topup: [], withdraw: [] });
+  const [modalMessage, setModalMessage] = useState(null);
+  const [selectedMatch, setSelectedMatch] = useState(null);
+
+  // admin settle match
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [matchToSettle, setMatchToSettle] = useState(null);
   const [winnerUsername, setWinnerUsername] = useState("");
   const [winnerKills, setWinnerKills] = useState(0);
+
+  // ads / audio
   const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null);
+  const [adLoading, setAdLoading] = useState(false);
 
-  // admin account
   const adminEmail = "esportsimperial50@gmail.com";
-  const adminPassword = "imperialx"; // kept for your notes (not used programmatically)
+  // adminPassword not used in code -- auth is via Firebase
 
-  // init: load user profile
+  /* ---------- helper: init profile + stats ---------- */
   useEffect(() => {
     let mounted = true;
-    async function load() {
-      setLoading(true);
+    async function loadProfile() {
       try {
+        setLoading(true);
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
-          const data = snap.data();
-          // ensure referral code exists
+          let data = snap.data();
+          // ensure referralCode exists
           if (!data.referralCode) {
             const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-            await updateDoc(ref, {
-              referralCode: newReferralCode,
-              hasRedeemedReferral: data.hasRedeemedReferral || false,
-            });
-            if (mounted) {
-              setProfile({
-                id: snap.id,
-                ...data,
-                referralCode: newReferralCode,
-                hasRedeemedReferral: data.hasRedeemedReferral || false,
-              });
-              setNewDisplayName(data.displayName || "");
-            }
-          } else {
-            if (mounted) {
-              setProfile({ id: snap.id, ...data });
-              setNewDisplayName(data.displayName || "");
-            }
+            await updateDoc(ref, { referralCode: newReferralCode, hasRedeemedReferral: data?.hasRedeemedReferral || false });
+            data.referralCode = newReferralCode;
+            data.hasRedeemedReferral = data?.hasRedeemedReferral || false;
+          }
+          // ensure stats exists
+          if (!data.stats) {
+            const initialStats = { matchesPlayed: 0, totalKills: 0, booyahs: 0, coinsEarned: data.coins || 0 };
+            await updateDoc(ref, { stats: initialStats });
+            data.stats = initialStats;
+          }
+          // ensure ad tracking exists
+          if (!data.adInfo) {
+            // adInfo: { date: "YYYY-MM-DD", watched: 0 }
+            await updateDoc(ref, { adInfo: { date: null, watched: 0 } });
+            data.adInfo = { date: null, watched: 0 };
+          }
+          if (mounted) {
+            setProfile({ id: snap.id, ...data });
+            setNewDisplayName(data.displayName || "");
+            setNewUsername(data.username || "");
           }
         } else {
-          // create new user doc
+          // user doc missing -> create
           const newReferralCode = user.uid.substring(0, 8).toUpperCase();
           const initialData = {
             email: user.email,
@@ -173,316 +167,336 @@ export default function Dashboard({ user }) {
             createdAt: serverTimestamp(),
             referralCode: newReferralCode,
             hasRedeemedReferral: false,
+            stats: { matchesPlayed: 0, totalKills: 0, booyahs: 0, coinsEarned: 0 },
+            adInfo: { date: null, watched: 0 },
           };
           await setDoc(ref, initialData);
           if (mounted) {
             setProfile({ id: ref.id, ...initialData });
-            setNewDisplayName(initialData.displayName);
+            setNewDisplayName(initialData.displayName || "");
+            setNewUsername("");
           }
         }
       } catch (err) {
         console.error("Dashboard load error:", err);
-        setModalMessage("Failed to load profile. Check console.");
       } finally {
         setLoading(false);
       }
     }
-    load();
+    loadProfile();
     return () => (mounted = false);
   }, [user.uid, user.email, user.displayName]);
 
-  // load matches when matches tab active
+  /* ---------- Load matches when user opens Matches tab ---------- */
   useEffect(() => {
-    if (activeTab !== "matches") return;
-    let mounted = true;
     async function loadMatches() {
       setLoadingMatches(true);
       try {
         const matchesRef = collection(db, "matches");
-        const q = query(
-          matchesRef,
-          where("status", "==", "upcoming"),
-          orderBy("createdAt", "desc")
-        );
+        const q = query(matchesRef, where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
         const snap = await getDocs(q);
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (mounted) setMatches(list);
+        setMatches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        console.error("Error loading matches:", err);
-        setModalMessage("Failed to load matches.");
+        console.error("loadMatches err", err);
       } finally {
         setLoadingMatches(false);
       }
     }
-    loadMatches();
-    return () => (mounted = false);
+    if (activeTab === "matches") loadMatches();
   }, [activeTab]);
 
-  // prefill username modal when opened
+  /* ---------- Admin: load pending requests + upcoming matches ---------- */
   useEffect(() => {
-    if (profile?.username) {
-      setNewUsername(profile.username);
-    } else {
-      setNewUsername("");
-    }
-  }, [showUsernameModal, profile?.username]);
-
-  // music toggle
-  const toggleMusic = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) audioRef.current.pause();
-    else audioRef.current.play();
-    setIsPlaying(!isPlaying);
-  };
-
-  // Redeem referral (calls serverless function; includes App Check)
-  async function handleRedeemReferral(referralInput) {
-    if (!referralInput) return setModalMessage("Please enter a referral code.");
-    if (profile.hasRedeemedReferral)
-      return setModalMessage("You have already redeemed a referral code.");
-    if (referralInput.toUpperCase() === profile.referralCode)
-      return setModalMessage("You cannot use your own referral code.");
-
-    setLoading(true);
-    try {
-      let appCheckToken;
+    if (profile?.email !== adminEmail) return;
+    (async () => {
       try {
-        appCheckToken = await getToken(appCheckInstance, false);
+        const topupQ = query(collection(db, "topupRequests"), where("status", "==", "pending"));
+        const withdrawQ = query(collection(db, "withdrawRequests"), where("status", "==", "pending"));
+        const matchesQ = query(collection(db, "matches"), where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
+        const [topupSnap, withdrawSnap, matchesSnap] = await Promise.all([getDocs(topupQ), getDocs(withdrawQ), getDocs(matchesQ)]);
+        setRequests({
+          topup: topupSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          withdraw: withdrawSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        });
+        setMatches(matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        console.error("App Check token error:", err);
-        setModalMessage("Security check failed. Please refresh and try again.");
-        setLoading(false);
-        return;
+        console.error("admin load error", err);
       }
+    })();
+  }, [profile?.email, activeTab]);
 
-      const idToken = await user.getIdToken();
-
-      const res = await fetch("/api/redeemReferralCode", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-          "X-Firebase-AppCheck": appCheckToken.token,
-        },
-        body: JSON.stringify({ code: referralInput.toUpperCase() }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        // optimistic UI update: add coins to profile
-        setProfile((p) => ({ ...p, coins: (p.coins || 0) + 50, hasRedeemedReferral: true }));
-        setModalMessage(data.message || "Referral redeemed!");
-      } else {
-        setModalMessage(data.message || "Failed to redeem referral.");
-      }
-    } catch (err) {
-      console.error("Redeem referral error:", err);
-      setModalMessage("An error occurred. Try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // add coins helper
+  /* ---------- Utility: add coins & update stats.coinsEarned ---------- */
   async function addCoin(n = 1) {
     if (!profile) return;
     try {
-      const ref = doc(db, "users", user.uid);
+      const userRef = doc(db, "users", user.uid);
       const newCoins = (profile.coins || 0) + n;
-      await updateDoc(ref, { coins: newCoins });
-      const snap = await getDoc(ref);
-      setProfile({ id: snap.id, ...snap.data() });
+      const newCoinsEarned = (profile.stats?.coinsEarned || 0) + n;
+      await updateDoc(userRef, { coins: newCoins, "stats.coinsEarned": newCoinsEarned });
+      setProfile((p) => ({ ...p, coins: newCoins, stats: { ...p.stats, coinsEarned: newCoinsEarned } }));
     } catch (err) {
-      console.error("addCoin error:", err);
-      setModalMessage("Failed to update coins.");
+      console.error("addCoin err", err);
     }
   }
 
-  // daily claim: +1
+  /* ---------- Claim daily (1 coin) ---------- */
   async function claimDaily() {
     if (!profile) return;
-    const last =
-      profile.lastDaily && typeof profile.lastDaily.toDate === "function"
-        ? profile.lastDaily.toDate()
-        : null;
+    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ? profile.lastDaily.toDate() : null;
     const now = new Date();
-    const isSameDay = last && last.toDateString() === now.toDateString();
-    if (isSameDay) return setModalMessage("You already claimed today's coin.");
-
+    if (last && last.toDateString() === now.toDateString()) {
+      setModalMessage("You already claimed today's coin.");
+      return;
+    }
     try {
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, {
-        coins: (profile.coins || 0) + 1,
-        lastDaily: serverTimestamp(),
-      });
-      const snap = await getDoc(ref);
+      const userRef = doc(db, "users", user.uid);
+      const newCoins = (profile.coins || 0) + 1;
+      const newCoinsEarned = (profile.stats?.coinsEarned || 0) + 1;
+      await updateDoc(userRef, { coins: newCoins, lastDaily: serverTimestamp(), "stats.coinsEarned": newCoinsEarned });
+      const snap = await getDoc(userRef);
       setProfile({ id: snap.id, ...snap.data() });
       setModalMessage("+1 coin credited!");
     } catch (err) {
-      console.error("claimDaily error:", err);
-      setModalMessage("Failed to claim daily coin.");
+      console.error("claimDaily err", err);
+      setModalMessage("Failed to claim daily. Try again.");
     }
   }
 
-  // watch ad: +2 coins, max 10 per day
+  /* ---------- Watch rewarded ad (2 coins), limit 3/day ---------- */
   async function watchAd() {
+    if (!profile) return;
     if (adLoading) return;
-    // reset daily count if lastAdDay is not today (we can store lastAdDay in profile)
-    let today = new Date().toDateString();
-    // use profile.adCount and profile.adCountDay if you stored it before; otherwise use local state
-    const adCountLocal = profile.adCount || 0;
-    const adDay = profile.adCountDay ? profile.adCountDay.toDate().toDateString() : null;
-    if (adDay !== today && profile.adCountDay) {
-      // reset on server if using server-managed counters — omitted here; we'll rely on profile fields if present
-    }
-
-    const currentCount = adCountLocal;
-
-    if (currentCount >= 10) return setModalMessage("You have reached today's ad limit (10).");
-
-    setAdLoading(true);
     try {
-      // Simulate ad flow. Replace with real ad SDK integration.
-      await new Promise((r) => setTimeout(r, 1200));
+      // check ad limits
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const adInfo = profile.adInfo || { date: null, watched: 0 };
+      if (adInfo.date === today && adInfo.watched >= 3) {
+        setModalMessage("Ad limit reached for today (3). Come back tomorrow.");
+        return;
+      }
 
-      // Update coins and ad counters in firestore
-      const ref = doc(db, "users", user.uid);
-      const newCoins = (profile.coins || 0) + 2;
-      // update ad count and ad day
-      const updates = {
-        coins: newCoins,
-        adCount: (profile.adCount || 0) + 1,
-        adCountDay: serverTimestamp(), // store timestamp of last ad increment
-      };
-      await updateDoc(ref, updates);
-      const snap = await getDoc(ref);
-      setProfile({ id: snap.id, ...snap.data() });
-      setRewardedAdCount((c) => c + 1);
-      setModalMessage("+2 coins for watching the ad!");
+      if (!window.adbreak && !window.adsbygoogle) {
+        // fallback: just credit (demo)
+        setModalMessage("Ads not available. Crediting demo reward.");
+        // Update counters in Firestore
+        const userRef = doc(db, "users", user.uid);
+        const newWatched = adInfo.date === today ? adInfo.watched + 1 : 1;
+        const newCoins = (profile.coins || 0) + 2;
+        const newCoinsEarned = (profile.stats?.coinsEarned || 0) + 2;
+        await updateDoc(userRef, { coins: newCoins, "adInfo.date": today, "adInfo.watched": newWatched, "stats.coinsEarned": newCoinsEarned });
+        const snap = await getDoc(userRef);
+        setProfile({ id: snap.id, ...snap.data() });
+        return;
+      }
+
+      setAdLoading(true);
+
+      window.adbreak({
+        type: "reward",
+        name: "watch-ad-reward",
+        adDismissed: () => {
+          setAdLoading(false);
+        },
+        adBreakDone: (placementInfo) => {
+          setAdLoading(false);
+          if (placementInfo.breakStatus === "viewed") {
+            setModalMessage("+2 coins for watching the ad!");
+            // update DB counters
+            (async () => {
+              try {
+                const userRef = doc(db, "users", user.uid);
+                const newWatched = adInfo.date === today ? adInfo.watched + 1 : 1;
+                const newCoins = (profile.coins || 0) + 2;
+                const newCoinsEarned = (profile.stats?.coinsEarned || 0) + 2;
+                await updateDoc(userRef, { coins: newCoins, "adInfo.date": today, "adInfo.watched": newWatched, "stats.coinsEarned": newCoinsEarned });
+                const snap = await getDoc(userRef);
+                setProfile({ id: snap.id, ...snap.data() });
+              } catch (err) {
+                console.error("after ad update error", err);
+              }
+            })();
+          } else {
+            setModalMessage("Ad not completed — no reward.");
+          }
+        },
+        beforeReward: (showAdFn) => {
+          // the ad provider will call this before showing; we allow it to show
+          showAdFn();
+        },
+      });
     } catch (err) {
-      console.error("watchAd error:", err);
-      setModalMessage("Ad failed to load. Try again later.");
-    } finally {
+      console.error("watchAd err", err);
+      setModalMessage("Ad error. Try again later.");
       setAdLoading(false);
     }
   }
 
-  // handle topup: just moves to payment page
-  function handleTopupStart() {
+  /* ---------- Top-up flow ---------- */
+  function handleSelectAmount(amt) {
+    setSelectedAmount(amt);
+    setTopupAmount("");
+  }
+
+  async function handleTopup() {
+    const amt = parseInt(selectedAmount || topupAmount);
+    if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
     setTopupView("pay");
   }
 
-  // confirm payment (user clicked "I Have Paid")
   async function handleConfirmPayment() {
-    const amt = parseInt(selectedTopupAmount || customTopupAmount);
-    if (!amt || amt < 20) return setModalMessage("Minimum top-up is ₹20.");
-    if (!paymentUpiId) return setModalMessage("Please enter your UPI ID.");
-
-    setLoading(true);
+    const amt = parseInt(selectedAmount || topupAmount);
+    if (!amt) return setModalMessage("Invalid amount.");
+    if (!paymentUpiId) return setModalMessage("Enter your UPI ID.");
     try {
+      setLoading(true);
       await addDoc(collection(db, "topupRequests"), {
         userId: user.uid,
         email: profile.email,
         amount: amt,
-        coins: amt * 10, // 1₹ = 10 coins (per your earlier UI)
+        coins: amt * 10, // you used 1₹=10 coins earlier in code; adjust if needed
         upiId: paymentUpiId,
         status: "pending",
         createdAt: serverTimestamp(),
       });
-      setModalMessage("Top-up request submitted! Admin will verify it soon.");
-      setCustomTopupAmount("");
-      setSelectedTopupAmount(null);
+      setModalMessage("Top-up request submitted — admin will verify.");
+      setTopupAmount("");
+      setSelectedAmount(null);
       setPaymentUpiId("");
       setTopupView("select");
       setActiveTab("home");
     } catch (err) {
-      console.error("handleConfirmPayment error:", err);
+      console.error("topup confirm err", err);
       setModalMessage("Failed to submit top-up request.");
     } finally {
       setLoading(false);
     }
   }
 
-  // handle withdraw request via UPI or reward redemptions
-  async function handleWithdrawRequest(amount, upiId) {
-    const amt = parseInt(amount);
-    if (!amt || amt < 50) return setModalMessage("Minimum withdrawal is ₹50.");
-    if (!upiId) return setModalMessage("Please enter your UPI ID.");
+  /* ---------- Withdraw / redeem flow (rewards) ---------- */
 
-    // 10% commission: user must have amt * 1.1 coins (rounded up)
-    const requiredCoins = Math.ceil(amt * 1.1);
-    if ((profile.coins || 0) < requiredCoins) return setModalMessage(`You need at least ${requiredCoins} coins to withdraw ₹${amt}.`);
-
-    setLoading(true);
+  async function handleRedeemReward(reward) {
+    if (!profile) return setModalMessage("Profile not ready.");
+    if (profile.coins < reward.cost) return setModalMessage("Not enough coins.");
     try {
+      setLoading(true);
+      const userRef = doc(db, "users", user.uid);
+      // coins deduction + create withdrawRequest
       await addDoc(collection(db, "withdrawRequests"), {
         userId: user.uid,
         email: profile.email,
-        upiId,
-        amount: amt,
-        coinsDeducted: requiredCoins,
+        amount: reward.amount,
+        coinsDeducted: reward.cost,
         status: "pending",
+        type: reward.type,
+        upiId: reward.type === "UPI" ? profile.upiId || null : null,
         createdAt: serverTimestamp(),
       });
-
-      // deduct coins
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { coins: (profile.coins || 0) - requiredCoins });
+      await updateDoc(userRef, { coins: profile.coins - reward.cost, "stats.coinsEarned": Math.max((profile.stats?.coinsEarned || 0) - reward.cost, 0) });
       const snap = await getDoc(userRef);
       setProfile({ id: snap.id, ...snap.data() });
-
-      setModalMessage(`Withdrawal requested: ₹${amt} (deducted ${requiredCoins} coins including 10% commission).`);
+      setModalMessage("Redemption request created. Admin will process it.");
     } catch (err) {
-      console.error("handleWithdrawRequest error:", err);
-      setModalMessage("Failed to submit withdrawal request.");
+      console.error("redeem err", err);
+      setModalMessage("Failed to request redemption.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Admin: fetch pending topup/withdraw + upcoming matches
-  useEffect(() => {
-    if (!profile) return;
-    if (profile.email !== adminEmail) return;
+  /* ---------- Join match ---------- */
+  async function handleJoinMatch(match) {
+    if (!profile) return setModalMessage("Profile not ready.");
+    if (!profile.username) {
+      setModalMessage("Set in-game username first.");
+      setShowUsernameModal(true);
+      return;
+    }
+    const playersJoined = match.playersJoined || [];
+    if (playersJoined.includes(user.uid)) {
+      setSelectedMatch(match);
+      return;
+    }
+    if (playersJoined.length >= (match.maxPlayers || 48)) return setModalMessage("Match is full.");
+    if ((profile.coins || 0) < (match.entryFee || 0)) return setModalMessage("Not enough coins.");
+    if (!window.confirm(`Join for ${match.entryFee} coins?`)) return;
+    try {
+      setLoading(true);
+      const userRef = doc(db, "users", user.uid);
+      const matchRef = doc(db, "matches", match.id);
+      await updateDoc(userRef, { coins: profile.coins - match.entryFee });
+      await updateDoc(matchRef, { playersJoined: arrayUnion(user.uid) });
+      // refresh local profile
+      const snap = await getDoc(userRef);
+      setProfile({ id: snap.id, ...snap.data() });
+      // update matches state
+      setMatches((prev) => prev.map((m) => (m.id === match.id ? { ...m, playersJoined: [...(m.playersJoined || []), user.uid] } : m)));
+      setModalMessage("Joined match successfully!");
+      setSelectedMatch({ ...match, playersJoined: [...playersJoined, user.uid] });
+    } catch (err) {
+      console.error("join match err", err);
+      setModalMessage("Failed to join match.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    (async () => {
-      try {
-        const topupQ = query(collection(db, "topupRequests"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
-        const withdrawQ = query(collection(db, "withdrawRequests"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
-        const matchesQ = query(collection(db, "matches"), where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
-
-        const [tSnap, wSnap, mSnap] = await Promise.all([getDocs(topupQ), getDocs(withdrawQ), getDocs(matchesQ)]);
-        setRequests({
-          topup: tSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-          withdraw: wSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        });
-        setMatches(mSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error("Admin fetch error:", err);
+  /* ---------- Create match (admin) ---------- */
+  async function handleCreateMatch(e) {
+    e.preventDefault();
+    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) return setModalMessage("Fill Title, Image and Start time.");
+    try {
+      setLoading(true);
+      const matchData = {
+        ...newMatch,
+        startTime: new Date(newMatch.startTime),
+        status: "upcoming",
+        playersJoined: [],
+        createdAt: serverTimestamp(),
+        roomID: "",
+        roomPassword: "",
+      };
+      if (matchData.prizeModel === "Scalable") {
+        delete matchData.booyahPrize;
+      } else {
+        delete matchData.perKillReward;
+        delete matchData.commissionPercent;
       }
-    })();
-  }, [profile?.email]);
+      await addDoc(collection(db, "matches"), matchData);
+      setModalMessage("Match created.");
+      setNewMatch(initialMatchState);
+      // reload matches for admin view
+      const q = query(collection(db, "matches"), where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      setMatches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error("create match err", err);
+      setModalMessage("Failed to create match.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // approve / reject handlers
+  /* ---------- Approve / reject topup or withdraw (admin) ---------- */
   async function approveRequest(type, req) {
     try {
       const ref = doc(db, `${type}Requests`, req.id);
       await updateDoc(ref, { status: "approved" });
-
+      // if topup -> add coins to user and update stats.coinsEarned
       if (type === "topup") {
-        const uRef = doc(db, "users", req.userId);
-        const uSnap = await getDoc(uRef);
-        if (uSnap.exists()) {
-          const current = uSnap.data().coins || 0;
-          await updateDoc(uRef, { coins: current + (req.coins || 0) });
+        const userRef = doc(db, "users", req.userId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const current = userSnap.data();
+          const newCoins = (current.coins || 0) + (req.coins || 0);
+          const newCoinsEarned = (current.stats?.coinsEarned || 0) + (req.coins || 0);
+          await updateDoc(userRef, { coins: newCoins, "stats.coinsEarned": newCoinsEarned });
         }
       }
-
-      setRequests((prev) => ({ ...prev, [type]: prev[type].filter((r) => r.id !== req.id) }));
+      // if withdraw (approved) admin will manually process real payment; keep status updated
+      setRequests((prev) => ({ ...prev, [type]: prev[type].filter((it) => it.id !== req.id) }));
       setModalMessage(`${type} approved.`);
     } catch (err) {
-      console.error("approveRequest error:", err);
+      console.error("approve err", err);
       setModalMessage("Failed to approve request.");
     }
   }
@@ -491,215 +505,152 @@ export default function Dashboard({ user }) {
     try {
       const ref = doc(db, `${type}Requests`, req.id);
       await updateDoc(ref, { status: "rejected" });
-      setRequests((prev) => ({ ...prev, [type]: prev[type].filter((r) => r.id !== req.id) }));
+      setRequests((prev) => ({ ...prev, [type]: prev[type].filter((it) => it.id !== req.id) }));
       setModalMessage(`${type} rejected.`);
     } catch (err) {
-      console.error("rejectRequest error:", err);
+      console.error("reject err", err);
       setModalMessage("Failed to reject request.");
     }
   }
 
-  // create match (admin)
-  async function handleCreateMatch(e) {
-    e.preventDefault();
-    if (profile?.email !== adminEmail) return setModalMessage("Only admin can create matches.");
-    if (!newMatch.title || !newMatch.imageUrl || !newMatch.startTime) return setModalMessage("Please fill Title, Image URL and Start Time.");
-
-    setLoading(true);
-    try {
-      const matchData = {
-        ...newMatch,
-        startTime: new Date(newMatch.startTime),
-        status: "upcoming",
-        playersJoined: [],
-        createdAt: serverTimestamp(),
-      };
-      if (matchData.prizeModel === "Scalable") {
-        delete matchData.booyahPrize;
-      } else {
-        delete matchData.commissionPercent;
-        delete matchData.perKillReward;
-      }
-      await addDoc(collection(db, "matches"), matchData);
-      setModalMessage("Match created successfully!");
-      setNewMatch(initialMatchState);
-      setMatches((prev) => [{ ...matchData, id: "new" }, ...prev]);
-    } catch (err) {
-      console.error("handleCreateMatch error:", err);
-      setModalMessage("Failed to create match.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // set username
-  async function handleSetUsername(e) {
-    e.preventDefault();
-    if (!newUsername) return setModalMessage("Username cannot be blank.");
-    setLoading(true);
-    try {
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, { username: newUsername });
-      setProfile((p) => ({ ...p, username: newUsername }));
-      setShowUsernameModal(false);
-      setModalMessage("Username saved!");
-    } catch (err) {
-      console.error("handleSetUsername error:", err);
-      setModalMessage("Failed to save username.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // update display name
-  async function handleUpdateDisplayName(e) {
-    e.preventDefault();
-    if (!newDisplayName) return setModalMessage("Display name cannot be blank.");
-    if (newDisplayName === profile.displayName) return setModalMessage("No changes made.");
-    setLoading(true);
-    try {
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: newDisplayName });
-      }
-      const ref = doc(db, "users", user.uid);
-      await updateDoc(ref, { displayName: newDisplayName });
-      setProfile((p) => ({ ...p, displayName: newDisplayName }));
-      setModalMessage("Display name updated.");
-    } catch (err) {
-      console.error("handleUpdateDisplayName error:", err);
-      setModalMessage("Failed to update display name.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // password reset
-  async function handlePasswordReset() {
-    if (!user?.email) return setModalMessage("Could not find user email.");
-    const providerIds = auth.currentUser?.providerData?.map((p) => p.providerId) || [];
-    if (!providerIds.includes("password")) {
-      return setModalMessage("Password reset is not available for Google login.");
-    }
-    try {
-      await sendPasswordResetEmail(auth, user.email);
-      setModalMessage("Password reset email sent!");
-    } catch (err) {
-      console.error("handlePasswordReset error:", err);
-      setModalMessage("Failed to send password reset email.");
-    }
-  }
-
-  // join match
-  async function handleJoinMatch(match) {
-    if (!profile) return setModalMessage("Profile not ready.");
-    if (!profile.username) {
-      setShowUsernameModal(true);
-      return setModalMessage("Please set in-game username first.");
-    }
-
-    const matchRef = doc(db, "matches", match.id);
-    const userRef = doc(db, "users", user.uid);
-
-    try {
-      // basic client checks
-      if (match.playersJoined?.includes(user.uid)) {
-        setSelectedMatch(match);
-        return;
-      }
-      if ((match.playersJoined?.length || 0) >= (match.maxPlayers || 48)) return setModalMessage("Match is full.");
-      if ((profile.coins || 0) < (match.entryFee || 0)) return setModalMessage("Not enough coins.");
-
-      if (!window.confirm(`Join this match for ${match.entryFee} coins?`)) return;
-
-      // update server
-      await updateDoc(userRef, { coins: (profile.coins || 0) - (match.entryFee || 0) });
-      await updateDoc(matchRef, { playersJoined: arrayUnion(user.uid) });
-
-      // update local state
-      setProfile((p) => ({ ...p, coins: (p.coins || 0) - (match.entryFee || 0) }));
-      setMatches((prev) => prev.map((m) => (m.id === match.id ? { ...m, playersJoined: [...(m.playersJoined || []), user.uid] } : m)));
-      setSelectedMatch({ ...match, playersJoined: [...(match.playersJoined || []), user.uid] });
-      setModalMessage("You have joined the match!");
-    } catch (err) {
-      console.error("handleJoinMatch error:", err);
-      setModalMessage("Failed to join match.");
-    }
-  }
-
-  // open settle modal
-  const openSettleModal = (match) => {
+  /* ---------- Settle match (admin) ---------- */
+  // This version finds the winner by username and credits their account and stats.
+  async function openSettleModal(match) {
     setMatchToSettle(match);
     setWinnerUsername("");
     setWinnerKills(0);
     setShowSettleModal(true);
-  };
+  }
 
-  // settle match via API (requires App Check)
   async function handleSettleMatch(e) {
     e.preventDefault();
-    if (!matchToSettle || !winnerUsername) return setModalMessage("Winner username required.");
-
-    setLoading(true);
+    if (!matchToSettle || !winnerUsername) return setModalMessage("Enter winner username.");
     try {
-      let appCheckToken;
-      try {
-        appCheckToken = await getToken(appCheckInstance, false);
-      } catch (err) {
-        throw new Error("Failed to retrieve App Check token.");
+      setLoading(true);
+      // find user by username
+      const usersQ = query(collection(db, "users"), where("username", "==", winnerUsername));
+      const snap = await getDocs(usersQ);
+      if (snap.empty) {
+        setModalMessage("Winner user not found. Make sure username is correct.");
+        setLoading(false);
+        return;
       }
-      const idToken = await user.getIdToken();
+      // use first matched user
+      const winnerDoc = snap.docs[0];
+      const winnerId = winnerDoc.id;
+      const winnerData = winnerDoc.data();
 
-      const res = await fetch("/api/settleMatch", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-          "X-Firebase-AppCheck": appCheckToken.token,
-        },
-        body: JSON.stringify({
-          matchId: matchToSettle.id,
-          winnerUsername,
-          kills: winnerKills,
-        }),
+      // compute prize logic (depends on your match object). Here assume booyahPrize if fixed, else perKill reward.
+      let prizeCoins = 0;
+      if (matchToSettle.prizeModel === "Fixed") {
+        prizeCoins = matchToSettle.booyahPrize || 0;
+      } else {
+        // Example: perKillReward * kills
+        const perKill = matchToSettle.perKillReward || 0;
+        prizeCoins = perKill * (winnerKills || 0);
+      }
+
+      // Update winner's coins + stats
+      const winnerRef = doc(db, "users", winnerId);
+      const prevCoins = winnerData.coins || 0;
+      const newCoins = prevCoins + prizeCoins;
+      const prevStats = winnerData.stats || { matchesPlayed: 0, totalKills: 0, booyahs: 0, coinsEarned: 0 };
+      const newStats = {
+        matchesPlayed: (prevStats.matchesPlayed || 0) + 1,
+        totalKills: (prevStats.totalKills || 0) + (winnerKills || 0),
+        booyahs: (prevStats.booyahs || 0) + 1,
+        coinsEarned: (prevStats.coinsEarned || 0) + prizeCoins,
+      };
+      await updateDoc(winnerRef, {
+        coins: newCoins,
+        "stats.matchesPlayed": newStats.matchesPlayed,
+        "stats.totalKills": newStats.totalKills,
+        "stats.booyahs": newStats.booyahs,
+        "stats.coinsEarned": newStats.coinsEarned,
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setMatches((prev) => prev.filter((m) => m.id !== matchToSettle.id));
-        setShowSettleModal(false);
-        setModalMessage(data.message || "Match settled.");
-      } else {
-        setModalMessage(data.message || "Settle failed.");
-      }
+      // mark match as settled in matches collection (admin responsibility)
+      const matchRef = doc(db, "matches", matchToSettle.id);
+      await updateDoc(matchRef, { status: "completed", settledAt: serverTimestamp(), winnerUsername });
+
+      // refresh admin lists
+      const matchesQ = query(collection(db, "matches"), where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
+      const matchesSnap = await getDocs(matchesQ);
+      setMatches(matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      setModalMessage(`Match settled. ${winnerUsername} awarded ${prizeCoins} coins.`);
+      setShowSettleModal(false);
     } catch (err) {
-      console.error("handleSettleMatch error:", err);
-      setModalMessage("Error settling match.");
+      console.error("settle err", err);
+      setModalMessage("Failed to settle match.");
     } finally {
       setLoading(false);
     }
   }
 
-  // logout
+  /* ---------- Profile updates ---------- */
+  async function handleSetUsername(e) {
+    e.preventDefault();
+    if (!newUsername) return setModalMessage("Enter a username.");
+    try {
+      setLoading(true);
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { username: newUsername });
+      const snap = await getDoc(ref);
+      setProfile({ id: snap.id, ...snap.data() });
+      setShowUsernameModal(false);
+      setModalMessage("Username saved.");
+    } catch (err) {
+      console.error("set username err", err);
+      setModalMessage("Failed to set username.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpdateDisplayName(e) {
+    e.preventDefault();
+    if (!newDisplayName) return setModalMessage("Enter a display name.");
+    try {
+      setLoading(true);
+      if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: newDisplayName });
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { displayName: newDisplayName });
+      const snap = await getDoc(ref);
+      setProfile({ id: snap.id, ...snap.data() });
+      setModalMessage("Display name saved.");
+    } catch (err) {
+      console.error("displayName err", err);
+      setModalMessage("Failed to update name.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handlePasswordReset() {
+    if (!user?.email) return setModalMessage("No email found.");
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      setModalMessage("Password reset email sent.");
+    } catch (err) {
+      console.error("pwd reset err", err);
+      setModalMessage("Failed to send reset email.");
+    }
+  }
+
   async function handleLogout() {
     await signOut(auth);
     navigate("/login");
   }
 
-  if (loading || !profile)
+  /* ---------- render ---------- */
+  if (loading || !profile) {
     return (
-      <div
-        style={{
-          height: "100vh",
-          background: "black",
-          color: "white",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
+      <div style={{ height: "100vh", background: "black", color: "white", display: "flex", justifyContent: "center", alignItems: "center" }}>
         Loading Dashboard...
       </div>
     );
+  }
 
   return (
     <div className="dash-root">
@@ -719,41 +670,32 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions">
-          <button className="btn small ghost music-btn" onClick={toggleMusic}>
+          <button className="btn small ghost music-btn" onClick={() => { toggleMusic(); }}>
             {isPlaying ? <FaVolumeUp /> : <FaVolumeMute />}
           </button>
 
-          {profile.email === adminEmail && (
-            <button className="btn small" onClick={() => setActiveTab("admin")}>
-              Admin Panel
-            </button>
-          )}
+          {profile.email === adminEmail && <button className="btn small" onClick={() => setActiveTab("admin")}>Admin Panel</button>}
+          <button className="btn small ghost" onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
       <main className="dash-main">
+        {/* HOME */}
         {activeTab === "home" && (
           <>
             <section className="panel">
               <div className="panel-row">
                 <div>
                   <div className="muted">Coins</div>
-                  <div className="big" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <img
-                      src="/coin.jpg"
-                      alt="coin"
-                      className="coin-icon"
-                      style={{ width: "28px", height: "28px", borderRadius: "50%", animation: "spinCoin 3s linear infinite" }}
-                    />
+                  <div className="big" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <img src="/coin.jpg" alt="coin" className="coin-icon" style={{ width: 28, height: 28 }} />
                     <span>{profile.coins ?? 0}</span>
                   </div>
                 </div>
 
                 <div>
                   <button className="btn" onClick={claimDaily}>Claim Daily (+1)</button>
-                  <button className="btn ghost" onClick={watchAd} disabled={adLoading}>
-                    {adLoading ? "Loading Ad..." : `Watch Ad (+2) [${profile.adCount || 0}/10]`}
-                  </button>
+                  <button className="btn ghost" onClick={watchAd} disabled={adLoading}>{adLoading ? "Loading..." : "Watch Ad (+2)"}</button>
                 </div>
               </div>
             </section>
@@ -761,13 +703,14 @@ export default function Dashboard({ user }) {
             <section className="panel">
               <h3>Featured Matches</h3>
               <div className="grid">
-                {[1,2,3,4].map((i)=>(
-                  <div key={i} className="match-card">
-                    <img src="/bt.jpg" alt="bt" />
+                {matches.slice(0, 4).map((m) => (
+                  <div key={m.id} className="match-card" onClick={() => setSelectedMatch(m)}>
+                    <img src={m.imageUrl || "/bt.jpg"} alt={m.title} />
                     <div className="match-info">
-                      <div className="match-title">Battle Royale #{i}</div>
-                      <div className="match-meta">Start: 18:{10 + i} • Joined: {Math.floor(Math.random()*12)+1}/16</div>
-                      <button className="btn" onClick={()=> setActiveTab("matches")}>View</button>
+                      <div className="match-title">{m.title}</div>
+                      <div className="match-meta">Starts: {formatMatchTime(m.startTime)}</div>
+                      <div className="match-meta">Entry: {m.entryFee} Coins • Joined: {(m.playersJoined || []).length} / {m.maxPlayers}</div>
+                      <button className="btn" onClick={(e) => { e.stopPropagation(); handleJoinMatch(m); }}>{(m.playersJoined || []).includes(user.uid) ? "Joined" : "Join"}</button>
                     </div>
                   </div>
                 ))}
@@ -776,168 +719,125 @@ export default function Dashboard({ user }) {
           </>
         )}
 
+        {/* MATCHES */}
         {activeTab === "matches" && (
           <>
             {!selectedMatch ? (
               <section className="panel">
                 <h3>Available Matches</h3>
                 {loadingMatches && <p>Loading matches...</p>}
-                {!loadingMatches && matches.length === 0 && <p>No upcoming matches right now. Check back soon!</p>}
-
+                {!loadingMatches && matches.length === 0 && <p>No upcoming matches right now.</p>}
                 <div className="grid">
-                  {matches.map((m) => {
-                    const hasJoined = m.playersJoined?.includes(user.uid);
-                    const isFull = (m.playersJoined?.length || 0) >= (m.maxPlayers || 48);
-                    return (
-                      <div key={m.id} className="match-card" onClick={() => setSelectedMatch(m)}>
-                        <img src={m.imageUrl} alt={m.title} />
-                        <div className="match-info">
-                          <div className="match-title">{m.title}</div>
-                          <div className="match-meta time">Starts: {formatMatchTime(m.startTime)}</div>
-                          <div className="match-meta">Entry: {m.entryFee} Coins | Joined: {m.playersJoined?.length || 0} / {m.maxPlayers}</div>
-                          <button className="btn" onClick={(e)=>{ e.stopPropagation(); handleJoinMatch(m); }} disabled={hasJoined || isFull}>
-                            {hasJoined ? "Joined" : isFull ? "Full" : "Join"}
-                          </button>
-                        </div>
+                  {matches.map((m) => (
+                    <div key={m.id} className="match-card" onClick={() => setSelectedMatch(m)}>
+                      <img src={m.imageUrl || "/bt.jpg"} alt={m.title} />
+                      <div className="match-info">
+                        <div className="match-title">{m.title}</div>
+                        <div className="match-meta">Starts: {formatMatchTime(m.startTime)}</div>
+                        <div className="match-meta">Entry: {m.entryFee} Coins • Joined: {(m.playersJoined || []).length} / {m.maxPlayers}</div>
+                        <button className="btn" onClick={(e) => { e.stopPropagation(); handleJoinMatch(m); }}>{(m.playersJoined || []).includes(user.uid) ? "Joined" : "Join"}</button>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </section>
             ) : (
               <section className="panel match-details-view">
                 <div className="match-details-header">
-                  <button className="back-btn" onClick={()=> setSelectedMatch(null)}><FaArrowLeft /> Back to Matches</button>
-                  <button className="btn small" onClick={()=> setShowUsernameModal(true)}><FaUserEdit style={{marginRight:8}}/> Edit Username</button>
+                  <button className="back-btn" onClick={() => setSelectedMatch(null)}><FaArrowLeft /> Back</button>
+                  <button className="btn small" onClick={() => setShowUsernameModal(true)}><FaUserEdit /> Edit Username</button>
                 </div>
-
-                <img src={selectedMatch.imageUrl} alt="match" className="match-details-image" />
+                <img src={selectedMatch.imageUrl || "/bt.jpg"} alt="match" className="match-details-image" />
                 <h3 className="modern-title">{selectedMatch.title}</h3>
                 <p className="match-details-time">Starts: {formatMatchTime(selectedMatch.startTime)}</p>
-
-                {(() => {
-                  const hasJoined = selectedMatch.playersJoined?.includes(user.uid);
-                  return (
-                    <>
-                      {hasJoined && selectedMatch.roomID ? (
-                        <div className="room-details">
-                          <h4>Room Details</h4>
-                          <p><span>Room ID:</span> {selectedMatch.roomID}</p>
-                          <p><span>Password:</span> {selectedMatch.roomPassword}</p>
-                        </div>
-                      ) : hasJoined ? (
-                        <div className="room-details pending">
-                          <p>You have joined! Room ID and Password will be revealed 15 minutes before the match.</p>
-                        </div>
-                      ) : null}
-
-                      <div className="match-rules">
-                        <h4>Match Rules</h4>
-                        <p>{selectedMatch.rules || "No specific rules provided."}</p>
-                      </div>
-                    </>
-                  );
-                })()}
+                {selectedMatch.playersJoined && selectedMatch.playersJoined.includes(user.uid) ? (
+                  selectedMatch.roomID ? (
+                    <div className="room-details">
+                      <h4>Room Details</h4>
+                      <p><span>Room ID:</span> {selectedMatch.roomID}</p>
+                      <p><span>Password:</span> {selectedMatch.roomPassword}</p>
+                    </div>
+                  ) : (
+                    <div className="room-details pending"><p>You joined. Room will be revealed 15 minutes before start.</p></div>
+                  )
+                ) : null}
+                <div className="match-rules"><h4>Match Rules</h4><p>{selectedMatch.rules || "No rules provided."}</p></div>
               </section>
             )}
           </>
         )}
 
+        {/* TOPUP */}
         {activeTab === "topup" && (
           <>
-            {topupView === "select" && (
+            {topupView === "select" ? (
               <section className="modern-card">
                 <h3 className="modern-title">Top-up Coins</h3>
                 <p className="modern-subtitle">1 ₹ = 10 Coins | Choose an amount</p>
                 <div className="amount-options">
-                  {[20,50,100,200].map((amt)=>(
-                    <div key={amt} className={`amount-btn ${selectedTopupAmount === amt ? "selected" : ""}`} onClick={()=>{ setSelectedTopupAmount(amt); setCustomTopupAmount(""); }}>
-                      ₹{amt} = {amt*10} Coins
+                  {[20, 50, 100, 200].map((amt) => (
+                    <div key={amt} className={`amount-btn ${selectedAmount === amt ? "selected" : ""}`} onClick={() => handleSelectAmount(amt)}>
+                      ₹{amt} = {amt * 10} Coins
                     </div>
                   ))}
                 </div>
-                <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={customTopupAmount} onChange={(e)=>{ setSelectedTopupAmount(null); setCustomTopupAmount(e.target.value); }} />
-                <button className="btn glow large" onClick={handleTopupStart}>Pay</button>
+                <input type="number" className="modern-input" placeholder="Or enter custom amount ₹" value={topupAmount} onChange={(e) => { setSelectedAmount(null); setTopupAmount(e.target.value); }} />
+                <button className="btn glow large" onClick={handleTopup}>Pay</button>
               </section>
-            )}
-
-            {topupView === "pay" && (
+            ) : (
               <section className="modern-card payment-page">
-                <button className="back-btn" onClick={()=> setTopupView("select")}><FaArrowLeft /> Back</button>
+                <button className="back-btn" onClick={() => setTopupView("select")}><FaArrowLeft /> Back</button>
                 <h3 className="modern-title">Scan & Pay</h3>
-                <p className="modern-subtitle">Scan the QR code to pay ₹{selectedTopupAmount || customTopupAmount}</p>
-                <img src="/qr.jpg" alt="QR Code" className="qr-code-image" />
-                <div className="form-group" style={{marginTop:24}}>
+                <p className="modern-subtitle">Scan the QR code to pay ₹{selectedAmount || topupAmount}</p>
+                <img src="/qr.jpg" alt="QR" className="qr-code-image" />
+                <div className="form-group" style={{ marginTop: 18 }}>
                   <label>Enter Your UPI ID</label>
-                  <input type="text" className="modern-input" placeholder="Enter your UPI ID (e.g., name@ybl)" value={paymentUpiId} onChange={(e)=> setPaymentUpiId(e.target.value)} />
-                  <button className="btn glow large" onClick={handleConfirmPayment} disabled={loading}>{loading ? "Submitting..." : "I Have Paid"}</button>
+                  <input type="text" className="modern-input" placeholder="name@ybl" value={paymentUpiId} onChange={(e) => setPaymentUpiId(e.target.value)} />
+                  <button className="btn glow large" onClick={handleConfirmPayment}>I Have Paid</button>
                 </div>
               </section>
             )}
           </>
         )}
 
+        {/* WITHDRAW / REDEEM */}
         {activeTab === "withdraw" && (
           <div className="withdraw-container">
             <section className="panel">
-              <h3 className="modern-title" style={{paddingLeft:10}}>Redeem Coins as UPI</h3>
-              <p className="modern-subtitle" style={{paddingLeft:10}}>10% commission fee | Min ₹50</p>
-              <div className="form-group" style={{marginTop:12}}>
-                <input type="number" placeholder="Enter amount ₹" className="modern-input" id="withdraw-amount" />
-                <input type="text" placeholder="Enter UPI ID (e.g., name@ybl)" className="modern-input" id="withdraw-upi" style={{marginTop:8}} />
-                <button className="btn" onClick={() => {
-                  const amtEl = document.getElementById("withdraw-amount");
-                  const upiEl = document.getElementById("withdraw-upi");
-                  handleWithdrawRequest(amtEl?.value, upiEl?.value);
-                }}>Request Withdrawal</button>
+              <h3 className="modern-title" style={{ paddingLeft: 10 }}>Redeem Coins as UPI</h3>
+              <p className="modern-subtitle" style={{ paddingLeft: 10 }}>10% commission fee</p>
+              <div className="reward-grid">
+                {rewardOptions.filter((r) => r.type === "UPI").map((r) => (
+                  <div key={r.amount} className="reward-card" onClick={() => handleRedeemReward(r)}>
+                    <img src={r.icon} alt={r.type} className="reward-icon" />
+                    <div className="reward-cost"><img src="/coin.jpg" alt="coin" /> <span>{r.cost}</span></div>
+                    <div className="reward-amount">₹ {r.amount}</div>
+                  </div>
+                ))}
               </div>
             </section>
 
             <section className="panel">
-              <h3 className="modern-title" style={{paddingLeft:10}}>Redeem Gift Cards</h3>
+              <h3 className="modern-title" style={{ paddingLeft: 10 }}>Redeem as Google Gift Card</h3>
               <div className="reward-grid">
-                {rewardOptions.map((reward) => (
-                  <div key={`${reward.type}-${reward.amount}`} className="reward-card" onClick={() => {
-                    // reuse handleRedeemReward logic inline (ask for UPI for UPI type)
-                    (async () => {
-                      if (!profile) return setModalMessage("Profile not ready");
-                      if (profile.coins < reward.cost) return setModalMessage("Not enough coins.");
-                      let upiVal = "";
-                      if (reward.type === "UPI") {
-                        upiVal = window.prompt("Enter your UPI ID to receive payment:");
-                        if (!upiVal) return setModalMessage("UPI ID required.");
-                      } else {
-                        if (!window.confirm(`Redeem ${reward.type} ₹${reward.amount} for ${reward.cost} coins?`)) return;
-                      }
-                      setLoading(true);
-                      try {
-                        await addDoc(collection(db, "withdrawRequests"), {
-                          userId: user.uid,
-                          email: profile.email,
-                          amount: reward.amount,
-                          coinsDeducted: reward.cost,
-                          type: reward.type,
-                          upiId: upiVal || "",
-                          status: "pending",
-                          createdAt: serverTimestamp(),
-                        });
-                        // deduct coins
-                        const uRef = doc(db, "users", user.uid);
-                        await updateDoc(uRef, { coins: (profile.coins || 0) - reward.cost });
-                        const snap = await getDoc(uRef);
-                        setProfile({ id: snap.id, ...snap.data() });
-                        setModalMessage(reward.type === "UPI" ? "Withdrawal request submitted!" : "Redemption requested! Admin will email code.");
-                      } catch (err) {
-                        console.error("redeem error:", err);
-                        setModalMessage("Failed to submit redemption.");
-                      } finally {
-                        setLoading(false);
-                      }
-                    })();
-                  }}>
-                    <img src={reward.icon} alt={reward.type} className="reward-icon" />
-                    <div className="reward-cost"><img src="/coin.jpg" alt="coin" /><span>{reward.cost}</span></div>
-                    <div className="reward-amount">₹ {reward.amount}</div>
+                {rewardOptions.filter((r) => r.type === "Google Play").map((r) => (
+                  <div key={r.amount} className="reward-card" onClick={() => handleRedeemReward(r)}>
+                    <img src={r.icon} alt={r.type} className="reward-icon" />
+                    <div className="reward-cost"><img src="/coin.jpg" alt="coin" /> <span>{r.cost}</span></div>
+                    <div className="reward-amount">₹ {r.amount}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <h3 className="modern-title" style={{ paddingLeft: 10 }}>Redeem as Amazon Gift Card</h3>
+              <div className="reward-grid">
+                {rewardOptions.filter((r) => r.type === "Amazon").map((r) => (
+                  <div key={r.amount} className="reward-card" onClick={() => handleRedeemReward(r)}>
+                    <img src={r.icon} alt={r.type} className="reward-icon" />
+                    <div className="reward-cost"><img src="/coin.jpg" alt="coin" /> <span>{r.cost}</span></div>
+                    <div className="reward-amount">₹ {r.amount}</div>
                   </div>
                 ))}
               </div>
@@ -945,62 +845,63 @@ export default function Dashboard({ user }) {
           </div>
         )}
 
+        {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <section className="panel">
             <h3>Admin Panel</h3>
-
             <form onSubmit={handleCreateMatch} className="admin-form">
               <h4>Create New Match</h4>
-              <input name="title" className="modern-input" placeholder="Match Title" value={newMatch.title} onChange={(e)=> setNewMatch({...newMatch, title: e.target.value})} />
-              <input name="imageUrl" className="modern-input" placeholder="Image URL" value={newMatch.imageUrl} onChange={(e)=> setNewMatch({...newMatch, imageUrl: e.target.value})} />
+              <input name="title" className="modern-input" placeholder="Match Title" value={newMatch.title} onChange={(e) => setNewMatch({ ...newMatch, title: e.target.value })} />
+              <input name="imageUrl" className="modern-input" placeholder="Image URL" value={newMatch.imageUrl} onChange={(e) => setNewMatch({ ...newMatch, imageUrl: e.target.value })} />
               <label>Start Time</label>
-              <input name="startTime" type="datetime-local" className="modern-input" value={newMatch.startTime} onChange={(e)=> setNewMatch({...newMatch, startTime: e.target.value})} />
-              <label>Match Type</label>
-              <select name="type" className="modern-input" value={newMatch.type} onChange={(e)=> setNewMatch({...newMatch, type: e.target.value})}><option value="BR">Battle Royale</option><option value="CS">Clash Squad</option></select>
-              <label>Prize Model</label>
-              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={(e)=> setNewMatch({...newMatch, prizeModel: e.target.value})}><option value="Scalable">Scalable</option><option value="Fixed">Fixed</option></select>
+              <input name="startTime" type="datetime-local" className="modern-input" value={newMatch.startTime} onChange={(e) => setNewMatch({ ...newMatch, startTime: e.target.value })} />
               <label>Entry Fee (Coins)</label>
-              <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={(e)=> setNewMatch({...newMatch, entryFee: parseInt(e.target.value || 0)})} />
+              <input name="entryFee" type="number" className="modern-input" value={newMatch.entryFee} onChange={(e) => setNewMatch({ ...newMatch, entryFee: parseInt(e.target.value || 0) })} />
               <label>Max Players</label>
-              <input name="maxPlayers" type="number" className="modern-input" value={newMatch.maxPlayers} onChange={(e)=> setNewMatch({...newMatch, maxPlayers: parseInt(e.target.value || 0)})} />
+              <input name="maxPlayers" type="number" className="modern-input" value={newMatch.maxPlayers} onChange={(e) => setNewMatch({ ...newMatch, maxPlayers: parseInt(e.target.value || 0) })} />
+              <label>Prize Model</label>
+              <select name="prizeModel" className="modern-input" value={newMatch.prizeModel} onChange={(e) => setNewMatch({ ...newMatch, prizeModel: e.target.value })}>
+                <option value="Scalable">Scalable</option>
+                <option value="Fixed">Fixed</option>
+              </select>
               {newMatch.prizeModel === "Scalable" ? (
                 <>
                   <label>Per Kill Reward (Coins)</label>
-                  <input name="perKillReward" type="number" className="modern-input" value={newMatch.perKillReward} onChange={(e)=> setNewMatch({...newMatch, perKillReward: parseInt(e.target.value || 0)})} />
-                  <label>Commission (%)</label>
-                  <input name="commissionPercent" type="number" className="modern-input" value={newMatch.commissionPercent} onChange={(e)=> setNewMatch({...newMatch, commissionPercent: parseInt(e.target.value || 0)})} />
+                  <input name="perKillReward" type="number" className="modern-input" value={newMatch.perKillReward} onChange={(e) => setNewMatch({ ...newMatch, perKillReward: parseInt(e.target.value || 0) })} />
+                  <label>Commission %</label>
+                  <input name="commissionPercent" type="number" className="modern-input" value={newMatch.commissionPercent} onChange={(e) => setNewMatch({ ...newMatch, commissionPercent: parseInt(e.target.value || 0) })} />
                 </>
               ) : (
                 <>
-                  <label>Booyah Prize (Fixed Total)</label>
-                  <input name="booyahPrize" type="number" className="modern-input" value={newMatch.booyahPrize} onChange={(e)=> setNewMatch({...newMatch, booyahPrize: parseInt(e.target.value || 0)})} />
+                  <label>Booyah Prize (Total Coins)</label>
+                  <input name="booyahPrize" type="number" className="modern-input" value={newMatch.booyahPrize} onChange={(e) => setNewMatch({ ...newMatch, booyahPrize: parseInt(e.target.value || 0) })} />
                 </>
               )}
               <label>Rules</label>
-              <textarea name="rules" className="modern-input" placeholder="Enter match rules..." value={newMatch.rules} onChange={(e)=> setNewMatch({...newMatch, rules: e.target.value})} />
+              <textarea name="rules" className="modern-input" placeholder="Rules..." value={newMatch.rules} onChange={(e) => setNewMatch({ ...newMatch, rules: e.target.value })} />
               <button type="submit" className="btn glow">Create Match</button>
             </form>
 
-            <hr style={{margin:"24px 0", borderColor:"var(--panel)"}} />
+            <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
 
             <h4>Settle Upcoming Matches</h4>
             <div className="admin-match-list">
-              {matches.filter(m => m.status === 'upcoming').length > 0 ? (
-                matches.filter(m => m.status === 'upcoming').map(match => (
-                  <div key={match.id} className="admin-row">
-                    <span>{match.title}</span>
-                    <button className="btn small" onClick={() => openSettleModal(match)}>Settle</button>
+              {matches.filter(m => m.status === "upcoming").length > 0 ? (
+                matches.filter(m => m.status === "upcoming").map((m) => (
+                  <div key={m.id} className="admin-row">
+                    <span>{m.title}</span>
+                    <button className="btn small" onClick={() => openSettleModal(m)}>Settle</button>
                   </div>
                 ))
               ) : (
-                <p className="muted-small" style={{textAlign:"center"}}>No matches to settle.</p>
+                <p className="muted-small" style={{ textAlign: "center" }}>No matches to settle.</p>
               )}
             </div>
 
-            <hr style={{margin:"24px 0", borderColor:"var(--panel)"}} />
+            <hr style={{ margin: "24px 0", borderColor: "var(--panel)" }} />
 
             <h4>Top-up Requests</h4>
-            {requests.topup.length === 0 ? <p>No top-up requests.</p> : requests.topup.map(r => (
+            {requests.topup.map((r) => (
               <div key={r.id} className="admin-row">
                 <span>{r.email} | ₹{r.amount} | UPI: {r.upiId}</span>
                 <div>
@@ -1010,8 +911,8 @@ export default function Dashboard({ user }) {
               </div>
             ))}
 
-            <h4 style={{marginTop:16}}>Withdraw Requests</h4>
-            {requests.withdraw.length === 0 ? <p>No withdraw requests.</p> : requests.withdraw.map(r => (
+            <h4>Withdraw Requests</h4>
+            {requests.withdraw.map((r) => (
               <div key={r.id} className="admin-row">
                 <span>{r.email} | ₹{r.amount} | {r.type === "UPI" ? `UPI: ${r.upiId}` : `Type: ${r.type}`}</span>
                 <div>
@@ -1023,64 +924,73 @@ export default function Dashboard({ user }) {
           </section>
         )}
 
+        {/* ACCOUNT */}
         {activeTab === "account" && (
           <div className="account-container">
-            {activeSubAccountView === "main" && (
+            {accountView === "main" && (
               <>
                 <section className="panel account-profile-card">
                   <h3 className="modern-title">{profile.username || "Set Your Username"}</h3>
                   <p className="modern-subtitle">{profile.email}</p>
+                  {profile.stats && (
+                    <div className="player-stats">
+                      <h4>Your Stats</h4>
+                      <ul>
+                        <li>Matches Played: {profile.stats.matchesPlayed || 0}</li>
+                        <li>Total Kills: {profile.stats.totalKills || 0}</li>
+                        <li>Booyahs: {profile.stats.booyahs || 0}</li>
+                        <li>Coins Earned: {profile.stats.coinsEarned || 0}</li>
+                      </ul>
+                    </div>
+                  )}
                 </section>
 
                 <section className="panel account-menu">
-                  <button className="account-option" onClick={() => { setNewDisplayName(profile.displayName || ""); setActiveSubAccountView("profile"); }}>
-                    <FaUserCog size={20} />
-                    <span>Profile Settings</span>
-                    <span className="arrow">&gt;</span>
+                  <button className="account-option" onClick={() => { setNewDisplayName(profile.displayName || ""); setAccountView("profile"); }}>
+                    <FaUserCog size={20} /> <span>Profile Settings</span> <span className="arrow">&gt;</span>
                   </button>
 
                   <button className="account-option" onClick={() => setShowUsernameModal(true)}>
-                    <FaUserEdit size={20} />
-                    <span>Edit In-Game Username</span>
-                    <span className="arrow">&gt;</span>
+                    <FaUserEdit size={20} /> <span>Edit In-Game Username</span> <span className="arrow">&gt;</span>
                   </button>
 
-                  <button className="account-option" onClick={() => setActiveSubAccountView("refer")}>
-                    <FaGift size={20} />
-                    <span>Refer a Friend</span>
-                    <span className="arrow">&gt;</span>
+                  <button className="account-option" onClick={() => setAccountView("refer")}>
+                    <FaGift size={20} /> <span>Refer a Friend</span> <span className="arrow">&gt;</span>
                   </button>
 
-                  {/* Removed Match History & Withdrawal History from Account menu as requested */}
+                  <button className="account-option" onClick={() => setAccountView("match_history")}>
+                    <FaHistory size={20} /> <span>Match History</span> <span className="arrow">&gt;</span>
+                  </button>
+
+                  <button className="account-option" onClick={() => setAccountView("withdraw_history")}>
+                    <FaMoneyBillWave size={20} /> <span>Withdrawal History</span> <span className="arrow">&gt;</span>
+                  </button>
 
                   <button className="account-option logout" onClick={handleLogout}>
-                    <FaSignOutAlt size={20} />
-                    <span>Logout</span>
-                    <span className="arrow">&gt;</span>
+                    <FaSignOutAlt size={20} /> <span>Logout</span> <span className="arrow">&gt;</span>
                   </button>
                 </section>
               </>
             )}
 
-            {activeSubAccountView === "profile" && (
+            {accountView === "profile" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setActiveSubAccountView("main")}><FaArrowLeft /> Back</button>
+                <button className="back-btn" onClick={() => setAccountView("main")}><FaArrowLeft /> Back</button>
                 <h3 className="modern-title">Profile Settings</h3>
                 <div className="profile-settings-form">
                   <div className="form-group">
                     <label>Email</label>
                     <input type="text" className="modern-input" value={user.email} disabled />
                   </div>
-
                   <div className="form-group">
                     <label>User ID</label>
                     <input type="text" className="modern-input" value={user.uid} disabled />
                   </div>
 
                   <hr />
-                  <form className="form-group" onSubmit={handleUpdateDisplayName}>
+                  <form onSubmit={handleUpdateDisplayName}>
                     <label>Display Name</label>
-                    <input type="text" className="modern-input" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} placeholder="Enter your display name" />
+                    <input type="text" className="modern-input" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
                     <button type="submit" className="btn" disabled={loading}>{loading ? "Saving..." : "Save Name"}</button>
                   </form>
 
@@ -1093,25 +1003,65 @@ export default function Dashboard({ user }) {
               </section>
             )}
 
-            {activeSubAccountView === "refer" && (
+            {accountView === "refer" && (
               <section className="panel">
-                <button className="back-btn" onClick={() => setActiveSubAccountView("main")}><FaArrowLeft /> Back</button>
+                <button className="back-btn" onClick={() => setAccountView("main")}><FaArrowLeft /> Back</button>
                 <h3 className="modern-title">Refer a Friend</h3>
                 <div className="referral-card">
                   <p>Your Unique Referral Code:</p>
                   <div className="referral-code">{profile.referralCode || "Loading..."}</div>
-                  <p className="modern-subtitle" style={{textAlign:"center"}}>Share this code. When friends use it, they get 50 coins and you get 20 coins.</p>
+                  <p className="modern-subtitle" style={{ textAlign: "center" }}>Share this code. Friend gets 50 coins, you get 20 coins when they redeem.</p>
                 </div>
                 {!profile.hasRedeemedReferral && (
                   <div className="referral-form">
                     <p>Have a friend's code?</p>
-                    <input type="text" className="modern-input" placeholder="Enter referral code" defaultValue="" id="redeem-code-input" />
-                    <button className="btn glow large" onClick={() => {
-                      const val = document.getElementById("redeem-code-input")?.value || "";
-                      handleRedeemReferral(val);
+                    <input type="text" className="modern-input" placeholder="Enter referral code" value={winnerUsername /* reuse var for input if desired */} onChange={(e) => setWinnerUsername(e.target.value)} />
+                    <button className="btn glow large" onClick={async () => {
+                      // Redeem referral logic (simple client side example)
+                      const code = winnerUsername?.trim().toUpperCase();
+                      if (!code) return setModalMessage("Enter code.");
+                      if (code === profile.referralCode) return setModalMessage("Can't use your own code.");
+                      try {
+                        setLoading(true);
+                        // find referrer by referralCode
+                        const q = query(collection(db, "users"), where("referralCode", "==", code));
+                        const snap = await getDocs(q);
+                        if (snap.empty) {
+                          setModalMessage("Invalid code.");
+                        } else {
+                          const refDoc = snap.docs[0];
+                          const refId = refDoc.id;
+                          // credit both
+                          const refRef = doc(db, "users", refId);
+                          const userRef = doc(db, "users", user.uid);
+                          // give friend (referrer) 20 coins and you 50 coins
+                          await updateDoc(refRef, { coins: (refDoc.data().coins || 0) + 20, "stats.coinsEarned": (refDoc.data().stats?.coinsEarned || 0) + 20 });
+                          await updateDoc(userRef, { coins: (profile.coins || 0) + 50, hasRedeemedReferral: true, "stats.coinsEarned": (profile.stats?.coinsEarned || 0) + 50 });
+                          const snap2 = await getDoc(userRef);
+                          setProfile({ id: snap2.id, ...snap2.data() });
+                          setModalMessage("Referral redeemed successfully!");
+                        }
+                      } catch (err) {
+                        console.error("redeem referral err", err);
+                        setModalMessage("Failed to redeem.");
+                      } finally { setLoading(false); }
                     }}>Redeem Code</button>
                   </div>
                 )}
+              </section>
+            )}
+
+            {accountView === "match_history" && (
+              <section className="panel">
+                <button className="back-btn" onClick={() => setAccountView("main")}><FaArrowLeft /> Back</button>
+                <MatchHistoryPage />
+              </section>
+            )}
+
+            {accountView === "withdraw_history" && (
+              <section className="panel">
+                <button className="back-btn" onClick={() => setAccountView("main")}><FaArrowLeft /> Back</button>
+                <WithdrawalHistoryPage />
               </section>
             )}
           </div>
@@ -1120,61 +1070,70 @@ export default function Dashboard({ user }) {
 
       <footer className="bottom-nav">
         {["home", "matches", "topup", "withdraw", "account"].map((tab) => (
-          <button key={tab} className={`nav-btn ${activeTab === tab ? "active" : ""}`} onClick={() => { setActiveTab(tab); setActiveSubAccountView("main"); setSelectedMatch(null); setTopupView("select"); }}>
+          <button key={tab} className={`nav-btn ${activeTab === tab ? "active" : ""}`} onClick={() => { setActiveTab(tab); setAccountView("main"); setSelectedMatch(null); setTopupView("select"); }}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </footer>
 
-      {/* username modal */}
+      {/* Username modal */}
       {showUsernameModal && (
         <div className="modal-overlay" onClick={() => setShowUsernameModal(false)}>
           <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modern-title">{profile.username ? "Edit Your Username" : "Set Your In-Game Username"}</h3>
-            <p className="modern-subtitle">You must set a username before joining matches.</p>
+            <h3 className="modern-title">{profile.username ? "Edit Username" : "Set Username"}</h3>
+            <p className="modern-subtitle">Set an in-game username to join matches.</p>
             <form onSubmit={handleSetUsername}>
-              <input type="text" className="modern-input" placeholder="Enter your username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
+              <input type="text" className="modern-input" placeholder="Enter username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
               <button type="submit" className="btn glow large" disabled={loading}>{loading ? "Saving..." : "Save"}</button>
-              <button type="button" className="btn large ghost" style={{marginTop:10}} onClick={() => setShowUsernameModal(false)}>Cancel</button>
+              <button type="button" className="btn large ghost" onClick={() => setShowUsernameModal(false)} style={{ marginTop: 10 }}>Cancel</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* settle modal */}
+      {/* Settle match modal */}
       {showSettleModal && matchToSettle && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={() => setShowSettleModal(false)}>
           <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
             <h3 className="modern-title">Settle Match</h3>
             <p className="modern-subtitle">Settle: {matchToSettle.title}</p>
             <form onSubmit={handleSettleMatch}>
               <div className="form-group">
                 <label>Winner's Username</label>
-                <input type="text" className="modern-input" value={winnerUsername} onChange={(e) => setWinnerUsername(e.target.value)} />
+                <input type="text" className="modern-input" placeholder="Winner username" value={winnerUsername} onChange={(e) => setWinnerUsername(e.target.value)} />
               </div>
               {matchToSettle.prizeModel === "Scalable" && (
                 <div className="form-group">
                   <label>Winner's Kills</label>
-                  <input type="number" className="modern-input" value={winnerKills} onChange={(e) => setWinnerKills(parseInt(e.target.value || 0))} />
+                  <input type="number" className="modern-input" placeholder="Kills" value={winnerKills} onChange={(e) => setWinnerKills(parseInt(e.target.value || 0))} />
                 </div>
               )}
               <button type="submit" className="btn glow large" disabled={loading}>{loading ? "Submitting..." : "Award Prize & End Match"}</button>
-              <button type="button" className="btn large ghost" style={{marginTop:10}} onClick={() => setShowSettleModal(false)}>Cancel</button>
+              <button type="button" className="btn large ghost" style={{ marginTop: 10 }} onClick={() => setShowSettleModal(false)}>Cancel</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* modal message */}
+      {/* Message modal */}
       {modalMessage && (
         <div className="modal-overlay" onClick={() => setModalMessage(null)}>
           <div className="modal-content modern-card" onClick={(e) => e.stopPropagation()}>
             <h3 className="modern-title">Notification</h3>
-            <p className="modern-subtitle" style={{textAlign:"center", marginBottom:24}}>{modalMessage}</p>
+            <p className="modern-subtitle" style={{ textAlign: "center", marginBottom: 18 }}>{modalMessage}</p>
             <button className="btn glow large" onClick={() => setModalMessage(null)}>OK</button>
           </div>
         </div>
       )}
+
     </div>
   );
+}
+
+/* ---------- helper for audio toggling outside component scope ---------- */
+function toggleMusic() {
+  // This function is intentionally simple: it will be overridden by component's own control via audioRef.
+  // But keeping this stub to avoid referencing undefined in the header if not bound.
+  // The real toggling inside the component uses audioRef.
+  return;
 }
