@@ -2,31 +2,60 @@
 import React from "react";
 
 /**
- * RankBadge renders the badge image for a specific level (1..18)
- * Expects images in /public/ named exactly as:
- * bronze1.jpg, bronze2.jpg, bronze3.jpg,
- * silver1.jpg, silver2.jpg, silver3.jpg,
- * gold1.jpg, gold2.jpg, gold3.jpg, gold4.jpg,
- * platinum1.jpg, platinum2.jpg, platinum3.jpg, platinum4.jpg,
- * diamond1.jpg,diamond2.jpg,diamond3.jpg,diamond4.jpg,
- * heroic.jpg
+ * This version loads images directly from /public/
+ * Example: /bronze1.jpg, /silver2.png etc.
  */
 
-const LEVEL_MAP = [
-  "bronze1.jpg","bronze2.jpg","bronze3.jpg",
-  "silver1.jpg","silver2.jpg","silver3.jpg",
-  "gold1.jpg","gold2.jpg","gold3.jpg","gold4.jpg",
-  "platinum1.jpg","platinum2.jpg","platinum3.jpg","platinum4.jpg",
-  "diamond1.jpg","diamond2.jpg","diamond3.jpg","diamond4.jpg",
-  "heroic.jpg"
-];
+export default function RankBadge({ level = 1, size = 96 }) {
+  const mapping = [
+    "bronze1.png",   // Level 1
+    "bronze2.png",   // 2
+    "bronze3.png",   // 3
+    "silver1.png",   // 4
+    "silver2.png",   // 5
+    "silver3.png",   // 6
+    "gold1.png",     // 7
+    "gold2.png",     // 8
+    "gold3.png",     // 9
+    "gold4.png",     // 10
+    "platinum1.png", // 11
+    "platinum2.png", // 12
+    "platinum3.png", // 13
+    "platinum4.png", // 14
+    "diamond1.png",  // 15
+    "diamond2.png",  // 16
+    "diamond3.png",  // 17
+    "heroic.png"     // 18
+  ];
 
-export default function RankBadge({ level = 1, size = 64, className = "" }) {
-  const idx = Math.max(0, Math.min(LEVEL_MAP.length - 1, level - 1));
-  const src = `/${LEVEL_MAP[idx]}`;
+  const index = Math.max(0, Math.min(mapping.length - 1, level - 1));
+
+  const src = `/${mapping[index]}`; // ← Loads directly from /public/
+  
+  const fallback = "/fallback-badge.png"; // Put 1 small fallback image in public/
+
   return (
-    <div className={`rank-badge ${className}`} style={{width:size,height:size}}>
-      <img src={src} alt={`level-${level}`} style={{width:"100%",height:"100%",objectFit:"contain"}} />
+    <div
+      className="rank-badge"
+      style={{
+        width: size,
+        height: size,
+        position: "relative"
+      }}
+    >
+      <img
+        src={src}
+        onError={(e) => {
+          e.currentTarget.src = fallback;
+        }}
+        alt="Rank Badge"
+        className="rank-badge-img"
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain"
+        }}
+      />
     </div>
   );
 }
