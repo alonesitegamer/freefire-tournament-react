@@ -233,6 +233,57 @@ export default function Dashboard({ user }) {
     navigate("/login");
   }
 
+  /** ADMIN ACTIONS — implemented here (fixed) */
+  async function approveRequest(type, req) {
+    try {
+      const ref = doc(db, `${type}Requests`, req.id);
+
+      // mark approved
+      await updateDoc(ref, {
+        status: "approved",
+        processedAt: serverTimestamp()
+      });
+
+      // If topup -> credit user's coins
+      if (type === "topup") {
+        const uRef = doc(db, "users", req.userId);
+        const snap = await getDoc(uRef);
+        if (snap.exists()) {
+          const current = snap.data().coins || 0;
+          const add = req.coins ?? req.amount ?? 0;
+          await updateDoc(uRef, { coins: current + add });
+        }
+      }
+
+      // remove from local requests
+      setRequests(prev => ({
+        ...prev,
+        [type]: prev[type].filter(r => r.id !== req.id)
+      }));
+    } catch (err) {
+      console.error("approveRequest error:", err);
+      alert("Failed to approve request.");
+    }
+  }
+
+  async function rejectRequest(type, req) {
+    try {
+      const ref = doc(db, `${type}Requests`, req.id);
+      await updateDoc(ref, {
+        status: "rejected",
+        processedAt: serverTimestamp()
+      });
+
+      setRequests(prev => ({
+        ...prev,
+        [type]: prev[type].filter(r => r.id !== req.id)
+      }));
+    } catch (err) {
+      console.error("rejectRequest error:", err);
+      alert("Failed to reject request.");
+    }
+  }
+
   /** Loading */
   if (loading || !profile) {
     return (
