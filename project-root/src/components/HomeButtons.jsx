@@ -1,19 +1,37 @@
 // src/components/HomeButtons.jsx
-import React from "react";
+import React, { useState } from "react";
 
-/**
- * Minimal header buttons: Sound toggle (icon) only.
- * You can extend to add Top/Down in future.
- */
 export default function HomeButtons({ onToggleSound = () => {} }) {
+  const [sound, setSound] = useState(true);
+
+  function toggle() {
+    setSound(!sound);
+    onToggleSound();
+  }
+
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <button className="music-btn" title="Toggle sound" onClick={onToggleSound}>
-        {/* simple speaker icon */}
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M11 5L6 9H2v6h4l5 4V5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"></path>
-          <path d="M19 5a7 7 0 0 1 0 14" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"></path>
-        </svg>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      {/* SOUND TOGGLE BUTTON (round) */}
+      <button
+        onClick={toggle}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: "50%",
+          background: "rgba(255,255,255,0.08)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          backdropFilter: "blur(6px)"
+        }}
+      >
+        {sound ? (
+          <span style={{ fontSize: 18 }}>🔊</span>
+        ) : (
+          <span style={{ fontSize: 18 }}>🔇</span>
+        )}
       </button>
     </div>
   );
