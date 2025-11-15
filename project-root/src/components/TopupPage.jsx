@@ -1,78 +1,80 @@
 // src/components/TopupPage.jsx
 import React, { useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 export default function TopupPage({ user, profile }) {
-  const [selectedAmount, setSelectedAmount] = useState(null);
-  const [custom, setCustom] = useState("");
-  const [upi, setUpi] = useState("");
-  const [stage, setStage] = useState("select"); // select -> pay -> confirm
-  const [loading, setLoading] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [selected, setSelected] = useState(50);
+  const [showQR, setShowQR] = useState(false);
+  const [upiId, setUpiId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  async function handlePay() {
-    const amt = parseInt(selectedAmount || custom);
-    if (!amt || amt < 20) return alert("Minimum top-up ₹20");
-    if (!upi) return alert("Please enter your UPI ID before paying.");
-    setStage("pay");
+  function selectAmount(a) {
+    setSelected(a);
+    setAmount(String(a));
+    setShowQR(false);
   }
 
-  async function handleConfirm() {
-    const amt = parseInt(selectedAmount || custom);
-    if (!amt) return;
-    setLoading(true);
+  async function onPay() {
+    const amt = Number(amount) || selected;
+    if (!amt || amt < 20) return alert("Minimum top-up ₹20");
+    // show QR first
+    setShowQR(true);
+  }
+
+  async function confirmPayment() {
+    if (!upiId) return alert("Enter payer UPI ID (for verification)");
+    setSubmitting(true);
     try {
       await addDoc(collection(db, "topupRequests"), {
         userId: user.uid,
-        email: profile.email,
-        amount: amt,
-        coins: amt * 10, // 1 ₹ = 10 coins per your earlier choice
-        upiId: upi,
+        email: user.email,
+        amount: Number(amount) || Number(selected),
+        upiId,
+        coins: (Number(amount) || Number(selected)) * 10, // 1₹ = 10 coins
         status: "pending",
         createdAt: serverTimestamp(),
       });
       alert("Top-up request submitted. Admin will verify.");
-      setSelectedAmount(null);
-      setCustom("");
-      setUpi("");
-      setStage("select");
+      setShowQR(false);
+      setAmount("");
+      setUpiId("");
     } catch (err) {
-      console.error("topup error", err);
+      console.error(err);
       alert("Failed to submit top-up.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
   return (
-    <section className="modern-card">
-      {stage === "select" && (
-        <>
-          <h3 className="modern-title">Top-up Coins</h3>
-          <p className="modern-subtitle">1 ₹ = 10 coins | Min ₹20</p>
-          <div className="amount-options">
-            {[20,50,100,200].map(a => (
-              <div key={a} className={`amount-btn ${selectedAmount===a?"selected":""}`} onClick={()=>{ setSelectedAmount(a); setCustom(""); }}>
-                ₹{a} = {a*10} Coins
-              </div>
-            ))}
-          </div>
-          <input type="number" className="modern-input" placeholder="Custom amount ₹" value={custom} onChange={(e)=>{ setCustom(e.target.value); setSelectedAmount(null); }} />
-          <input type="text" className="modern-input" placeholder="Your UPI ID (for verification)" value={upi} onChange={(e)=>setUpi(e.target.value)} />
-          <button className="btn glow large" onClick={handlePay}>Pay</button>
-        </>
-      )}
+    <section className="panel glow-panel payment-page">
+      <h3>Top-up Coins</h3>
+      <p className="modern-subtitle">1 ₹ = 10 coins | Minimum ₹20</p>
 
-      {stage === "pay" && (
-        <>
-          <h3 className="modern-title">Scan & Pay</h3>
-          <p className="modern-subtitle">Scan QR and pay ₹{selectedAmount || custom}</p>
+      <div className="amount-options">
+        {[20,50,100,200].map(a => (
+          <button key={a} className={`amount-btn ${selected===a ? "selected":""}`} onClick={() => selectAmount(a)}>
+            ₹{a} <div style={{fontSize:12, color:"var(--muted)"}}>{a*10} coins</div>
+          </button>
+        ))}
+      </div>
+
+      <input className="modern-input" placeholder="Or enter custom amount ₹" value={amount} onChange={e=>setAmount(e.target.value)} />
+
+      {!showQR && <button className="btn large glow" onClick={onPay}>Pay</button>}
+
+      {showQR && (
+        <div style={{marginTop:16, textAlign:"center"}}>
           <img src="/qr.jpg" alt="qr" className="qr-code-image" />
-          <p style={{marginTop:12}}>You provided UPI: <strong>{upi}</strong></p>
-          <button className="btn glow large" onClick={handleConfirm} disabled={loading}>{loading ? "Submitting..." : "I Have Paid"}</button>
-          <button className="btn large ghost" onClick={()=>setStage("select")} style={{marginTop:8}}>Back</button>
-        </>
+          <p className="muted-small">Scan QR and send exact amount. Enter payer UPI ID below (required).</p>
+          <input className="modern-input" placeholder="Payer UPI ID" value={upiId} onChange={e=>setUpiId(e.target.value)} />
+          <div style={{display:"flex", gap:8, justifyContent:"center"}}>
+            <button className="btn large glow" onClick={confirmPayment} disabled={submitting}>{submitting ? "Submitting..." : "I paid — Submit"}</button>
+            <button className="btn large ghost" onClick={()=>setShowQR(false)}>Cancel</button>
+          </div>
+        </div>
       )}
     </section>
   );
