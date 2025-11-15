@@ -1,72 +1,80 @@
 // src/components/WithdrawPage.jsx
 import React, { useState } from "react";
-import { addDoc, collection, serverTimestamp, doc, updateDoc, getDoc } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
-/**
- * Withdraw rules:
- * - min ₹50
- * - commission 10% (so user needs coins = ceil(amount * 1.1))
- * - admin approves and sends UPI manually
- * - gift card redemptions (Google/Amazon) optional send to email
- */
-export default function WithdrawPage({ profile, onRequested }) {
+export default function WithdrawPage({ profile }) {
+  const [method, setMethod] = useState("UPI");
   const [amount, setAmount] = useState("");
-  const [upi, setUpi] = useState(profile?.upiId || "");
-  const [type, setType] = useState("UPI");
-  const [loading, setLoading] = useState(false);
+  const [upiId, setUpiId] = useState(profile.upiId || "");
+  const [email, setEmail] = useState(profile.email || "");
+  const [submitting, setSubmitting] = useState(false);
 
-  async function handleRequest() {
-    const amt = parseInt(amount);
-    if (!amt || amt < 50) return alert("Minimum withdrawal is ₹50.");
-    if (type === "UPI" && !upi) return alert("Please set your UPI ID to receive payment.");
-    const coinsNeeded = Math.ceil(amt * 1.1); // 10% commission
-    if ((profile.coins || 0) < coinsNeeded) return alert(`You need ${coinsNeeded} coins (including 10% commission).`);
+  const amounts = [50, 100, 200];
 
-    setLoading(true);
+  function selectAmt(a) {
+    setAmount(String(a));
+  }
+
+  async function submitRequest() {
+    const amt = Number(amount);
+    if (!amt || ![50,100,200].includes(amt)) return alert("Choose a valid amount (50/100/200).");
+    if (method === "UPI" && !upiId) return alert("Enter your UPI ID (required for UPI).");
+    if ((method === "Google Play" || method === "Amazon") && !email) {
+      // optional, but allow empty (use sign-in email)
+      // we accept empty because user email is known
+    }
+    setSubmitting(true);
     try {
       await addDoc(collection(db, "withdrawRequests"), {
         userId: profile.id,
-        email: profile.email,
+        email: email || profile.email,
         amount: amt,
-        coinsDeducted: coinsNeeded,
-        type,
-        upiId: type === "UPI" ? upi : null,
+        type: method,
+        upiId: method === "UPI" ? upiId : "",
         status: "pending",
         createdAt: serverTimestamp(),
       });
-      // deduct coins immediately
-      const userRef = doc(db, "users", profile.id);
-      await updateDoc(userRef, { coins: profile.coins - coinsNeeded });
-      alert("Withdrawal requested. Admin will process it.");
+      alert("Withdraw request submitted. Admin will process.");
       setAmount("");
-      if (typeof onRequested === "function") onRequested();
     } catch (err) {
-      console.error("withdraw error", err);
-      alert("Failed to submit request.");
+      console.error(err);
+      alert("Failed to submit withdraw request.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
   return (
-    <section className="modern-card">
-      <h3 className="modern-title">Withdraw</h3>
-      <p className="modern-subtitle">10% commission applied</p>
-      <div style={{display:"flex", gap:8, marginBottom:12}}>
-        <button className={`btn ${type==='UPI'?'glow':''}`} onClick={()=>setType("UPI")}>UPI</button>
-        <button className={`btn ${type==='Google Play'?'glow':''}`} onClick={()=>setType("Google Play")}>Google Play</button>
-        <button className={`btn ${type==='Amazon'?'glow':''}`} onClick={()=>setType("Amazon")}>Amazon</button>
+    <section className="panel glow-panel">
+      <h3>Withdraw</h3>
+      <p className="modern-subtitle">10% commission. Minimum ₹50.</p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {["UPI", "Google Play", "Amazon"].map(m => (
+          <button key={m} className={`amount-btn ${method===m ? "selected":""}`} onClick={()=>setMethod(m)}>{m}</button>
+        ))}
       </div>
 
-      <input type="number" className="modern-input" placeholder="Enter amount ₹" value={amount} onChange={(e)=>setAmount(e.target.value)} />
-      {type === "UPI" && (
-        <input type="text" className="modern-input" placeholder="Enter your UPI ID" value={upi} onChange={(e)=>setUpi(e.target.value)} />
-      )}
-      <div style={{marginTop:8, marginBottom:12}}>
-        <small>Coins required: {amount ? Math.ceil(parseInt(amount) * 1.1) : "—"}</small>
+      <div className="amount-options" style={{ marginBottom: 14 }}>
+        {amounts.map(a => (
+          <button key={a} className={`amount-btn ${Number(amount)===a ? "selected":""}`} onClick={() => selectAmt(a)}>₹{a}</button>
+        ))}
       </div>
-      <button className="btn glow large" onClick={handleRequest} disabled={loading}>{loading ? "Submitting..." : "Request Withdrawal"}</button>
+
+      <input className="modern-input" placeholder="Enter amount ₹" value={amount} onChange={e=>setAmount(e.target.value)} />
+
+      {method === "UPI" && (
+        <input className="modern-input" placeholder="Enter your UPI ID (required)" value={upiId} onChange={e=>setUpiId(e.target.value)} />
+      )}
+
+      {(method === "Google Play" || method === "Amazon") && (
+        <input className="modern-input" placeholder="Email for gift card (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
+      )}
+
+      <button className="btn large glow" onClick={submitRequest} disabled={submitting}>
+        {submitting ? "Submitting..." : "Request Withdrawal"}
+      </button>
     </section>
   );
 }
