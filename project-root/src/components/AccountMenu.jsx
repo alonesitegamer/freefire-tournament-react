@@ -1,93 +1,72 @@
 // src/components/AccountMenu.jsx
 import React, { useState } from "react";
-import MatchHistoryPage from "../pages/MatchHistoryPage";
-import WithdrawalHistoryPage from "../pages/WithdrawalHistoryPage";
 
-export default function AccountMenu({ profile, setProfile, addXP, updateProfileField }) {
+export default function AccountMenu({ profile, setProfile, updateProfileField, onRankClick }) {
+  
   const [view, setView] = useState("main");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
 
   async function saveName(e) {
     e.preventDefault();
-    if (!displayName) return alert("Enter a name");
+    if (!displayName) return alert("Enter a name.");
     await updateProfileField({ displayName });
     setProfile(prev => ({ ...prev, displayName }));
-    alert("Saved");
+    alert("Saved!");
     setView("main");
   }
 
   return (
-    <div className="account-menu-wrapper">
+    <div className="account-menu">
 
       {view === "main" && (
-        <section className="panel account-card">
-          <h2 className="acc-username">{profile.username || profile.displayName || "User"}</h2>
-          <p className="acc-email">{profile.email}</p>
+        <>
+          <section className="panel glow-panel account-profile-card">
+            <h3 className="modern-title">{profile.username || "User"}</h3>
+            <p className="modern-subtitle">{profile.email}</p>
 
-          <div className="acc-btn-grid">
+            <div className="account-btn-group">
+              <button className="account-option" onClick={()=>setView("profile")}>
+                Profile Settings
+              </button>
 
-            <button className="acc-btn" onClick={() => setView("profile")}>
-              Profile Settings
-            </button>
+              <button className="account-option" onClick={onRankClick}>
+                Rank
+              </button>
 
-            <button className="acc-btn" onClick={() => setView("rank")}>
-              Rank
-            </button>
-
-            <button className="acc-btn" onClick={() => setView("refer")}>
-              Refer a Friend
-            </button>
-
-          </div>
-        </section>
+              <button className="account-option" onClick={()=>setView("refer")}>
+                Refer a Friend
+              </button>
+            </div>
+          </section>
+        </>
       )}
 
-      {/* Profile Settings */}
       {view === "profile" && (
-        <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>← Back</button>
+        <section className="panel glow-panel">
+          <button className="back-btn" onClick={()=>setView("main")}>Back</button>
           <h3>Profile Settings</h3>
 
           <form onSubmit={saveName}>
             <input
               className="modern-input"
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Display Name"
+              onChange={(e)=>setDisplayName(e.target.value)}
             />
-            <button className="btn">Save</button>
+            <button className="btn glow" type="submit">Save</button>
           </form>
         </section>
       )}
 
-      {/* Rank Page */}
-      {view === "rank" && (
-        <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>← Back</button>
-          <h3>Your Rank</h3>
-
-          <div style={{textAlign:"center", marginTop:20}}>
-            <img
-              src={`/ranks/${profile.level}.jpg`}
-              alt="rank"
-              style={{width:120, height:120, borderRadius:10}}
-            />
-            <h4 style={{marginTop:10}}>Level {profile.level}</h4>
-            <p>{profile.xp} XP</p>
-          </div>
-        </section>
-      )}
-
-      {/* Refer a Friend */}
       {view === "refer" && (
-        <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>← Back</button>
-          <h3>Refer a Friend</h3>
-          <p>Your Code:</p>
-          <h2 style={{textAlign:"center", marginTop:10}}>{profile.referralCode}</h2>
-          <p style={{marginTop:10}}>Share and earn rewards when your friends join!</p>
+        <section className="panel glow-panel">
+          <button className="back-btn" onClick={()=>setView("main")}>Back</button>
+
+          <h3>Your Referral Code</h3>
+          <div className="referral-code">{profile.referralCode}</div>
+          <p>Share with your friends to get rewards!</p>
         </section>
       )}
+
     </div>
   );
 }
