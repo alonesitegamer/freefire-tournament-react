@@ -334,4 +334,76 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 /* ensure video remains untouched - user asked not to modify its content */
 .bg-video[aria-hidden="true"]{ /* no-op just for clarity */ }
 
-/* ====== END of CSS ====== */
+/* === FIX COIN IMAGE CROPPING === */
+.coin-icon-fixed {
+  width: 42px;
+  height: 42px;
+  object-fit: contain !important;
+  border-radius: 50%;
+  animation: spinCoin 3s linear infinite;
+}
+
+/* === GLOW PANELS === */
+.glow-panel {
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.12), inset 0 0 10px rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(6px);
+}
+
+/* === GLOW HEADER === */
+.glow-header {
+  box-shadow: 0 0 25px rgba(255,255,255,0.12);
+  background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.35));
+}
+
+/* === FIX HEADER BUTTON SPACING === */
+.header-actions-fixed {
+  display: flex;
+  gap: 12px !important;
+}
+
+/* === HOME TOP BUTTONS === */
+.home-top-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+/* === GLOW NAV BAR === */
+.glow-nav {
+  box-shadow: 0 0 25px rgba(255,255,255,0.18);
+}
+
+/* === ACCOUNT BUTTONS === */
+.account-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.account-option {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #fff;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: 0.25s;
+}
+
+.account-option:hover {
+  background: rgba(255,255,255,0.14);
+  box-shadow: 0 0 15px rgba(255,255,255,0.12);
+}
+
+/* === RANK PAGE FIX (CONTAINER) === */
+.rank-container {
+  padding: 16px;
+  background: rgba(0,0,0,0.45);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 0 20px rgba(255,255,255,0.12);
+}
