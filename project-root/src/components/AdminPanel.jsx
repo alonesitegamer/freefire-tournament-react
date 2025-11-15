@@ -3,8 +3,8 @@ import React from "react";
 
 export default function AdminPanel({
   requests = { topup: [], withdraw: [] },
-  approveRequest,
-  rejectRequest,
+  approveRequest = () => {},
+  rejectRequest = () => {},
   matches = []
 }) {
   return (
