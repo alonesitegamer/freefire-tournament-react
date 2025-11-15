@@ -1,16 +1,10 @@
-/* =============================================================================
-   Imperial X Esports — Combined (B1 original + B3 upgrades)
-   Full CSS file — replace your current stylesheet with this.
-   ============================================================================= */
-
-/* === Root variables (keep as original + a few extra accents for rank UI) === */
 :root{
   --bg: #050407;
   --panel: rgba(255,255,255,0.04);
   --muted: #bfc7d1;
   --accent: #00e6a8;
   --accent2: #ff5c2e;
-  --accent3: #ffd54d; /* gold-ish for level glow */
+  --accent3: #ffd54d;
   --glass: rgba(255,255,255,0.02);
   --glass-strong: rgba(255,255,255,0.04);
   --card-radius: 12px;
@@ -18,36 +12,25 @@
   --transition-medium: 300ms;
 }
 
-/* ========= Base ========= */
+/* Base */
 *{box-sizing:border-box}
 html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;background:transparent;color:#fff}
 .center{height:100vh;display:flex;align-items:center;justify-content:center}
 
-/* ========= Background video & overlay (fixed + safe z-index) ========= */
-.bg-video{
-  position:fixed;left:0;top:0;width:100%;height:100%;object-fit:cover;z-index:-20; /* keep video below everything */
-}
-.splash-overlay,
-.auth-overlay,
-.dash-overlay{
+/* Background video & overlay */
+.bg-video{position:fixed;left:0;top:0;width:100%;height:100%;object-fit:cover;z-index:-20}
+.splash-overlay,.auth-overlay,.dash-overlay{
   position:fixed;left:0;top:0;width:100%;height:100%;
   background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.45));
-  z-index:0; /* now sits above video but below UI */
-  pointer-events:none; /* allows clicks to pass to UI */
+  z-index:0;pointer-events:none;
 }
+.dash-root,.auth-root,.splash-root{position:relative;z-index:1}
 
-/* Ensure UI sits clearly above overlay */
-.dash-root, .auth-root, .splash-root { position:relative; z-index: 1; }
-
-/* ========= Splash/ Auth cards ========= */
+/* Splash / Auth */
 .splash-root{height:100vh;display:flex;align-items:center;justify-content:center}
-.splash-card{
-  background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-  padding:24px;border-radius:16px;text-align:center;color:#fff;border:1px solid rgba(255,255,255,0.06)
-}
+.splash-card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));padding:24px;border-radius:16px;text-align:center;color:#fff;border:1px solid rgba(255,255,255,0.06)}
 .splash-logo{width:110px;height:110px;border-radius:12px;display:block;margin:0 auto 12px}
 
-/* Auth */
 .auth-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
 .auth-card{width:100%;max-width:420px;background:rgba(0,0,0,0.55);padding:22px;border-radius:14px;border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(8px);text-align:center}
 .logo-small{width:70px;height:70px;border-radius:12px;margin-bottom:8px}
@@ -65,7 +48,7 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .login-footer-links a{color:var(--muted);text-decoration:none}
 .login-footer-links a:hover{color:var(--accent)}
 
-/* ========= Dashboard shell ========= */
+/* Dashboard shell */
 .dash-root{min-height:100vh;color:#fff;display:flex;flex-direction:column}
 .dash-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.25));border-bottom:1px solid rgba(255,255,255,0.03);z-index:2}
 .logo-row{display:flex;gap:12px;align-items:center}
@@ -76,28 +59,19 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .header-actions .btn.small{padding:8px 10px;font-size:13px;margin-top:0}
 .btn.small.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
 
-/* ========= Main area & panels ========= */
-.dash-main{flex:1;overflow:auto;padding:16px 18px;padding-bottom:100px} /* larger bottom for nav and modals */
+/* Main area & panels */
+.dash-main{flex:1;overflow:auto;padding:16px 18px;padding-bottom:110px}
 .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:14px;border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.03);margin-bottom:12px}
 .panel-row{display:flex;justify-content:space-between;align-items:center}
-
-/* muted text */
 .muted{color:#aab0b8}
 .big{font-size:28px;font-weight:800;margin-top:6px}
 
-/* ========= Fix for coin image black rectangle & sizing ========= */
-/* Problem cause: large background or image set without object-fit on some devices.
-   Fix: enforce size, object-fit, no extra backgrounds, and ensure panels use transparent backgrounds. */
-.coin-icon{
-  width:32px;height:32px;border-radius:50%;display:inline-block;object-fit:cover;vertical-align:middle;animation:spinCoin 3s linear infinite;transform-origin:center;
-  background:transparent; /* ensure no white/black bg appears */
-  border: none;
-}
-
-/* coin-row */
+/* Coin image fix */
+.coin-icon{width:32px;height:32px;border-radius:50%;display:inline-block;object-fit:cover;vertical-align:middle;animation:spinCoin 3s linear infinite;background:transparent;border:none}
 .coin-row{display:flex;align-items:center;gap:10px}
+.coin-icon-fixed{width:42px;height:42px;object-fit:contain !important;border-radius:50%;animation:spinCoin 3s linear infinite}
 
-/* ========= Match Grid ========= */
+/* Match Grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
 .match-card{background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.04);transition:all var(--transition-medium) ease;cursor:pointer}
 .match-card:hover{transform:scale(1.03);box-shadow:0 0 16px rgba(255,255,255,0.08)}
@@ -107,29 +81,30 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .match-meta{color:#bfc7d1;font-size:13px;margin:6px 0}
 .match-meta.time{color:var(--accent);font-weight:600;font-size:13px;margin-bottom:6px}
 
-/* ========= Bottom nav ========= */
+/* Bottom nav (ENHANCED) */
 .bottom-nav{
-  position:fixed;bottom:0;left:0;right:0;z-index:1000;display:flex;justify-content:space-around;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.5));border-top:1px solid rgba(255,255,255,0.03)
+  position:fixed;bottom:12px;left:12px;right:12px;z-index:1000;display:flex;justify-content:space-around;padding:12px;background:linear-gradient(90deg, rgba(10,10,10,0.85), rgba(0,0,0,0.6));border-radius:14px;box-shadow:0 18px 60px rgba(255,92,46,0.08);border:1px solid rgba(255,255,255,0.04)
 }
-.nav-btn{background:transparent;border:none;color:#cfcfcf;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.8rem}
-.nav-btn.active{color:var(--accent2)}
+.nav-btn{background:transparent;border:none;color:#cfcfcf;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.9rem;padding:8px 12px;border-radius:10px;transition:all .18s ease}
+.nav-btn.active{color:var(--accent2);background:linear-gradient(90deg, rgba(255,92,46,0.08), rgba(255,140,102,0.03));box-shadow:0 8px 30px rgba(255,92,46,0.06);transform:translateY(-4px)}
 
-/* ========= History list ========= */
+/* History list */
 .history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px}
 .history-item{background:var(--panel);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;font-size:.9rem}
 .history-item span:first-child{font-weight:600}
 .muted-small{font-size:.8rem;color:var(--muted)}
 
-/* ========= Responsive ========= */
+/* Responsive */
 @media (max-width:520px){
   .dash-header{padding:10px}
   .auth-card{padding:16px}
   .match-card img{height:100px}
+  .bottom-nav{left:8px;right:8px;bottom:8px;padding:10px}
 }
 
-/* ========= Topup & Withdraw (modern-card) ========= */
-.modern-card{background:var(--panel);border:1px solid rgba(255,255,255,0.04);padding:24px;border-radius:16px;width:90%;max-width:500px;margin:20px auto;box-sizing:border-box}
-.modern-title{color:#ffffff;font-size:1.8rem;font-weight:600;margin-top:0;margin-bottom:8px;text-align:left}
+/* Topup & Withdraw */
+.modern-card{background:var(--panel);border:1px solid rgba(255,255,255,0.04);padding:24px;border-radius:16px;width:90%;max-width:520px;margin:20px auto;box-sizing:border-box}
+.modern-title{color:#fff;font-size:1.8rem;font-weight:600;margin-top:0;margin-bottom:8px;text-align:left}
 .modern-subtitle{color:var(--muted);margin-bottom:24px;font-size:.95rem;text-align:left}
 .amount-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
 .amount-btn{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:16px;font-size:1.1rem;font-weight:500;border-radius:10px;cursor:pointer;text-align:center;transition:all 0.2s ease}
@@ -141,11 +116,11 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .btn.large{width:100%;padding:16px;font-size:1.1rem}
 .btn.glow{box-shadow:0 0 12px var(--accent2)}
 
-/* music button */
+/* Music button */
 .music-btn{border-radius:50%;width:38px;height:38px;padding:0;display:flex;align-items:center;justify-content:center}
 .music-btn svg{font-size:16px}
 
-/* admin form */
+/* Admin form */
 .admin-form{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--panel);border-radius:12px;background:rgba(0,0,0,0.2)}
 .admin-form h4{margin:0 0 8px 0;color:var(--accent2)}
 .admin-form label{font-size:.9rem;color:var(--muted);margin-bottom:-8px}
@@ -157,24 +132,24 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .admin-row span{font-weight:500;word-break:break-all}
 .admin-row .btn.small{margin-top:0;flex-shrink:0;margin-left:8px}
 
-/* ========= Account page & options ========= */
+/* Account & options */
 .account-menu{padding:8px !important;background:transparent !important;border:none !important}
-.account-option{display:flex;align-items:center;width:100%;padding:16px;background:var(--panel);border:1px solid rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;font-size:1rem;font-weight:500;color:#fff;cursor:pointer;transition:all 0.2s ease}
-.account-option:hover{background:rgba(255,255,255,0.08);border-color:var(--accent2)}
+.account-option{display:flex;align-items:center;width:100%;padding:16px;background:transparent;border:1px solid rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;font-size:1rem;font-weight:500;color:#fff;cursor:pointer;transition:all 0.2s ease}
+.account-option:hover{background:rgba(255,255,255,0.04);border-color:var(--accent2);box-shadow:0 6px 24px rgba(255,92,46,0.04)}
 .account-option svg{color:var(--accent2);margin-right:16px}
 .account-option span{flex:1;text-align:left}
 .account-option .arrow{flex:none;font-weight:700;color:var(--muted)}
 .account-option.logout svg{color:#ff5c5c}
 
-/* back button */
+/* Back button */
 .back-btn{background:var(--panel);border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px 14px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:.9rem;margin-bottom:16px}
 
-/* referral */
+/* Referral */
 .referral-card{background:rgba(0,0,0,0.2);padding:20px;border-radius:12px;text-align:center;border:1px solid var(--panel)}
 .referral-code{background:rgba(0,0,0,0.2);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);color:var(--accent);font-size:1.5rem;font-weight:700;letter-spacing:2px;padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);margin-bottom:16px}
 .referral-form{margin-top:24px}
 
-/* ========= Match details ========= */
+/* Match details */
 .match-details-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
 .match-details-header .btn.small{display:flex;align-items:center;margin-top:0;flex-shrink:0}
 .match-details-view .match-details-image{width:100%;height:150px;object-fit:cover;border-radius:12px;margin-bottom:16px}
@@ -188,25 +163,12 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .match-rules h4{color:var(--muted);margin-bottom:8px}
 .match-rules p{background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;color:#eee;line-height:1.6;white-space:pre-wrap}
 
-/* ========= Home actions (side-by-side on wide view but stacked small) ========= */
-.home-actions{
-  display:flex;
-  gap:12px;
-  align-items:center;
-  justify-content:flex-start;
-  flex-wrap:wrap;
-}
-/* Buttons side-by-side by default, stacked on narrow screens */
-.home-actions .btn{
-  min-width:140px;
-  padding:12px 18px;
-}
-@media (max-width:520px){
-  .home-actions{flex-direction:column;align-items:stretch}
-  .home-actions .btn{width:100%}
-}
+/* Home actions */
+.home-actions{display:flex;gap:12px;align-items:center;justify-content:flex-start;flex-wrap:wrap}
+.home-actions .btn{min-width:140px;padding:12px 18px}
+@media (max-width:520px){.home-actions{flex-direction:column;align-items:stretch}.home-actions .btn{width:100%}}
 
-/* ========= Rewards / withdraw grid ========= */
+/* Rewards / withdraw grid */
 .reward-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
 .reward-card{background:var(--panel);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:16px 12px;text-align:center;cursor:pointer;transition:all var(--transition-fast) ease}
 .reward-card:hover{transform:translateY(-4px);border-color:var(--accent)}
@@ -215,37 +177,36 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .reward-cost img{width:16px;height:16px;border-radius:50%}
 .reward-amount{font-size:1rem;font-weight:600;color:var(--muted)}
 
-/* ========= Modal styles (username / messages) ========= */
+/* Modal (username / messages) */
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px}
 .modal-content{width:100%;max-width:500px}
 .modal-content .modern-title{text-align:center}
 .modal-content .modern-subtitle{text-align:center}
 
-/* ========= Account Profile Card ========= */
+/* Account profile */
 .account-profile-card{text-align:center;padding:24px}
 .account-profile-card .modern-title{text-align:center;color:var(--accent2)}
 .account-profile-card .modern-subtitle{text-align:center;margin-bottom:0}
 
-/* ========= Profile settings ========= */
+/* Profile settings */
 .form-group{width:100%;margin-bottom:20px}
 .form-group label{display:block;color:var(--muted);font-size:.9rem;margin-bottom:8px;text-align:left}
 .form-group .btn{margin-top:10px}
 .form-group input:disabled{background:rgba(0,0,0,0.2);color:var(--muted);border:1px solid var(--panel);cursor:not-allowed}
 .profile-settings-form hr{border:none;height:1px;background:var(--panel);margin:24px 0}
 
-/* ========= Top-up payment page ========= */
+/* Top-up payment page */
 .payment-page .modern-subtitle{text-align:center}
 .qr-code-image{width:100%;max-width:300px;height:auto;margin:16px auto;display:block;border-radius:12px;background:white}
-/* make QR stand out on dark bg */
-.qr-code-image.img-placeholder{background:linear-gradient(180deg,#fff,#eee);}
+.qr-code-image.img-placeholder{background:linear-gradient(180deg,#fff,#eee)}
 
-/* ========= Player stats box (user card) ========= */
+/* Player stats box */
 .player-stats{background:var(--panel);padding:12px;border-radius:10px;margin-top:16px;animation:fadeIn .3s ease}
 .player-stats h4{margin-bottom:8px;color:var(--accent);font-size:16px}
 .player-stats ul{list-style:none;padding:0;margin:0}
 .player-stats li{font-size:14px;color:#ddd;margin:4px 0}
 
-/* === Additional (append) — merging duplicates and upgrades === */
+/* Additional merged styles */
 .modern-card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));padding:18px;border-radius:14px;border:1px solid rgba(255,255,255,0.04);color:#fff}
 .modern-title{font-size:20px;font-weight:800;margin:0 0 8px 0}
 .modern-subtitle{color:var(--muted);margin:0 0 12px 0}
@@ -254,43 +215,34 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .amount-btn.selected{box-shadow:0 6px 24px rgba(0,200,150,0.12);transform:translateY(-3px);border:1px solid rgba(0,200,150,0.4)}
 .modern-input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.45);color:#fff;margin:8px 0}
 .qr-code-image{width:220px;height:220px;object-fit:cover;border-radius:12px;border:1px solid rgba(255,255,255,0.04);display:block;margin:0 auto}
-
-/* admin rows */
 .admin-row{display:flex;justify-content:space-between;align-items:center;padding:10px;background:rgba(255,255,255,0.02);border-radius:10px;margin-bottom:8px}
 
-/* modal + level up visuals */
-.modal-overlay{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:2000}
-.modal-content{width:min(720px,95%);padding:18px;border-radius:14px;background:linear-gradient(180deg, rgba(10,10,10,0.9), rgba(5,5,5,0.85));border:1px solid rgba(255,255,255,0.04);color:#fff}
+/* Modal + level up visuals */
 .levelup-card .levelup-body{display:flex;flex-direction:column;align-items:center}
 .levelup-badges{display:flex;align-items:center;gap:18px}
 .levelup-glow{font-weight:900;font-size:28px;color:var(--accent3);text-shadow:0 0 16px rgba(255,200,25,0.35);transform:skewY(-3deg)}
+.levelup-popup{display:flex;flex-direction:column;align-items:center;padding:18px;border-radius:14px;background:linear-gradient(180deg, rgba(10,10,10,0.98), rgba(0,0,0,0.85));box-shadow:0 24px 80px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.06)}
+.levelup-title{font-size:22px;font-weight:900;color:var(--accent3);text-shadow:0 6px 18px rgba(255,200,0,0.12)}
+.levelup-sub{color:var(--muted);margin-bottom:12px}
+.levelup-badges img{width:64px;height:64px;border-radius:10px;object-fit:cover;box-shadow:0 12px 40px rgba(255,200,30,0.06)}
+.levelup-popup::after{content:"";position:absolute;width:220px;height:220px;border-radius:50%;filter:blur(40px);opacity:.12;mix-blend-mode:screen;background:radial-gradient(circle at 30% 30%, rgba(255,215,0,0.35), rgba(255,92,46,0.05));transform:translateY(-6px);pointer-events:none}
 
-/* xp bar */
+/* XP bar */
 .xpbar-root{margin-top:8px}
 .xpbar-track{background:rgba(255,255,255,0.04);border-radius:12px;overflow:hidden;height:14px}
 .xpbar-fill{background:linear-gradient(90deg,var(--accent),var(--accent2));height:100%;transition:width .6s cubic-bezier(.2,.9,.2,1)}
 
-/* coin spin keyframes */
+/* Animations & small tweaks */
 @keyframes spinCoin{0%{transform:rotateY(0deg)}100%{transform:rotateY(360deg)}}
-
-/* glow button upgrade */
 .btn.glow{box-shadow:0 6px 20px rgba(255,90,20,0.12), inset 0 -2px 6px rgba(0,0,0,0.25);transition:transform var(--transition-fast) ease,box-shadow var(--transition-fast) ease}
 .btn.glow:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(255,90,20,0.18)}
-
-/* small tweaks and user stats */
 .user-stats-box .stat{text-align:center}
 .user-stats-box .stat-value{font-weight:800;font-size:18px}
 .muted-small{color:var(--muted);font-size:.85rem}
-
-/* soft fade animation */
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-/* ===== Rank/Level UI (B3 elements) ===== */
-.rank-panel{
-  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  border-radius:12px;border:1px solid rgba(255,255,255,0.04);padding:14px;display:flex;gap:16px;align-items:center;justify-content:space-between;
-  box-shadow:0 6px 24px rgba(0,0,0,0.35);
-}
+/* Rank / Level UI */
+.rank-panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;border:1px solid rgba(255,255,255,0.04);padding:14px;display:flex;gap:16px;align-items:center;justify-content:space-between;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
 .rank-left{display:flex;align-items:center;gap:14px}
 .rank-badge{width:72px;height:72px;border-radius:12px;overflow:hidden;background:linear-gradient(180deg, rgba(0,0,0,0.2), rgba(255,255,255,0.02));display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04)}
 .rank-badge img{width:100%;height:100%;object-fit:cover}
@@ -303,122 +255,33 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .rank-stats .stat .label{font-size:.8rem;color:var(--muted)}
 .rank-stats .stat .value{font-weight:800}
 
-/* Rank popup / full rank screen (styled like Free Fire / BGMI) */
-.rank-screen{
-  width:100%;max-width:880px;background:linear-gradient(180deg, rgba(8,8,8,0.85), rgba(0,0,0,0.7));padding:18px;border-radius:14px;border:1px solid rgba(255,255,255,0.04);
-}
+/* Rank screen */
+.rank-screen{width:100%;max-width:880px;background:linear-gradient(180deg, rgba(8,8,8,0.85), rgba(0,0,0,0.7));padding:18px;border-radius:14px;border:1px solid rgba(255,255,255,0.04)}
 .rank-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:12px}
 .rank-tier{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:12px;border-radius:12px;text-align:center;border:1px solid rgba(255,255,255,0.03);transition:transform .18s ease}
 .rank-tier:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(0,0,0,0.5)}
 .rank-tier img{width:64px;height:64px;object-fit:contain;margin-bottom:8px;border-radius:10px}
 
-/* Level up popup animation + party effect */
-.levelup-popup{
-  display:flex;flex-direction:column;align-items:center;padding:18px;border-radius:14px;background:linear-gradient(180deg, rgba(10,10,10,0.98), rgba(0,0,0,0.85));box-shadow:0 24px 80px rgba(0,0,0,0.6);
-  border:1px solid rgba(255,255,255,0.06);
-}
-.levelup-title{font-size:22px;font-weight:900;color:var(--accent3);text-shadow:0 6px 18px rgba(255,200,0,0.12)}
-.levelup-sub{color:var(--muted);margin-bottom:12px}
-.levelup-badges{display:flex;gap:14px;align-items:center}
-.levelup-badges img{width:64px;height:64px;border-radius:10px;object-fit:cover;box-shadow:0 12px 40px rgba(255,200,30,0.06)}
+/* Subtle confetti / glow */
+.levelup-popup .levelup-badges img{filter:drop-shadow(0 12px 40px rgba(255,180,30,0.12))}
 
-/* subtle confetti pulses (simple CSS pseudo confetti) */
-.levelup-popup::after{
-  content:"";position:absolute;width:220px;height:220px;border-radius:50%;filter:blur(40px);opacity:.12;mix-blend-mode:screen;background:radial-gradient(circle at 30% 30%, rgba(255,215,0,0.35), rgba(255,92,46,0.05));transform:translateY(-6px);pointer-events:none
-}
-
-/* ========= Small QoL styles ========= */
+/* Quality-of-life */
 .icon-button{background:rgba(255,255,255,0.02);border-radius:10px;padding:8px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.03)}
 .small-muted{color:var(--muted);font-size:.85rem}
+.bg-video[aria-hidden="true"]{}
 
-/* ensure video remains untouched - user asked not to modify its content */
-.bg-video[aria-hidden="true"]{ /* no-op just for clarity */ }
+/* Glow panels & header */
+.glow-panel{box-shadow:0 0 14px rgba(255,255,255,0.12), inset 0 0 10px rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);backdrop-filter:blur(6px)}
+.glow-header{box-shadow:0 0 25px rgba(255,255,255,0.12);background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.35))}
+.header-actions-fixed{display:flex;gap:12px !important}
+.home-top-buttons{display:flex;justify-content:space-between;gap:14px;margin-top:12px}
+.glow-nav{box-shadow:0 0 25px rgba(255,255,255,0.18)}
+.account-btn-group{display:flex;flex-direction:column;gap:14px;margin-top:14px}
 
-/* === FIX COIN IMAGE CROPPING === */
-.coin-icon-fixed {
-  width: 42px;
-  height: 42px;
-  object-fit: contain !important;
-  border-radius: 50%;
-  animation: spinCoin 3s linear infinite;
-}
+/* Panel glow tweak for contrast */
+.panel{box-shadow:0 0 25px rgba(255,100,40,0.06);border:1px solid rgba(255,120,60,0.04);backdrop-filter:blur(6px)}
+.rank-container{padding:16px;background:rgba(0,0,0,0.45);border-radius:14px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 0 20px rgba(255,255,255,0.06)}
+.rank-badge-img{filter:drop-shadow(0 0 12px rgba(255,120,40,0.6));transition:0.3s}
+.rank-badge-img:hover{transform:scale(1.05);filter:drop-shadow(0 0 20px rgba(255,150,60,0.9))}
 
-/* === GLOW PANELS === */
-.glow-panel {
-  box-shadow: 0 0 14px rgba(255, 255, 255, 0.12), inset 0 0 10px rgba(255, 255, 255, 0.05);
-  background: rgba(255,255,255,0.03);
-  backdrop-filter: blur(6px);
-}
-
-/* === GLOW HEADER === */
-.glow-header {
-  box-shadow: 0 0 25px rgba(255,255,255,0.12);
-  background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.35));
-}
-
-/* === FIX HEADER BUTTON SPACING === */
-.header-actions-fixed {
-  display: flex;
-  gap: 12px !important;
-}
-
-/* === HOME TOP BUTTONS === */
-.home-top-buttons {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 12px;
-}
-
-/* === GLOW NAV BAR === */
-.glow-nav {
-  box-shadow: 0 0 25px rgba(255,255,255,0.18);
-}
-
-/* === ACCOUNT BUTTONS === */
-.account-btn-group {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.account-option {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: #fff;
-  padding: 14px;
-  border-radius: 12px;
-  font-size: 1rem;
-  font-weight: 600;
-  transition: 0.25s;
-}
-
-.account-option:hover {
-  background: rgba(255,255,255,0.14);
-  box-shadow: 0 0 15px rgba(255,255,255,0.12);
-}
-
-/* === RANK PAGE FIX (CONTAINER) === */
-.rank-container {
-  padding: 16px;
-  background: rgba(0,0,0,0.45);
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 0 20px rgba(255,255,255,0.12);
-}
-.rank-badge-img {
-  filter: drop-shadow(0 0 12px rgba(255,120,40,0.6));
-  transition: 0.3s;
-}
-
-.rank-badge-img:hover {
-  transform: scale(1.05);
-  filter: drop-shadow(0 0 20px rgba(255,150,60,0.9));
-}
-
-.panel {
-  box-shadow: 0 0 25px rgba(255, 100, 40, 0.4);
-  border: 1px solid rgba(255, 120, 60, 0.3);
-  backdrop-filter: blur(6px);
-}
+/* End of file */
