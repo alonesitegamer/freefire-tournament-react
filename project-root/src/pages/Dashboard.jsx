@@ -81,6 +81,7 @@ export default function Dashboard({ user }) {
           }
 
           if (mounted) setProfile({ id: snap.id, ...safe });
+
         } else {
           const initial = {
             email: user.email,
@@ -96,6 +97,7 @@ export default function Dashboard({ user }) {
           await setDoc(ref, initial);
           if (mounted) setProfile({ id: ref.id, ...initial });
         }
+
       } catch (err) {
         console.error("Profile load error", err);
       } finally {
@@ -104,12 +106,14 @@ export default function Dashboard({ user }) {
     }
     load();
     return () => (mounted = false);
-  }, [user.uid, user.email, user.displayName]);
 
-  /** Load matches (when matches tab active) */
+  }, [user.uid]);
+
+  /** Load matches */
   useEffect(() => {
     if (activeTab !== "matches") return;
     let mounted = true;
+
     (async () => {
       try {
         const qRef = query(
@@ -124,27 +128,33 @@ export default function Dashboard({ user }) {
         console.error("Load matches error:", err);
       }
     })();
+
     return () => (mounted = false);
+
   }, [activeTab]);
 
-  /** Admin requests load (only for admin) */
+  /** Admin requests */
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
+
     (async () => {
       try {
         const top = await getDocs(query(collection(db, "topupRequests"), where("status","==","pending")));
         const wd = await getDocs(query(collection(db, "withdrawRequests"), where("status","==","pending")));
+
         setRequests({
           topup: top.docs.map(d => ({ id: d.id, ...d.data() })),
           withdraw: wd.docs.map(d => ({ id: d.id, ...d.data() })),
         });
+
       } catch (err) {
         console.error("Admin load error", err);
       }
     })();
+
   }, [profile]);
 
-  /** Update profile field helper */
+  /** Update profile field */
   async function updateProfileField(patch) {
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, patch);
@@ -152,60 +162,62 @@ export default function Dashboard({ user }) {
     setProfile({ id: snap.id, ...snap.data() });
   }
 
-  /** Add coins helper */
+  /** Add coins */
   async function addCoins(n = 1) {
-    if (!profile) return;
     const newCoins = (profile.coins || 0) + n;
     await updateDoc(doc(db, "users", user.uid), { coins: newCoins });
     setProfile(prev => ({ ...prev, coins: newCoins }));
   }
 
-  /** Add XP helper (plays sound on level up) */
+  /** Add XP */
   async function addXP(amount = 0) {
-    if (!profile) return;
-    const oldXp = profile.xp || 0;
-    const newXp = oldXp + amount;
-    const oldLevel = xpToLevel(oldXp);
+    const newXp = (profile.xp || 0) + amount;
+    const oldLevel = xpToLevel(profile.xp || 0);
     const newLevel = xpToLevel(newXp);
+
     await updateDoc(doc(db, "users", user.uid), { xp: newXp, level: newLevel });
+
     setProfile(prev => ({ ...prev, xp: newXp, level: newLevel }));
+
     if (newLevel > oldLevel) {
       setShowLevelUp({ from: oldLevel, to: newLevel });
-      if (audioRef.current) try { audioRef.current.play(); } catch {}
-      setTimeout(()=>setShowLevelUp(null), 3500);
+      if (audioRef.current) audioRef.current.play();
     }
   }
 
-  /** Daily claim */
+  /** Daily reward */
   async function claimDaily() {
-    if (!profile) return;
-    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ?
-      profile.lastDaily.toDate() : profile.lastDaily ? new Date(profile.lastDaily) : null;
+    const last = profile.lastDaily?.toDate
+      ? profile.lastDaily.toDate()
+      : profile.lastDaily ? new Date(profile.lastDaily) : null;
+
     const now = new Date();
     if (last && last.toDateString() === now.toDateString()) {
       return alert("Already claimed today.");
     }
+
     await updateDoc(doc(db, "users", user.uid), {
       coins: (profile.coins || 0) + 1,
       lastDaily: serverTimestamp(),
     });
+
     await addXP(10);
-    alert("+1 coin added!");
+    alert("+1 coin!");
   }
 
-  /** Watch ad (demo) */
+  /** Watch rewarded ad */
   async function watchAd() {
     if (adLoading) return;
-    if (adWatchToday >= 3) return alert("Daily limit reached (3)");
+    if (adWatchToday >= 3) return alert("Ad limit reached.");
+
     setAdLoading(true);
+
     try {
-      await new Promise(r=>setTimeout(r,1500));
+      await new Promise(r => setTimeout(r, 1500));
       await addCoins(2);
       await addXP(5);
-      setAdWatchToday(c=>c+1);
-      alert("+2 coins added!");
-    } catch (err) {
-      console.error("watchAd", err);
+      setAdWatchToday(c => c + 1);
+      alert("+2 coins!");
     } finally {
       setAdLoading(false);
     }
@@ -216,27 +228,37 @@ export default function Dashboard({ user }) {
     navigate("/login");
   }
 
-  /** Admin approve / reject helpers (passed to AdminPanel) */
+  /** Admin approve/reject */
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved", processedAt: serverTimestamp() });
+
     if (type === "topup") {
       const uRef = doc(db, "users", req.userId);
       const snap = await getDoc(uRef);
       if (snap.exists()) {
-        await updateDoc(uRef, { coins: (snap.data().coins || 0) + (req.coins || req.amount || 0) });
+        await updateDoc(uRef, {
+          coins: (snap.data().coins || 0) + (req.coins || req.amount || 0)
+        });
       }
     }
-    setRequests(prev => ({ ...prev, [type]: prev[type].filter(i => i.id !== req.id) }));
+
+    setRequests(prev => ({
+      ...prev,
+      [type]: prev[type].filter(i => i.id !== req.id)
+    }));
   }
 
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected", processedAt: serverTimestamp() });
-    setRequests(prev => ({ ...prev, [type]: prev[type].filter(i => i.id !== req.id) }));
+
+    setRequests(prev => ({
+      ...prev,
+      [type]: prev[type].filter(i => i.id !== req.id)
+    }));
   }
 
-  /** Sound toggle (small icon) */
   function toggleSound() {
     if (!audioRef.current) return;
     if (audioRef.current.paused) audioRef.current.play();
@@ -244,11 +266,22 @@ export default function Dashboard({ user }) {
   }
 
   if (loading || !profile) {
-    return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>Loading Dashboard...</div>;
+    return (
+      <div style={{
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#fff"
+      }}>
+        Loading Dashboard...
+      </div>
+    );
   }
 
   return (
     <div className="dash-root">
+
       <audio ref={audioRef} src="/levelup.mp3" />
 
       <video className="bg-video" autoPlay loop muted playsInline>
@@ -266,7 +299,6 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions-fixed">
-          {/* HomeButtons component used (keeps top actions compact). We intentionally removed Top/Down buttons */}
           <HomeButtons onToggleSound={toggleSound} />
           {profile.email === adminEmail && (
             <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>
@@ -275,45 +307,26 @@ export default function Dashboard({ user }) {
       </header>
 
       <main className="dash-main">
-        {/* Coins panel */}
+
+        {/* Coins panel (FLOATING STATS REMOVED COMPLETELY) */}
         <section className="panel glow-panel">
           <div className="muted">Coins</div>
+
           <div className="big coin-row">
             <img src="/coin.jpg" className="coin-icon-fixed" alt="coin" />
-            <span className="coin-value" style={{marginLeft:10}}>{profile.coins ?? 0}</span>
-
-            {/* small stats card at right */}
-            <div style={{marginLeft:"auto", maxWidth:340}}>
-              <div className="modern-card" style={{padding:12}}>
-                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-                  <div>
-                    <div style={{fontSize:18, fontWeight:700}}>{profile.displayName || profile.username || "Player"}</div>
-                    <div style={{color:"#bfc7d1", fontSize:13}}>{profile.level ? `Level ${profile.level}` : ""} • {profile.xp || 0} XP</div>
-                  </div>
-                </div>
-                <div style={{height:10, marginTop:10}} className="xpbar-root">
-                  <div className="xpbar-track">
-                    <div
-                      className="xpbar-fill"
-                      style={{
-                        width: `${Math.min(100, ((profile.xp || 0) / (XP_LEVELS[(profile.level || 1) - 1] || 100)) * 100)}%`,
-                        height: 10,
-                        borderRadius: 8
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <span className="coin-value" style={{ marginLeft: 10 }}>
+              {profile.coins ?? 0}
+            </span>
           </div>
         </section>
 
-        {/* HOME tab content */}
+        {/* HOME TAB */}
         {activeTab === "home" && (
           <>
             <section className="panel glow-panel">
               <h3>Welcome back!</h3>
               <p>Check matches or top up to start playing.</p>
+
               <div className="home-top-buttons">
                 <button className="btn glow" onClick={claimDaily}>Daily Reward +1</button>
                 <button className="btn ghost glow" disabled={adLoading} onClick={watchAd}>
@@ -329,24 +342,27 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* Matches */}
+        {/* MATCHES */}
         {activeTab === "matches" && (
           selectedMatch
-            ? <MatchDetails match={selectedMatch} onBack={()=>setSelectedMatch(null)} />
-            : <section className="panel glow-panel"><h3>Matches</h3><MatchList matches={matches} onSelect={(m)=>setSelectedMatch(m)} /></section>
+            ? <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
+            : <section className="panel glow-panel">
+                <h3>Matches</h3>
+                <MatchList matches={matches} onSelect={(m) => setSelectedMatch(m)} />
+              </section>
         )}
 
-        {/* Topup */}
+        {/* TOPUP */}
         {activeTab === "topup" && (
           <TopupPage user={user} profile={profile} />
         )}
 
-        {/* Withdraw */}
+        {/* WITHDRAW */}
         {activeTab === "withdraw" && (
           <WithdrawPage profile={profile} />
         )}
 
-        {/* Account menu */}
+        {/* ACCOUNT */}
         {activeTab === "account" && (
           <AccountMenu
             profile={profile}
@@ -358,12 +374,15 @@ export default function Dashboard({ user }) {
           />
         )}
 
-        {/* Rank full screen */}
+        {/* RANK PAGE */}
         {activeTab === "rank" && (
-          <RankPage profile={profile} onBack={() => setActiveTab("account")} />
+          <RankPage
+            profile={profile}
+            onBack={() => setActiveTab("account")}
+          />
         )}
 
-        {/* Admin panel */}
+        {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <AdminPanel
             requests={requests}
@@ -376,19 +395,20 @@ export default function Dashboard({ user }) {
       </main>
 
       <footer className="bottom-nav glow-nav">
-        {["home","matches","topup","withdraw","account"].map(tab => (
+        {["home", "matches", "topup", "withdraw", "account"].map(tab => (
           <button
             key={tab}
-            className={`nav-btn ${activeTab===tab ? "active" : ""}`}
+            className={`nav-btn ${activeTab === tab ? "active" : ""}`}
             onClick={() => {
               setActiveTab(tab);
               setSelectedMatch(null);
             }}
           >
-            {tab.charAt(0).toUpperCase()+tab.slice(1)}
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </footer>
+
     </div>
   );
 }
