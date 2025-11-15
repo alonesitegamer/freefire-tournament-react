@@ -12,7 +12,7 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
+  orderBy
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -24,9 +24,6 @@ import WithdrawPage from "../components/WithdrawPage";
 import AccountMenu from "../components/AccountMenu";
 import AdminPanel from "../components/AdminPanel";
 import RankPage from "../components/RankPage";
-import XPBar from "../components/XPBar";
-import LevelUpPopup from "../components/LevelUpPopup";
-import UserStatsBox from "../components/UserStatsBox";
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -45,10 +42,10 @@ export default function Dashboard({ user }) {
 
   const adminEmail = "esportsimperial50@gmail.com";
 
-  /** XP curve (18 levels, last is heroic cap) */
+  /** XP Curve */
   const XP_LEVELS = [
-    100, 200, 350, 500, 700, 900, 1200, 1500, 1900,
-    2300, 2800, 3400, 4000, 4700, 5500, 6300, 7200, 9999999
+    100,200,350,500,700,900,1200,1500,1900,2300,
+    2800,3400,4000,4700,5500,6300,7200,9999999
   ];
 
   function xpToLevel(xp = 0) {
@@ -57,31 +54,32 @@ export default function Dashboard({ user }) {
     }
     return XP_LEVELS.length;
   }
-  function xpForLevel(level) {
-    return XP_LEVELS[Math.max(0, Math.min(XP_LEVELS.length - 1, level - 1))];
-  }
 
-  /** Load user */
+  /** Load user profile */
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
-        setLoading(true);
         const ref = doc(db, "users", user.uid);
         const snap = await getDoc(ref);
+
         if (snap.exists()) {
           const data = snap.data();
           const safe = {
             coins: data.coins ?? 0,
             xp: data.xp ?? 0,
             level: data.level ?? xpToLevel(data.xp ?? 0),
-            referralCode: data.referralCode ?? user.uid.substring(0, 8).toUpperCase(),
-            lastDaily: data.lastDaily ?? null,
             username: data.username ?? "",
             displayName: data.displayName ?? "",
-            ...data,
+            referralCode: data.referralCode ?? user.uid.substring(0,8).toUpperCase(),
+            lastDaily: data.lastDaily ?? null,
+            ...data
           };
-          if (!data.referralCode) await updateDoc(ref, { referralCode: safe.referralCode });
+
+          if (!data.referralCode) {
+            await updateDoc(ref, { referralCode: safe.referralCode });
+          }
+
           if (mounted) setProfile({ id: snap.id, ...safe });
         } else {
           const initial = {
@@ -91,7 +89,7 @@ export default function Dashboard({ user }) {
             level: 1,
             displayName: user.displayName || "",
             username: "",
-            referralCode: user.uid.substring(0, 8).toUpperCase(),
+            referralCode: user.uid.substring(0,8).toUpperCase(),
             lastDaily: null,
             createdAt: serverTimestamp(),
           };
@@ -99,7 +97,7 @@ export default function Dashboard({ user }) {
           if (mounted) setProfile({ id: ref.id, ...initial });
         }
       } catch (err) {
-        console.error("Dashboard load error:", err);
+        console.error("Profile load error", err);
       } finally {
         setLoading(false);
       }
@@ -108,14 +106,18 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [user.uid, user.email, user.displayName]);
 
-  /** Load matches when matches tab active */
+  /** Load matches (when matches tab active) */
   useEffect(() => {
     if (activeTab !== "matches") return;
     let mounted = true;
     (async () => {
       try {
-        const q = query(collection(db, "matches"), where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
-        const snap = await getDocs(q);
+        const qRef = query(
+          collection(db, "matches"),
+          where("status", "==", "upcoming"),
+          orderBy("createdAt", "desc")
+        );
+        const snap = await getDocs(qRef);
         const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         if (mounted) setMatches(arr);
       } catch (err) {
@@ -125,24 +127,24 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [activeTab]);
 
-  /** Admin load pending requests */
+  /** Admin requests load (only for admin) */
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
       try {
-        const top = await getDocs(query(collection(db, "topupRequests"), where("status", "==", "pending")));
-        const wd = await getDocs(query(collection(db, "withdrawRequests"), where("status", "==", "pending")));
+        const top = await getDocs(query(collection(db, "topupRequests"), where("status","==","pending")));
+        const wd = await getDocs(query(collection(db, "withdrawRequests"), where("status","==","pending")));
         setRequests({
           topup: top.docs.map(d => ({ id: d.id, ...d.data() })),
           withdraw: wd.docs.map(d => ({ id: d.id, ...d.data() })),
         });
       } catch (err) {
-        console.error("Admin load error:", err);
+        console.error("Admin load error", err);
       }
     })();
-  }, [profile?.email]);
+  }, [profile]);
 
-  /** Update profile field */
+  /** Update profile field helper */
   async function updateProfileField(patch) {
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, patch);
@@ -150,15 +152,15 @@ export default function Dashboard({ user }) {
     setProfile({ id: snap.id, ...snap.data() });
   }
 
-  /** Coins helper */
+  /** Add coins helper */
   async function addCoins(n = 1) {
-    const ref = doc(db, "users", user.uid);
+    if (!profile) return;
     const newCoins = (profile.coins || 0) + n;
-    await updateDoc(ref, { coins: newCoins });
+    await updateDoc(doc(db, "users", user.uid), { coins: newCoins });
     setProfile(prev => ({ ...prev, coins: newCoins }));
   }
 
-  /** XP helper + level logic */
+  /** Add XP helper (plays sound on level up) */
   async function addXP(amount = 0) {
     if (!profile) return;
     const oldXp = profile.xp || 0;
@@ -169,47 +171,52 @@ export default function Dashboard({ user }) {
     setProfile(prev => ({ ...prev, xp: newXp, level: newLevel }));
     if (newLevel > oldLevel) {
       setShowLevelUp({ from: oldLevel, to: newLevel });
-      if (audioRef.current) audioRef.current.play();
-      // automatically hide after 3.5s
-      setTimeout(() => setShowLevelUp(null), 3500);
+      if (audioRef.current) try { audioRef.current.play(); } catch {}
+      setTimeout(()=>setShowLevelUp(null), 3500);
     }
   }
 
   /** Daily claim */
   async function claimDaily() {
     if (!profile) return;
-    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function"
-      ? profile.lastDaily.toDate()
-      : profile.lastDaily ? new Date(profile.lastDaily) : null;
+    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function" ?
+      profile.lastDaily.toDate() : profile.lastDaily ? new Date(profile.lastDaily) : null;
     const now = new Date();
-    if (last && last.toDateString() === now.toDateString()) return alert("You already claimed today.");
-    await updateDoc(doc(db, "users", user.uid), { coins: (profile.coins || 0) + 1, lastDaily: serverTimestamp() });
+    if (last && last.toDateString() === now.toDateString()) {
+      return alert("Already claimed today.");
+    }
+    await updateDoc(doc(db, "users", user.uid), {
+      coins: (profile.coins || 0) + 1,
+      lastDaily: serverTimestamp(),
+    });
     await addXP(10);
-    const snap = await getDoc(doc(db, "users", user.uid));
-    setProfile({ id: snap.id, ...snap.data() });
-    alert("+1 coin credited!");
+    alert("+1 coin added!");
   }
 
-  /** Watch ad */
+  /** Watch ad (demo) */
   async function watchAd() {
     if (adLoading) return;
-    if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
+    if (adWatchToday >= 3) return alert("Daily limit reached (3)");
     setAdLoading(true);
     try {
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r=>setTimeout(r,1500));
       await addCoins(2);
       await addXP(5);
-      setAdWatchToday(c => c + 1);
-      alert("+2 coins (demo).");
+      setAdWatchToday(c=>c+1);
+      alert("+2 coins added!");
     } catch (err) {
-      console.error(err);
-      alert("Ad failed.");
+      console.error("watchAd", err);
     } finally {
       setAdLoading(false);
     }
   }
 
-  /** Admin approve/reject */
+  async function handleLogoutNavigate() {
+    await signOut(auth);
+    navigate("/login");
+  }
+
+  /** Admin approve / reject helpers (passed to AdminPanel) */
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved", processedAt: serverTimestamp() });
@@ -222,27 +229,28 @@ export default function Dashboard({ user }) {
     }
     setRequests(prev => ({ ...prev, [type]: prev[type].filter(i => i.id !== req.id) }));
   }
+
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected", processedAt: serverTimestamp() });
     setRequests(prev => ({ ...prev, [type]: prev[type].filter(i => i.id !== req.id) }));
   }
 
-  /** Logout removed by request - not showing logout button anywhere */
+  /** Sound toggle (small icon) */
+  function toggleSound() {
+    if (!audioRef.current) return;
+    if (audioRef.current.paused) audioRef.current.play();
+    else audioRef.current.pause();
+  }
 
   if (loading || !profile) {
-    return (
-      <div style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", color: "#fff" }}>
-        Loading Dashboard...
-      </div>
-    );
+    return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>Loading Dashboard...</div>;
   }
 
   return (
     <div className="dash-root">
       <audio ref={audioRef} src="/levelup.mp3" />
 
-      {/* Background */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -250,50 +258,65 @@ export default function Dashboard({ user }) {
 
       <header className="dash-header glow-header">
         <div className="logo-row">
-          <img src="/icon.jpg" alt="logo" className="logo" />
+          <img src="/icon.jpg" className="logo" alt="logo" />
           <div>
             <div className="title">Imperial X Esports</div>
             <div className="subtitle">{profile.username || profile.displayName || profile.email}</div>
           </div>
         </div>
 
-        <div className="header-actions">
-          <HomeButtons onToggleSound={() => {
-            if (audioRef.current) {
-              if (audioRef.current.paused) audioRef.current.play();
-              else audioRef.current.pause();
-            }
-          }} />
-          {profile.email === adminEmail && <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>}
+        <div className="header-actions-fixed">
+          {/* HomeButtons component used (keeps top actions compact). We intentionally removed Top/Down buttons */}
+          <HomeButtons onToggleSound={toggleSound} />
+          {profile.email === adminEmail && (
+            <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>
+          )}
         </div>
       </header>
 
       <main className="dash-main">
-        {/* Coins + stats */}
-        <section className="panel glow-panel panel-row">
-          <div style={{ flex: 1 }}>
-            <div className="muted">Coins</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/coin.jpg" alt="coin" className="coin-icon" />
-              <div className="big">{profile.coins ?? 0}</div>
-            </div>
-          </div>
+        {/* Coins panel */}
+        <section className="panel glow-panel">
+          <div className="muted">Coins</div>
+          <div className="big coin-row">
+            <img src="/coin.jpg" className="coin-icon-fixed" alt="coin" />
+            <span className="coin-value" style={{marginLeft:10}}>{profile.coins ?? 0}</span>
 
-          <div style={{ width: 320, marginLeft: 16 }}>
-            <UserStatsBox profile={profile} xpToLevel={xpToLevel} xpForLevel={xpForLevel} />
-            <XPBar xp={profile.xp || 0} level={profile.level || 1} xpForLevel={xpForLevel} />
+            {/* small stats card at right */}
+            <div style={{marginLeft:"auto", maxWidth:340}}>
+              <div className="modern-card" style={{padding:12}}>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:18, fontWeight:700}}>{profile.displayName || profile.username || "Player"}</div>
+                    <div style={{color:"#bfc7d1", fontSize:13}}>{profile.level ? `Level ${profile.level}` : ""} • {profile.xp || 0} XP</div>
+                  </div>
+                </div>
+                <div style={{height:10, marginTop:10}} className="xpbar-root">
+                  <div className="xpbar-track">
+                    <div
+                      className="xpbar-fill"
+                      style={{
+                        width: `${Math.min(100, ((profile.xp || 0) / (XP_LEVELS[(profile.level || 1) - 1] || 100)) * 100)}%`,
+                        height: 10,
+                        borderRadius: 8
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Home tab */}
+        {/* HOME tab content */}
         {activeTab === "home" && (
           <>
             <section className="panel glow-panel">
               <h3>Welcome back!</h3>
               <p>Check matches or top up to start playing.</p>
-              <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+              <div className="home-top-buttons">
                 <button className="btn glow" onClick={claimDaily}>Daily Reward +1</button>
-                <button className="btn ghost glow" onClick={watchAd} disabled={adLoading}>
+                <button className="btn ghost glow" disabled={adLoading} onClick={watchAd}>
                   {adLoading ? "Loading..." : `Watch Ad +2 (${adWatchToday}/3)`}
                 </button>
               </div>
@@ -301,20 +324,29 @@ export default function Dashboard({ user }) {
 
             <section className="panel glow-panel">
               <h3>Featured Matches</h3>
-              <MatchList matches={matches} onSelect={(m) => { setSelectedMatch(m); setActiveTab("matches"); }} />
+              <MatchList matches={matches} onSelect={(m)=>{ setSelectedMatch(m); setActiveTab("matches"); }} />
             </section>
           </>
         )}
 
+        {/* Matches */}
         {activeTab === "matches" && (
-          selectedMatch ? <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} /> :
-            <section className="panel glow-panel"><h3>Matches</h3><MatchList matches={matches} onSelect={(m) => setSelectedMatch(m)} /></section>
+          selectedMatch
+            ? <MatchDetails match={selectedMatch} onBack={()=>setSelectedMatch(null)} />
+            : <section className="panel glow-panel"><h3>Matches</h3><MatchList matches={matches} onSelect={(m)=>setSelectedMatch(m)} /></section>
         )}
 
-        {activeTab === "topup" && (<TopupPage user={user} profile={profile} />)}
+        {/* Topup */}
+        {activeTab === "topup" && (
+          <TopupPage user={user} profile={profile} />
+        )}
 
-        {activeTab === "withdraw" && (<WithdrawPage profile={profile} />)}
+        {/* Withdraw */}
+        {activeTab === "withdraw" && (
+          <WithdrawPage profile={profile} />
+        )}
 
+        {/* Account menu */}
         {activeTab === "account" && (
           <AccountMenu
             profile={profile}
@@ -322,27 +354,41 @@ export default function Dashboard({ user }) {
             updateProfileField={updateProfileField}
             addXP={addXP}
             onRankClick={() => setActiveTab("rank")}
+            onLogout={handleLogoutNavigate}
           />
         )}
 
-        {activeTab === "rank" && (<RankPage profile={profile} xpForLevel={xpForLevel} onBack={() => setActiveTab("account")} />)}
+        {/* Rank full screen */}
+        {activeTab === "rank" && (
+          <RankPage profile={profile} onBack={() => setActiveTab("account")} />
+        )}
 
+        {/* Admin panel */}
         {activeTab === "admin" && profile.email === adminEmail && (
-          <AdminPanel requests={requests} approveRequest={approveRequest} rejectRequest={rejectRequest} matches={matches} />
+          <AdminPanel
+            requests={requests}
+            approveRequest={approveRequest}
+            rejectRequest={rejectRequest}
+            matches={matches}
+          />
         )}
 
       </main>
 
       <footer className="bottom-nav glow-nav">
-        {["home", "matches", "topup", "withdraw", "account"].map(tab => (
-          <button key={tab} className={`nav-btn ${activeTab === tab ? "active" : ""}`} onClick={() => { setActiveTab(tab); setSelectedMatch(null); }}>
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+        {["home","matches","topup","withdraw","account"].map(tab => (
+          <button
+            key={tab}
+            className={`nav-btn ${activeTab===tab ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab(tab);
+              setSelectedMatch(null);
+            }}
+          >
+            {tab.charAt(0).toUpperCase()+tab.slice(1)}
           </button>
         ))}
       </footer>
-
-      {showLevelUp && <LevelUpPopup from={showLevelUp.from} to={showLevelUp.to} onClose={() => setShowLevelUp(null)} />}
-
     </div>
   );
 }
