@@ -694,4 +694,3 @@ export default function Dashboard({ user }) {
     </div>
   );
 }
-```0
