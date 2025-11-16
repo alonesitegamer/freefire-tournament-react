@@ -7,10 +7,9 @@ export default function AccountMenu({
   profile,
   setProfile = () => {},
   updateProfileField = async () => {},
-  addXP = async () => {},
   onRankClick = () => {},
   onLogout = null,
-  openAvatarModal = null, // Dashboard sends this
+  openAvatarModal // <-- added from Dashboard
 }) {
   const [view, setView] = useState("main");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
@@ -30,92 +29,100 @@ export default function AccountMenu({
     window.location.href = "/login";
   }
 
-  // tap avatar → open modal
-  function handleAvatarClick() {
-    if (typeof openAvatarModal === "function") openAvatarModal();
-  }
-
   return (
     <div className="account-menu">
+      {/* MAIN ACCOUNT PAGE */}
       {view === "main" && (
         <section className="panel account-profile-card">
 
-          {/* TOP USER INFO */}
-          <div style={{ 
-            display:"flex", 
-            flexDirection:"column", 
-            alignItems:"center", 
-            gap:10 
-          }}>
-            {/* TAP AVATAR TO CHANGE */}
-            <div 
-              onClick={handleAvatarClick}
-              style={{
-                width:72,
-                height:72,
-                borderRadius:8,
-                overflow:"hidden",
-                border:"2px solid var(--accent2)",
-                cursor:"pointer",
-              }}
-            >
-              <img 
-                src={profile.avatar || "/avatars/default.jpg"} 
-                alt="avatar" 
-                style={{ width:"100%", height:"100%", objectFit:"cover" }} 
-              />
-            </div>
-
-            <div style={{fontWeight:800, fontSize:18, color:"var(--accent2)"}}>
-              {profile.username || profile.displayName || "Set Username"}
-            </div>
-
-            <div style={{color:"var(--muted)"}}>
-              {profile.email}
-            </div>
+          {/* Avatar – CLICK to open modal */}
+          <div 
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 12,
+              overflow: "hidden",
+              border: "2px solid rgba(255,255,255,0.06)",
+              margin: "0 auto",
+              cursor: "pointer"
+            }}
+            onClick={openAvatarModal}
+          >
+            <img
+              src={profile.avatar || "/avatars/default.jpg"}
+              alt="avatar"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
 
-          {/* MENU BUTTONS */}
-          <div className="account-btn-group" style={{width:"100%", marginTop:18}}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 18,
+              marginTop: 10,
+              color: "var(--accent2)"
+            }}
+          >
+            {profile.displayName || profile.username || "Player"}
+          </div>
+
+          <div style={{ color: "var(--muted)" }}>{profile.email}</div>
+
+          <div className="account-btn-group">
+            {/* Profile */}
             <button className="account-option" onClick={() => setView("profile")}>
-              👤 Profile Settings
+              <span>👤 Profile Settings</span>
             </button>
 
+            {/* Rank */}
             <button className="account-option" onClick={onRankClick}>
-              🏆 Rank
+              <span>🏆 Rank</span>
             </button>
 
+            {/* Refer */}
             <button className="account-option" onClick={() => setView("refer")}>
-              🔗 Refer a Friend
+              <span>🔗 Refer a Friend</span>
             </button>
 
-            <button className="account-option" onClick={doLogout}>
-              🚪 Logout
+            {/* Logout */}
+            <button className="account-option logout" onClick={doLogout}>
+              <span>🚪 Logout</span>
             </button>
           </div>
         </section>
       )}
 
+      {/* PROFILE SETTINGS */}
       {view === "profile" && (
         <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>Back</button>
+          <button className="back-btn" onClick={() => setView("main")}>
+            Back
+          </button>
+
           <h3>Profile Settings</h3>
+
           <form onSubmit={saveName}>
-            <input 
-              className="modern-input" 
-              value={displayName} 
-              onChange={(e)=>setDisplayName(e.target.value)} 
+            <input
+              className="modern-input"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              placeholder="Enter display name"
             />
             <button className="btn">Save</button>
           </form>
         </section>
       )}
 
+      {/* REFER */}
       {view === "refer" && (
         <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>Back</button>
+          <button className="back-btn" onClick={() => setView("main")}>
+            Back
+          </button>
+
           <h3>Refer a Friend</h3>
           <p>Your referral code:</p>
+
           <div className="referral-code">{profile.referralCode}</div>
         </section>
       )}
