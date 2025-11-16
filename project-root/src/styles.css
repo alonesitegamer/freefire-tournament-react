@@ -404,3 +404,162 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .small-muted{color:var(--muted);font-size:.85rem}
 
 /* End of file */
+/* ======================================================
+   ADVANCED AVATAR EFFECTS PACK (Glow + Tilt + Rarity FX)
+   ====================================================== */
+
+/* Base tile */
+.avatar-tile {
+  transition:
+    transform .22s cubic-bezier(.2,.9,.2,1),
+    box-shadow .25s ease,
+    border .25s ease,
+    filter .25s ease;
+  transform-style: preserve-3d;
+  background: rgba(255,255,255,0.03);
+}
+
+/* 3D Tilt on hover (only unlocked) */
+.avatar-tile:not(:disabled):hover {
+  transform: translateY(-6px) rotateX(6deg) rotateY(-6deg);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+}
+
+/* ------------------------------------------------------
+   SELECTED AVATAR — pulse glow + neon outer ring
+   ------------------------------------------------------ */
+
+.selected-avatar {
+  border: 2px solid var(--accent2) !important;
+  animation: selectedPulse 1.6s infinite ease-in-out;
+  box-shadow:
+    0 0 15px rgba(255, 92, 46, 0.55),
+    0 0 35px rgba(255, 92, 46, 0.25),
+    inset 0 0 12px rgba(255, 92, 46, 0.2);
+}
+
+@keyframes selectedPulse {
+  0% {
+    box-shadow:
+      0 0 10px rgba(255,92,46,0.25),
+      0 0 30px rgba(255,92,46,0.1),
+      inset 0 0 10px rgba(255,92,46,0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 20px rgba(255,92,46,0.65),
+      0 0 45px rgba(255,92,46,0.35),
+      inset 0 0 14px rgba(255,92,46,0.25);
+  }
+  100% {
+    box-shadow:
+      0 0 10px rgba(255,92,46,0.25),
+      0 0 30px rgba(255,92,46,0.1),
+      inset 0 0 10px rgba(255,92,46,0.1);
+  }
+}
+
+/* ------------------------------------------------------
+   RARITY GLOW SYSTEM (based on rank/tier)
+   You assign these classes depending on tier:
+   - .tier-bronze
+   - .tier-silver
+   - .tier-gold
+   - .tier-platinum
+   - .tier-diamond
+   - .tier-heroic
+   ------------------------------------------------------ */
+
+/* Bronze */
+.tier-bronze:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 12px rgba(205,133,63,0.35);
+}
+.tier-bronze:hover {
+  box-shadow: 0 0 20px rgba(205,133,63,0.55);
+}
+
+/* Silver */
+.tier-silver:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 14px rgba(220,220,220,0.35);
+}
+.tier-silver:hover {
+  box-shadow: 0 0 24px rgba(255,255,255,0.55);
+}
+
+/* Gold */
+.tier-gold:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 14px rgba(255,215,0,0.45);
+}
+.tier-gold:hover {
+  box-shadow: 0 0 24px rgba(255,215,0,0.75);
+}
+
+/* Platinum */
+.tier-platinum:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 14px rgba(150,200,255,0.45);
+}
+.tier-platinum:hover {
+  box-shadow: 0 0 28px rgba(150,200,255,0.75);
+}
+
+/* Diamond */
+.tier-diamond:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 18px rgba(0,250,255,0.55);
+}
+.tier-diamond:hover {
+  box-shadow: 0 0 32px rgba(0,250,255,0.85);
+}
+
+/* Heroic */
+.tier-heroic:not(.selected-avatar):not(.locked) {
+  box-shadow: 0 0 20px rgba(255,0,0,0.6);
+}
+.tier-heroic:hover {
+  box-shadow: 0 0 35px rgba(255,0,0,0.9);
+}
+
+/* ------------------------------------------------------
+   LOCKED — shimmer overlay & disabled FX
+   ------------------------------------------------------ */
+
+.avatar-tile.locked {
+  filter: grayscale(80%);
+  cursor: not-allowed;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.18) 50%,
+    rgba(255,255,255,0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: lockedShimmer 1.6s linear infinite;
+}
+
+@keyframes lockedShimmer {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+
+/* Bottom locked label */
+.avatar-locked-label {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 4px;
+  font-weight: 600;
+}
+
+/* Selected badge */
+.avatar-selected-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.45);
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
