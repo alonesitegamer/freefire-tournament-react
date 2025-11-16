@@ -42,11 +42,7 @@ export default function Dashboard({ user }) {
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarSelecting, setAvatarSelecting] = useState(false);
 
-  // audio refs
-  const audioRef = useRef(null); // level-up sound (existing)
-  const avatarSelectAudioRef = useRef(null); // click select
-  const avatarUnlockAudioRef = useRef(null); // unlock sound
-
+  const audioRef = useRef(null);
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
@@ -338,17 +334,9 @@ export default function Dashboard({ user }) {
     // default only the 0th (default.jpg) unlocked on level 1
     if (index === 0) return 1;
     // gradually increase requirement - mapping tuned to tiers:
-    // bronze: 2-3, silver:4-6, gold:7-10, platinum:11-14, diamond:15-17, heroic:18
     const requiredMapping = [
-      1, // index 0
-      2, 3, // 1-2
-      4, 5, 6, // 3-5
-      7, 8, 9, 10, // 6-9
-      11, 12, 13, 14, // 10-13
-      15, 16, 17, // 14-16
-      18 // last heroic index
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
     ];
-    // fallback to progressive rule if mapping missing
     return requiredMapping[index] || Math.min(18, Math.floor(index / 2) + 2);
   }
 
@@ -360,31 +348,12 @@ export default function Dashboard({ user }) {
       return alert(`You need to be Level ${required} to use this avatar.`);
     }
 
-    // play select sound quickly, then persist
+    setAvatarSelecting(true);
     try {
-      if (avatarSelectAudioRef.current) {
-        try {
-          avatarSelectAudioRef.current.currentTime = 0;
-          avatarSelectAudioRef.current.play();
-        } catch {}
-      }
-
-      setAvatarSelecting(true);
-
       const avatarPath = `/avatars/${filename}`;
       await updateDoc(doc(db, "users", user.uid), { avatar: avatarPath });
       const snap = await getDoc(doc(db, "users", user.uid));
-      const newProfile = { id: snap.id, ...snap.data() };
-      setProfile(newProfile);
-
-      // If user just reached the required level on the server (rare), play unlock SFX
-      if (avatarUnlockAudioRef.current) {
-        try {
-          avatarUnlockAudioRef.current.currentTime = 0;
-          avatarUnlockAudioRef.current.play();
-        } catch {}
-      }
-
+      setProfile({ id: snap.id, ...snap.data() });
       alert("Avatar updated!");
       closeAvatarModal();
     } catch (err) {
@@ -410,13 +379,8 @@ export default function Dashboard({ user }) {
 
   return (
     <div className="dash-root">
-      {/* level-up sound */}
       <audio ref={audioRef} src="/levelup.mp3" />
-      {/* avatar select & unlock sounds - ensure these exist in public/ */}
-      <audio ref={avatarSelectAudioRef} src="/avatar-select.mp3" />
-      <audio ref={avatarUnlockAudioRef} src="/avatar-unlock.mp3" />
 
-      {/* background video + overlay */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -448,10 +412,10 @@ export default function Dashboard({ user }) {
             </div>
           </div>
 
-          {/* compact profile card on the right (shows avatar + level + xp) - not floating */}
+          {/* compact profile card on the right (shows avatar + level + xp) - square avatar now */}
           <div style={{ maxWidth: 360 }}>
             <div className="modern-card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ width: 64, height: 64, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ width: 64, height: 64, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6 }}>
                 <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               <div style={{ flex: 1 }}>
@@ -468,7 +432,7 @@ export default function Dashboard({ user }) {
           </div>
         </section>
 
-        {/* HOME tab */}
+        {/* rest of your content (home, matches, topup, withdraw, account, rank, admin) */}
         {activeTab === "home" && (
           <>
             <section className="panel glow-panel">
@@ -490,7 +454,6 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* MATCHES */}
         {activeTab === "matches" && (
           selectedMatch ? (
             <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
@@ -502,16 +465,12 @@ export default function Dashboard({ user }) {
           )
         )}
 
-        {/* TOPUP */}
         {activeTab === "topup" && <TopupPage user={user} profile={profile} />}
-
-        {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT - includes avatar-change button & avatar grid modal (Account-only) */}
+        {/* ACCOUNT */}
         {activeTab === "account" && (
           <div>
-            {/* AccountMenu component (keeps most account controls) */}
             <AccountMenu
               profile={profile}
               setProfile={setProfile}
@@ -521,10 +480,9 @@ export default function Dashboard({ user }) {
               onLogout={handleLogoutNavigate}
             />
 
-            {/* Avatar quick panel that appears only on Account page */}
             <section className="panel glow-panel" style={{ marginTop: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 72, height: 72, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ width: 72, height: 72, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6 }}>
                   <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -542,10 +500,8 @@ export default function Dashboard({ user }) {
           </div>
         )}
 
-        {/* RANK full screen */}
         {activeTab === "rank" && <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />}
 
-        {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <AdminPanel
             requests={requests}
@@ -556,7 +512,6 @@ export default function Dashboard({ user }) {
         )}
       </main>
 
-      {/* Bottom nav */}
       <footer className="bottom-nav glow-nav">
         {["home", "matches", "topup", "withdraw", "account"].map((tab) => (
           <button
@@ -572,123 +527,49 @@ export default function Dashboard({ user }) {
         ))}
       </footer>
 
-      {/* ---------- Avatar selection modal (Account-only) ---------- */}
+      {/* Avatar modal (keeps square tiles) */}
       {showAvatarModal && (
-        <div
-          className="modal-overlay"
-          onClick={closeAvatarModal}
-          style={{ animation: "fadeInScale .18s ease forwards", padding: 20 }}
-        >
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 820 }}
-          >
+        <div className="modal-overlay" onClick={closeAvatarModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3 className="modern-title">Choose Avatar</h3>
-            <p className="modern-subtitle">Tap avatar to select. Locked avatars show required tier (Bronze / Silver / ...).</p>
+            <p className="modern-subtitle">Avatars are in <code>public/avatars/</code>. Locked avatars show required level.</p>
 
-            <div style={{ marginTop: 12, maxHeight: "56vh", overflowY: "auto", paddingRight: 8 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
-                  gap: 16,
-                }}
-              >
-                {AVATARS.map((f, idx) => {
-                  const path = `/avatars/${f}`;
-                  // compute requirement & tier
-                  const required = avatarRequiredLevel(idx);
-                  const tier = (() => {
-                    if (required <= 3) return "Bronze";
-                    if (required <= 6) return "Silver";
-                    if (required <= 10) return "Gold";
-                    if (required <= 14) return "Platinum";
-                    if (required <= 17) return "Diamond";
-                    return "Heroic";
-                  })();
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflowY: "auto" }}>
+              {AVATARS.map((f, idx) => {
+                const path = `/avatars/${f}`;
+                const required = avatarRequiredLevel(idx);
+                const tier = required <= 3 ? "Bronze" : required <= 6 ? "Silver" : required <= 10 ? "Gold" : required <= 14 ? "Platinum" : required <= 17 ? "Diamond" : "Heroic";
+                const stars = tier === "Bronze" ? "☆" : tier === "Silver" ? "☆☆" : tier === "Gold" ? "☆☆☆" : tier === "Platinum" ? "☆☆☆☆" : "☆☆☆☆☆";
+                const locked = f !== "default.jpg" && (profile.level || 1) < required;
 
-                  // show simple star count for tier display (not numeric level)
-                  const stars = (() => {
-                    if (tier === "Bronze") return "☆";
-                    if (tier === "Silver") return "☆☆";
-                    if (tier === "Gold") return "☆☆☆";
-                    if (tier === "Platinum") return "☆☆☆☆";
-                    if (tier === "Diamond") return "☆☆☆☆☆";
-                    return "☆☆☆☆☆";
-                  })();
-
-                  const rarityColor = {
-                    Bronze: "rgba(180,90,30,0.85)",
-                    Silver: "rgba(180,180,180,0.9)",
-                    Gold: "rgba(255,210,65,0.95)",
-                    Platinum: "rgba(150,220,255,0.9)",
-                    Diamond: "rgba(0,255,255,0.9)",
-                    Heroic: "rgba(255,80,80,0.95)",
-                  }[tier];
-
-                  const locked = f !== "default.jpg" && (profile.level || 1) < required;
-                  const isSelected = profile.avatar === path;
-                  const justUnlocked = !locked && profile.level === required;
-
-                  return (
-                    <div key={f} style={{ textAlign: "center" }}>
-                      <button
-                        className={`avatar-tile ${isSelected ? "avatar-selected" : ""} ${justUnlocked ? "avatar-unlock" : ""}`}
-                        style={{
-                          width: 96,
-                          height: 96,
-                          borderRadius: 12,
-                          padding: 0,
-                          overflow: "hidden",
-                          position: "relative",
-                          border: isSelected ? `2px solid ${rarityColor}` : "1px solid rgba(255,255,255,0.06)",
-                          cursor: locked ? "not-allowed" : "pointer",
-                          background: locked ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)",
-                          boxShadow: isSelected ? `0 0 18px ${rarityColor}` : "none",
-                        }}
-                        disabled={avatarSelecting || locked}
-                        onClick={() => !locked && selectAvatar(f)}
-                        title={locked ? `${tier} - unlocks at Level ${required}` : `Select ${f}`}
-                      >
-                        <img
-                          src={path}
-                          alt={f}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            opacity: locked ? 0.38 : 1,
-                          }}
-                        />
-
-                        {locked && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              background: "rgba(0,0,0,0.62)",
-                              color: "#fff",
-                              fontSize: 12,
-                              padding: "6px 4px",
-                              fontWeight: 700,
-                              borderTop: `2px solid ${rarityColor}`,
-                            }}
-                          >
-                            {tier} {`(${stars})`}
-                          </div>
-                        )}
-                      </button>
-
-                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)", textTransform: "capitalize" }}>
-                        {f.replace(".jpg", "").replace(/-/g, " ")}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                return (
+                  <div key={f} style={{ textAlign: "center" }}>
+                    <button
+                      className="icon-button"
+                      style={{
+                        width: 96,
+                        height: 96,
+                        padding: 0,
+                        overflow: "hidden",
+                        position: "relative",
+                        borderRadius: 6,
+                        border: profile.avatar === path ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
+                        background: locked ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)"
+                      }}
+                      disabled={avatarSelecting || locked}
+                      onClick={() => selectAvatar(f)}
+                    >
+                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: locked ? 0.38 : 1 }} />
+                      {locked && (
+                        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 12, padding: "6px 4px", fontWeight: 700 }}>
+                          {tier} {`(${stars})`}
+                        </div>
+                      )}
+                    </button>
+                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>{f.replace(".jpg", "").replace(/-/g, " ")}</div>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
@@ -698,29 +579,9 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
-      {/* ---------- Level up popup (simple) ---------- */}
       {showLevelUp && (
         <LevelUpPopup from={showLevelUp.from} to={showLevelUp.to} onClose={() => setShowLevelUp(null)} />
       )}
-
-      {/* Inline styles for avatar animations & small tweaks */}
-      <style>{`
-        @keyframes fadeInScale { from { opacity:0; transform: scale(.98);} to { opacity:1; transform: scale(1);} }
-        @keyframes unlockPulse {
-          0% { transform: scale(1); }
-          30% { transform: scale(1.12); }
-          60% { transform: scale(1.04); }
-          100% { transform: scale(1); }
-        }
-        @keyframes selectedBorderGlow {
-          0% { box-shadow: 0 0 6px rgba(255,255,255,0.06); transform: none; }
-          50% { box-shadow: 0 0 28px rgba(255,255,255,0.14); transform: translateY(-2px); }
-          100% { box-shadow: 0 0 6px rgba(255,255,255,0.06); transform: none; }
-        }
-
-        .avatar-unlock { animation: unlockPulse 900ms ease forwards; }
-        .avatar-selected { animation: selectedBorderGlow 1200ms ease infinite; transform-origin: center; }
-      `}</style>
     </div>
   );
 }
