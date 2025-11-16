@@ -26,16 +26,6 @@ import AdminPanel from "../components/AdminPanel";
 import RankPage from "../components/RankPage";
 import LevelUpPopup from "../components/LevelUpPopup";
 
-/**
- * Dashboard.jsx — Option A (Avatar modal only via Account page avatar click)
- *
- * Changes made:
- * - Avatar modal grouped & sorted by rank low -> high
- * - `default.jpg` unlocked by default and auto-selected for new users
- * - Lock overlay, selected glow, animated border, select sound
- * - Clicking top-right or profile avatar opens modal (only allowed from Account tab)
- */
-
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,21 +34,19 @@ export default function Dashboard({ user }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [requests, setRequests] = useState({ topup: [], withdraw: [] });
 
-  const [showLevelUp, setShowLevelUp] = useState(null); // { from, to }
+  const [showLevelUp, setShowLevelUp] = useState(null);
   const [adWatchToday, setAdWatchToday] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
 
-  // Avatar modal state (only triggered from Account page)
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarSelecting, setAvatarSelecting] = useState(false);
 
-  const audioRef = useRef(null); // level up sound
-  const selectAudioRef = useRef(null); // selection sound
+  const audioRef = useRef(null);
+  const selectAudioRef = useRef(null);
 
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
-  // XP levels (18 entries, last is heroic cap)
   const XP_LEVELS = [
     100, 200, 350, 500, 700, 900, 1200, 1500, 1900, 2300, 2800, 3400, 4000, 4700,
     5500, 6300, 7200, 9999999,
@@ -71,7 +59,6 @@ export default function Dashboard({ user }) {
     return XP_LEVELS.length;
   }
 
-  // ---------- Avatar list and required-rank mapping ----------
   const AVATARS = [
     "angelic.jpg",
     "authentic.jpg",
@@ -102,16 +89,15 @@ export default function Dashboard({ user }) {
     "water.jpg",
   ];
 
-  // mapping based on your list (filename -> { level, label })
   const AVATAR_META = {
-    "angelic.jpg": { level: 15, label: "Diamond ★★★" }, // diamond 3+
-    "authentic.jpg": { level: 8, label: "Gold ★★" }, // gold2+
-    "brain.jpg": { level: 3, label: "Bronze ★★★" }, // bronze3+
-    "chicken.jpg": { level: 5, label: "Silver ★★" }, // silver2+
-    "crown.jpg": { level: 14, label: "Platinum ★★★★" }, // platinum4+
+    "angelic.jpg": { level: 15, label: "Diamond ★★★" },
+    "authentic.jpg": { level: 8, label: "Gold ★★" },
+    "brain.jpg": { level: 3, label: "Bronze ★★★" },
+    "chicken.jpg": { level: 5, label: "Silver ★★" },
+    "crown.jpg": { level: 14, label: "Platinum ★★★★" },
     "cyberpunk.jpg": { level: 4, label: "Silver ★" },
-    "default.jpg": { level: 1, label: "Bronze ★" }, // free/unlocked
-    "dragon.jpg": { level: 9, label: "Gold ★★★" }, // gold3+
+    "default.jpg": { level: 1, label: "Bronze ★" },
+    "dragon.jpg": { level: 9, label: "Gold ★★★" },
     "flame-falco.jpg": { level: 18, label: "Diamond ★★★★" },
     "flower-wind.jpg": { level: 15, label: "Diamond ★" },
     "flower.jpg": { level: 16, label: "Diamond ★★" },
@@ -137,7 +123,6 @@ export default function Dashboard({ user }) {
     return AVATAR_META[filename] ?? { level: 18, label: "Heroic" };
   }
 
-  // helper: derive rank category (Bronze/Silver/Gold/Platinum/Diamond/Heroic)
   function rankCategory(label) {
     if (!label) return "Other";
     const low = label.toLowerCase();
@@ -150,7 +135,12 @@ export default function Dashboard({ user }) {
     return "Other";
   }
 
-  // ---------- Load / bootstrap profile ----------
+  // tierClass helper - returns a small class name we can use in CSS if desired
+  function tierClass(label) {
+    const cat = rankCategory(label);
+    return `tier-${cat.toLowerCase()}`; // e.g., tier-bronze, tier-silver ...
+  }
+
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -176,11 +166,9 @@ export default function Dashboard({ user }) {
             ...data,
           };
 
-          // ensure referral saved server-side
           if (!data.referralCode) {
             await updateDoc(ref, { referralCode: safe.referralCode });
           }
-          // ensure avatar saved server-side — default.jpg selected for new users
           if (!data.avatar) {
             await updateDoc(ref, { avatar: safe.avatar });
           }
@@ -213,7 +201,6 @@ export default function Dashboard({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.uid, user.email, user.displayName]);
 
-  // ---------- Load matches only when user opens matches tab ----------
   useEffect(() => {
     if (activeTab !== "matches") return;
     let mounted = true;
@@ -235,7 +222,6 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [activeTab]);
 
-  // ---------- Admin pending requests (admin only) ----------
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
@@ -259,7 +245,6 @@ export default function Dashboard({ user }) {
     })();
   }, [profile]);
 
-  // ---------- Profile update helper ----------
   async function updateProfileField(patch) {
     const ref = doc(db, "users", user.uid);
     await updateDoc(ref, patch);
@@ -267,7 +252,6 @@ export default function Dashboard({ user }) {
     setProfile({ id: snap.id, ...snap.data() });
   }
 
-  // ---------- Coins / XP helpers ----------
   async function addCoins(n = 1) {
     if (!profile) return;
     const newCoins = (profile.coins || 0) + n;
@@ -293,12 +277,10 @@ export default function Dashboard({ user }) {
           audioRef.current.play();
         } catch (e) {}
       }
-      // hide after a few seconds
       setTimeout(() => setShowLevelUp(null), 3500);
     }
   }
 
-  // ---------- Daily claim ----------
   async function claimDaily() {
     if (!profile) return;
     const last =
@@ -315,19 +297,17 @@ export default function Dashboard({ user }) {
       coins: (profile.coins || 0) + 1,
       lastDaily: serverTimestamp(),
     });
-    await addXP(10); // daily xp +10
+    await addXP(10);
     alert("+1 coin credited!");
   }
 
-  // ---------- Watch ad (demo integration) ----------
   async function watchAd() {
     if (adLoading) return;
     if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
     setAdLoading(true);
     try {
-      // placeholder for real ad flow
       await new Promise((r) => setTimeout(r, 1400));
-      await addCoins(2); // reward = 2 coins
+      await addCoins(2);
       await addXP(5);
       setAdWatchToday((c) => c + 1);
       alert("+2 coins for watching ad.");
@@ -339,7 +319,6 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // ---------- Admin approve/reject ----------
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved", processedAt: serverTimestamp() });
@@ -358,9 +337,6 @@ export default function Dashboard({ user }) {
     }));
   }
 
-  // ---------- End helpers (Part 1 continues) ----------
-// (continuation of src/pages/Dashboard.jsx)
-
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected", processedAt: serverTimestamp() });
@@ -370,20 +346,17 @@ export default function Dashboard({ user }) {
     }));
   }
 
-  // ---------- Logout ----------
   async function handleLogoutNavigate() {
     await signOut(auth);
     navigate("/login");
   }
 
-  // ---------- Sound toggle ----------
   function toggleSound() {
     if (!audioRef.current) return;
     if (audioRef.current.paused) audioRef.current.play();
     else audioRef.current.pause();
   }
 
-  // ---------- Avatar modal helpers ----------
   function openAvatarModal() {
     setShowAvatarModal(true);
   }
@@ -411,17 +384,13 @@ export default function Dashboard({ user }) {
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
 
-      // play select sound if available
       try {
         if (selectAudioRef.current) {
           selectAudioRef.current.currentTime = 0;
           await selectAudioRef.current.play();
         }
-      } catch (e) {
-        // ignore play errors
-      }
+      } catch (e) {}
 
-      // small confirmation and close
       setAvatarSelecting(false);
       closeAvatarModal();
     } catch (err) {
@@ -431,16 +400,13 @@ export default function Dashboard({ user }) {
     }
   }
 
-  // ---------- Setup audio refs on first mount ----------
   useEffect(() => {
-    // level up audio
     try {
       audioRef.current = new Audio("/levelup.mp3");
       audioRef.current.volume = 0.9;
     } catch (e) {
       audioRef.current = null;
     }
-    // selection audio
     try {
       selectAudioRef.current = new Audio("/select.mp3");
       selectAudioRef.current.volume = 0.9;
@@ -449,7 +415,6 @@ export default function Dashboard({ user }) {
     }
   }, []);
 
-  // ---------- Loading guard ----------
   if (loading || !profile) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
@@ -458,25 +423,21 @@ export default function Dashboard({ user }) {
     );
   }
 
-  // ---------- Derived values for XP bar ----------
   const curLevel = profile.level || xpToLevel(profile.xp || 0);
   const xpForCurLevel = XP_LEVELS[Math.max(0, Math.min(XP_LEVELS.length - 1, curLevel - 1))] || 100;
   const xpPercent = Math.min(100, Math.round(((profile.xp || 0) / xpForCurLevel) * 100));
 
-  // ---------- Prepare grouped & sorted avatars for modal (low -> high) ----------
   const avatarsWithMeta = AVATARS.map((f) => {
     const meta = getAvatarMeta(f);
     return { file: f, meta, path: `/avatars/${f}` };
   });
 
-  // Sort by required level ascending, with default.jpg forced first
   avatarsWithMeta.sort((a, b) => {
     if (a.file === "default.jpg") return -1;
     if (b.file === "default.jpg") return 1;
     return (a.meta.level || 999) - (b.meta.level || 999);
   });
 
-  // Group into categories (Bronze/Silver/Gold/Platinum/Diamond/Heroic)
   const grouped = {};
   avatarsWithMeta.forEach((av) => {
     const cat = rankCategory(av.meta.label) || "Other";
@@ -484,15 +445,12 @@ export default function Dashboard({ user }) {
     grouped[cat].push(av);
   });
 
-  // Order of categories low->high
   const categoryOrder = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Heroic", "Other"];
 
   return (
     <div className="dash-root">
-      {/* element for audio control (kept for compatibility) */}
       <audio ref={audioRef} src="/levelup.mp3" />
 
-      {/* background video + overlay */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -516,7 +474,6 @@ export default function Dashboard({ user }) {
       </header>
 
       <main className="dash-main">
-        {/* coins + compact user card (not floating) */}
         <section className="panel glow-panel" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div className="muted">Coins</div>
@@ -526,7 +483,6 @@ export default function Dashboard({ user }) {
             </div>
           </div>
 
-          {/* compact profile card on the right (shows avatar + level + xp) - not floating */}
           <div style={{ maxWidth: 360 }}>
             <div className="modern-card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}>
               <div
@@ -567,7 +523,6 @@ export default function Dashboard({ user }) {
           </div>
         </section>
 
-        {/* HOME tab */}
         {activeTab === "home" && (
           <>
             <section className="panel glow-panel">
@@ -589,7 +544,6 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {/* MATCHES */}
         {activeTab === "matches" && (
           selectedMatch ? (
             <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
@@ -601,13 +555,10 @@ export default function Dashboard({ user }) {
           )
         )}
 
-        {/* TOPUP */}
         {activeTab === "topup" && <TopupPage user={user} profile={profile} />}
 
-        {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT - includes avatar-change via clicking the avatar (no duplicate bottom panel) */}
         {activeTab === "account" && (
           <div>
             <AccountMenu
@@ -617,17 +568,13 @@ export default function Dashboard({ user }) {
               addXP={addXP}
               onRankClick={() => setActiveTab("rank")}
               onLogout={handleLogoutNavigate}
-              openAvatarModal={openAvatarModal} // pass modal opener
+              openAvatarModal={openAvatarModal}
             />
-
-            {/* NOTE: removed the bottom avatar panel you asked to remove — clicking the avatar in the card opens the modal */}
           </div>
         )}
 
-        {/* RANK full screen */}
         {activeTab === "rank" && <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />}
 
-        {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <AdminPanel
             requests={requests}
@@ -638,7 +585,6 @@ export default function Dashboard({ user }) {
         )}
       </main>
 
-      {/* Bottom nav */}
       <footer className="bottom-nav glow-nav">
         {["home", "matches", "topup", "withdraw", "account"].map((tab) => (
           <button
@@ -654,14 +600,12 @@ export default function Dashboard({ user }) {
         ))}
       </footer>
 
-      {/* ---------- Avatar selection modal (Account-only) ---------- */}
       {showAvatarModal && (
         <div className="modal-overlay" onClick={closeAvatarModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
             <h3 className="modern-title">Choose Avatar</h3>
             <p className="modern-subtitle">Tap avatar to select. Locked avatars show required rank.</p>
 
-            {/* Grouped categories in order */}
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 14 }}>
               {categoryOrder.map((cat) => {
                 const items = grouped[cat];
@@ -679,7 +623,6 @@ export default function Dashboard({ user }) {
                         const locked = (profile.level || 1) < (av.meta.level || 999);
                         const isSelected = (profile.avatar || "").endsWith(av.file) || profile.avatar === av.path;
 
-                        // Inline styles for selected glow & animated border
                         const tileStyle = {
                           width: 100,
                           height: 100,
@@ -694,7 +637,6 @@ export default function Dashboard({ user }) {
                           background: "rgba(0,0,0,0.06)"
                         };
 
-                        // shimmer keyframes fallback inline (for locked)
                         const shimmer = {
                           animation: locked ? "shimmer 1.6s infinite linear" : undefined,
                           backgroundSize: locked ? "200% 100%" : undefined,
@@ -703,23 +645,18 @@ export default function Dashboard({ user }) {
                         return (
                           <div key={av.file} style={{ textAlign: "center" }}>
                             <button
-  className={`icon-button avatar-tile 
-    ${tierClass(meta.label)} 
-    ${locked ? "locked" : ""} 
-    ${isSelected ? "selected-avatar" : ""}`
-  }
-  style={{ ...tileStyle, ...shimmer }}
-  disabled={avatarSelecting || locked}
-  onClick={() => selectAvatar(av.file)}
-  title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
->
+                              className={`icon-button avatar-tile ${tierClass(av.meta.label)} ${locked ? "locked" : ""} ${isSelected ? "selected-avatar" : ""}`}
+                              style={{ ...tileStyle, ...shimmer }}
+                              disabled={avatarSelecting || locked}
+                              onClick={() => selectAvatar(av.file)}
+                              title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
+                            >
                               <img
                                 src={av.path}
                                 alt={av.file}
                                 style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                               />
 
-                              {/* locked overlay */}
                               {locked && (
                                 <div style={{
                                   position: "absolute",
@@ -738,7 +675,6 @@ export default function Dashboard({ user }) {
                                 </div>
                               )}
 
-                              {/* Selected badge */}
                               {isSelected && !locked && (
                                 <div style={{
                                   position: "absolute",
@@ -754,7 +690,6 @@ export default function Dashboard({ user }) {
                               )}
                             </button>
 
-                            {/* subtle label (no filename) */}
                             <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
                               {av.meta.label}
                             </div>
@@ -771,7 +706,6 @@ export default function Dashboard({ user }) {
               <button className="btn small ghost" onClick={closeAvatarModal} disabled={avatarSelecting}>Cancel</button>
             </div>
 
-            {/* inline shimmer keyframes to ensure it works even if global CSS missing */}
             <style>{`
               @keyframes shimmer {
                 0% { background-position: -150% 0; }
@@ -782,7 +716,6 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
-      {/* ---------- Level up popup (simple) ---------- */}
       {showLevelUp && (
         <LevelUpPopup from={showLevelUp.from} to={showLevelUp.to} onClose={() => setShowLevelUp(null)} />
       )}
