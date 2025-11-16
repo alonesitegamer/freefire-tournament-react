@@ -504,7 +504,9 @@ export default function Dashboard({ user }) {
         )}
 
         {/* RANK full screen */}
-        {activeTab === "rank" && <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />}
+        {activeTab === "rank" && (
+          <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />
+        )}
 
         {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
@@ -561,7 +563,7 @@ export default function Dashboard({ user }) {
                       disabled={avatarSelecting || locked}
                       onClick={() => selectAvatar(f)}
                     >
-                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.currentTarget.src = "/avatars/default.jpg"; }} />
                       {locked && (
                         <div style={{
                           position: "absolute",
