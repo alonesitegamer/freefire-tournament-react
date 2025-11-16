@@ -7,118 +7,133 @@ export default function AccountMenu({
   updateProfileField = async () => {},
   addXP = async () => {},
   onRankClick = () => {},
-  onLogout = () => {},
-  openAvatarModal = () => {}   // ← from Dashboard
+  onLogout = null,
+  openAvatarModal = () => {}   // 🔥 we trigger avatar modal from Dashboard
 }) {
   const [view, setView] = useState("main");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
 
-  // Save username
   async function saveName(e) {
     e.preventDefault();
     if (!displayName) return alert("Enter a name");
     await updateProfileField({ displayName });
     setProfile(prev => ({ ...prev, displayName }));
-    alert("Saved!");
+    alert("Saved");
     setView("main");
+  }
+
+  async function doLogout() {
+    if (typeof onLogout === "function") return onLogout();
+    window.location.href = "/login";
   }
 
   return (
     <div className="account-menu">
-      {/* MAIN PAGE */}
+
+      {/* ---------------- MAIN PAGE ---------------- */}
       {view === "main" && (
-        <section className="panel account-profile-card" style={{ textAlign:"center" }}>
-          
-          {/* AVATAR — clicking opens modal */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+        <section className="panel account-profile-card">
+
+          {/* Avatar Box */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 12,
+              marginTop: 8
+            }}
+          >
+            {/* CLICKABLE AVATAR → OPEN MODAL */}
             <div
               onClick={openAvatarModal}
               style={{
-                width: 82,
-                height: 82,
-                borderRadius: 14,
+                width: 88,
+                height: 88,
+                borderRadius: "50%",
                 overflow: "hidden",
-                border: "2px solid var(--accent2)",
-                cursor: "pointer"
+                cursor: "pointer",
+                border: "3px solid #ff8a3d",
+                boxShadow:
+                  "0 0 12px rgba(255,136,61,0.7), inset 0 0 10px rgba(255,136,61,0.4)",
+                transition: "0.25s",
               }}
             >
               <img
                 src={profile.avatar || "/avatars/default.jpg"}
                 alt="avatar"
-                style={{ width:"100%", height:"100%", objectFit:"cover" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  transition: "0.3s",
+                }}
               />
             </div>
 
-            <div style={{ fontWeight:800, fontSize:20 }}>
-              {profile.displayName || profile.username || "Player"}
+            <div style={{ fontWeight: 800, fontSize: 20, color: "var(--accent2)" }}>
+              {profile.username || profile.displayName || "Player"}
             </div>
-
-            <div style={{ color:"var(--muted)", fontSize:13 }}>{profile.email}</div>
+            <div style={{ color: "var(--muted)" }}>{profile.email}</div>
           </div>
 
-          {/* BUTTONS */}
-          <div className="account-btn-group" style={{ marginTop:20 }}>
-            {/* Profile */}
+          {/* Menu Buttons */}
+          <div className="account-btn-group" style={{ width: "100%", marginTop: 6 }}>
+
             <button className="account-option" onClick={() => setView("profile")}>
-              👤 Profile Settings
+              <span style={{ marginRight: 12 }}>👤</span>
+              <span>Profile Settings</span>
             </button>
 
-            {/* Rank */}
             <button className="account-option" onClick={onRankClick}>
-              🏆 Rank
+              <span style={{ marginRight: 12 }}>🏆</span>
+              <span>Rank</span>
             </button>
 
-            {/* Refer */}
             <button className="account-option" onClick={() => setView("refer")}>
-              🔗 Refer a Friend
+              <span style={{ marginRight: 12 }}>🔗</span>
+              <span>Refer a Friend</span>
             </button>
 
-            {/* Logout */}
-            <button className="account-option" onClick={onLogout} style={{ background:"rgba(255,255,255,0.05)" }}>
-              🚪 Logout
+            <button className="account-option" onClick={doLogout}>
+              <span style={{ marginRight: 12 }}>🚪</span>
+              <span>Logout</span>
             </button>
           </div>
         </section>
       )}
 
-      {/* PROFILE SETTINGS */}
+      {/* ---------------- PROFILE SETTINGS ---------------- */}
       {view === "profile" && (
         <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>Back</button>
+          <button className="back-btn" onClick={() => setView("main")}>
+            Back
+          </button>
           <h3>Profile Settings</h3>
-
-          <form onSubmit={saveName} style={{ marginTop:10 }}>
+          <form onSubmit={saveName}>
             <input
               className="modern-input"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
-            <button className="btn" style={{ marginTop:12 }}>Save</button>
+            <button className="btn">Save</button>
           </form>
         </section>
       )}
 
-      {/* REFER PAGE */}
+      {/* ---------------- REFER A FRIEND ---------------- */}
       {view === "refer" && (
         <section className="panel">
-          <button className="back-btn" onClick={() => setView("main")}>Back</button>
+          <button className="back-btn" onClick={() => setView("main")}>
+            Back
+          </button>
           <h3>Refer a Friend</h3>
-
           <p>Your referral code:</p>
-          <div
-            style={{
-              marginTop:10,
-              padding:10,
-              fontSize:18,
-              borderRadius:8,
-              background:"rgba(255,255,255,0.06)",
-              border:"1px solid rgba(255,255,255,0.12)"
-            }}
-          >
-            {profile.referralCode}
-          </div>
+          <div className="referral-code">{profile.referralCode}</div>
         </section>
       )}
+
     </div>
   );
 }
