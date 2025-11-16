@@ -703,12 +703,16 @@ export default function Dashboard({ user }) {
                         return (
                           <div key={av.file} style={{ textAlign: "center" }}>
                             <button
-                              className="icon-button avatar-tile"
-                              style={{ ...tileStyle, ...shimmer }}
-                              disabled={avatarSelecting || locked}
-                              onClick={() => selectAvatar(av.file)}
-                              title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
-                            >
+  className={`icon-button avatar-tile 
+    ${tierClass(meta.label)} 
+    ${locked ? "locked" : ""} 
+    ${isSelected ? "selected-avatar" : ""}`
+  }
+  style={{ ...tileStyle, ...shimmer }}
+  disabled={avatarSelecting || locked}
+  onClick={() => selectAvatar(av.file)}
+  title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
+>
                               <img
                                 src={av.path}
                                 alt={av.file}
