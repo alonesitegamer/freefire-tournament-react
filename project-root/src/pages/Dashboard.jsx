@@ -153,7 +153,7 @@ export default function Dashboard({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.uid, user.email, user.displayName]);
 
-  // ---------- Load matches only when user opens matches tab ----------
+  // ---------- Load matches (when matches tab active) ----------
   useEffect(() => {
     if (activeTab !== "matches") return;
     let mounted = true;
@@ -331,17 +331,50 @@ export default function Dashboard({ user }) {
 
   // compute required level for an avatar (simple mapping; we can change later)
   function avatarRequiredLevel(index) {
-    // first avatar (default.jpg) unlocked for everyone
-    if (index === 0) return 1;
-    // map indexes to tiers: Bronze (1-2), Silver (3-8), Gold (9-12), etc.
-    // we'll convert those to simple "stars" labels in UI
-    return Math.min(18, Math.floor(index / 2) + 1);
+    // first avatar (default) is free
+    if (index === AVATARS.indexOf("default.jpg")) return 1;
+    // mapping from your provided mapping (converted to simple level requirements):
+    // We'll approximate: bronze 1..3 => levels 1-3, silver 1..4 => 4-7, gold 1..4 => 8-11, platinum 1..4 => 12-15, diamond 1..4 => 16-17, heroic => 18
+    // We'll use index-based fallback if not mapped exactly.
+    const name = AVATARS[index];
+    const map = {
+      "default.jpg": 1,
+      "brain.jpg": 3, // bronze3+
+      "girl.jpg": 2, // bronze2+
+      "panda.jpg": 4, // silver1+
+      "cyberpunk.jpg": 4, // silver1+
+      "chicken.jpg": 5, // silver2+
+      "authentic.jpg": 9, // gold2+
+      "helm.jpg": 9, // gold2+
+      "purple.jpg": 9, // gold2+
+      "pink-glow.jpg": 11, // gold4+
+      "star.jpg": 11, // gold4+
+      "angelic.jpg": 16, // diamond3+
+      "flame-falco.jpg": 17, // diamond4+
+      "radiation.jpg": 16,
+      "flower-wind.jpg": 16,
+      "flower.jpg": 16,
+      "crown.jpg": 15, // platinum4+
+      "ghost.jpg": 15,
+      "season7.jpg": 15,
+      "season8.jpg": 14,
+      "season9.jpg": 13,
+      "water.jpg": 13,
+      "free.jpg": 12,
+      "dragon.jpg": 10, // gold3+
+      "freefire.jpg": 18, // heroic
+      "unknown.jpg": 18,
+      "ghost-mask.jpg": 16,
+      "panda.jpg": 4,
+      "pink-glow.jpg": 11,
+      "radiation.jpg": 16,
+    };
+    return map[name] || Math.min(18, Math.floor(index / 2) + 1);
   }
 
   async function selectAvatar(filename) {
     if (!profile) return;
     const idx = AVATARS.indexOf(filename);
-    if (idx === -1) return;
     const required = avatarRequiredLevel(idx);
     if ((profile.level || 1) < required) {
       return alert(`You need to be Level ${required} to use this avatar.`);
@@ -352,8 +385,6 @@ export default function Dashboard({ user }) {
       await updateDoc(doc(db, "users", user.uid), { avatar: avatarPath });
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
-      // small select sound if available
-      try { audioRef.current && audioRef.current.play(); } catch {}
       alert("Avatar updated!");
       closeAvatarModal();
     } catch (err) {
@@ -416,7 +447,7 @@ export default function Dashboard({ user }) {
           {/* compact profile card on the right (shows avatar + level + xp) - not floating */}
           <div style={{ maxWidth: 360 }}>
             <div className="modern-card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ width: 64, height: 64, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               <div style={{ flex: 1 }}>
@@ -448,31 +479,9 @@ export default function Dashboard({ user }) {
               </div>
             </section>
 
-            {/* Featured matches */}
             <section className="panel glow-panel">
               <h3>Featured Matches</h3>
               <MatchList matches={matches} onSelect={(m) => { setSelectedMatch(m); setActiveTab("matches"); }} />
-            </section>
-
-            {/* Avatar quick-card — only shows on HOME (per your request) */}
-            <section className="panel glow-panel">
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
-                  <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${profile.level || 1}`}</div>
-                </div>
-                <div style={{ marginLeft: "auto" }}>
-                  <button className="btn" onClick={() => { setActiveTab("account"); setTimeout(openAvatarModal, 120); }}>
-                    Change Avatar
-                  </button>
-                </div>
-              </div>
-              <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
-                Click "Change Avatar" to choose an avatar from your available list. Some avatars require higher levels.
-              </div>
             </section>
           </>
         )}
@@ -495,9 +504,10 @@ export default function Dashboard({ user }) {
         {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT - includes AccountMenu and small avatar / "Change Avatar" (no duplicate big quick-card) */}
+        {/* ACCOUNT - includes avatar-change button & avatar grid modal (Account-only) */}
         {activeTab === "account" && (
           <div>
+            {/* AccountMenu component (keeps most account controls) */}
             <AccountMenu
               profile={profile}
               setProfile={setProfile}
@@ -505,9 +515,26 @@ export default function Dashboard({ user }) {
               addXP={addXP}
               onRankClick={() => setActiveTab("rank")}
               onLogout={handleLogoutNavigate}
-              openAvatarModal={openAvatarModal}  // pass handler so AccountMenu can open modal
             />
-            {/* On account page we do not render the HOME quick-card — user asked it only on home */}
+
+            {/* Avatar quick panel that appears only on Account page */}
+            <section className="panel glow-panel" style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
+                  <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${profile.level || 1}`}</div>
+                </div>
+                <div style={{ marginLeft: "auto" }}>
+                  <button className="btn" onClick={openAvatarModal}>Change Avatar</button>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
+                Click "Change Avatar" to choose an avatar from your available list. Some avatars require higher levels.
+              </div>
+            </section>
           </div>
         )}
 
@@ -542,19 +569,31 @@ export default function Dashboard({ user }) {
       </footer>
 
       {/* ---------- Avatar selection modal (Account-only) ---------- */}
-      {showAvatarModal && activeTab === "account" && (
+      {showAvatarModal && (
         <div className="modal-overlay" onClick={closeAvatarModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3 className="modern-title">Choose Avatar</h3>
-            <p className="modern-subtitle">Tap avatar to select. Locked avatars show tier (Bronze / Silver / Gold).</p>
+            <p className="modern-subtitle">Avatars are in <code>public/avatars/</code>. Locked avatars show required level.</p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflow: "auto", paddingRight: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflow: "auto", paddingRight: 6 }}>
               {AVATARS.map((f, idx) => {
                 const path = `/avatars/${f}`;
                 const required = avatarRequiredLevel(idx);
                 const locked = (profile.level || 1) < required;
-                // convert required to tier stars (simple)
-                const tierStars = required <= 2 ? "☆" : required <= 6 ? "☆☆" : required <= 10 ? "☆☆☆" : "☆☆☆☆";
+                // display label (e.g., Bronze ★, Bronze ★★...) instead of numeric "Level X+"
+                function tierLabel(index) {
+                  // helper: map index/name to tier text approximations
+                  const name = AVATARS[index];
+                  // simplified mapping to tier names based on required level
+                  const r = avatarRequiredLevel(index);
+                  if (r === 1) return "Free (Bronze ★)";
+                  if (r <= 3) return "Bronze ★★";
+                  if (r <= 6) return "Silver ★★";
+                  if (r <= 11) return "Gold ★★★";
+                  if (r <= 15) return "Platinum ★★★★";
+                  if (r <= 17) return "Diamond ★★★★★";
+                  return "Heroic ★★★★★★";
+                }
                 return (
                   <div key={f} style={{ textAlign: "center" }}>
                     <button
@@ -562,29 +601,28 @@ export default function Dashboard({ user }) {
                       style={{
                         width: 96,
                         height: 96,
-                        borderRadius: 8,
+                        borderRadius: 10,
                         padding: 0,
                         overflow: "hidden",
                         position: "relative",
                         border: profile.avatar === path ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
-                        background: locked ? "rgba(0,0,0,0.35)" : "transparent"
+                        background: locked ? "rgba(0,0,0,0.12)" : "transparent",
                       }}
-                      disabled={avatarSelecting}
-                      onClick={() => !locked && selectAvatar(f)}
-                      title={locked ? `Locked — Tier ${tierStars}` : "Select avatar"}
+                      disabled={avatarSelecting || locked}
+                      onClick={() => selectAvatar(f)}
                     >
                       <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       {locked && (
                         <div style={{
                           position: "absolute",
                           left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)",
-                          color: "#fff", fontSize: 13, padding: "6px 4px"
+                          color: "#fff", fontSize: 12, padding: "6px 4px"
                         }}>
-                          {tierStars}
+                          {tierLabel(idx)}
                         </div>
                       )}
                     </button>
-                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12, textTransform: "capitalize" }}>{f.replace(".jpg", "").replace(/-/g, " ")}</div>
+                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>{/* no raw filename shown per request */}</div>
                   </div>
                 );
               })}
