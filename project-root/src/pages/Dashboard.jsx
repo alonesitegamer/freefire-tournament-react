@@ -331,29 +331,29 @@ export default function Dashboard({ user }) {
 
   // compute required level for an avatar (simple mapping; we can change later)
   function avatarRequiredLevel(index) {
-    // default only the 0th (default.jpg) unlocked on level 1
+    // first avatar (default.jpg) unlocked for everyone
     if (index === 0) return 1;
-    // gradually increase requirement - mapping tuned to tiers:
-    const requiredMapping = [
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
-    ];
-    return requiredMapping[index] || Math.min(18, Math.floor(index / 2) + 2);
+    // map indexes to tiers: Bronze (1-2), Silver (3-8), Gold (9-12), etc.
+    // we'll convert those to simple "stars" labels in UI
+    return Math.min(18, Math.floor(index / 2) + 1);
   }
 
   async function selectAvatar(filename) {
     if (!profile) return;
     const idx = AVATARS.indexOf(filename);
+    if (idx === -1) return;
     const required = avatarRequiredLevel(idx);
     if ((profile.level || 1) < required) {
       return alert(`You need to be Level ${required} to use this avatar.`);
     }
-
     setAvatarSelecting(true);
     try {
       const avatarPath = `/avatars/${filename}`;
       await updateDoc(doc(db, "users", user.uid), { avatar: avatarPath });
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
+      // small select sound if available
+      try { audioRef.current && audioRef.current.play(); } catch {}
       alert("Avatar updated!");
       closeAvatarModal();
     } catch (err) {
@@ -381,6 +381,7 @@ export default function Dashboard({ user }) {
     <div className="dash-root">
       <audio ref={audioRef} src="/levelup.mp3" />
 
+      {/* background video + overlay */}
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
@@ -412,10 +413,10 @@ export default function Dashboard({ user }) {
             </div>
           </div>
 
-          {/* compact profile card on the right (shows avatar + level + xp) - square avatar now */}
+          {/* compact profile card on the right (shows avatar + level + xp) - not floating */}
           <div style={{ maxWidth: 360 }}>
             <div className="modern-card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ width: 64, height: 64, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               <div style={{ flex: 1 }}>
@@ -432,7 +433,7 @@ export default function Dashboard({ user }) {
           </div>
         </section>
 
-        {/* rest of your content (home, matches, topup, withdraw, account, rank, admin) */}
+        {/* HOME tab */}
         {activeTab === "home" && (
           <>
             <section className="panel glow-panel">
@@ -447,13 +448,36 @@ export default function Dashboard({ user }) {
               </div>
             </section>
 
+            {/* Featured matches */}
             <section className="panel glow-panel">
               <h3>Featured Matches</h3>
               <MatchList matches={matches} onSelect={(m) => { setSelectedMatch(m); setActiveTab("matches"); }} />
             </section>
+
+            {/* Avatar quick-card — only shows on HOME (per your request) */}
+            <section className="panel glow-panel">
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
+                  <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${profile.level || 1}`}</div>
+                </div>
+                <div style={{ marginLeft: "auto" }}>
+                  <button className="btn" onClick={() => { setActiveTab("account"); setTimeout(openAvatarModal, 120); }}>
+                    Change Avatar
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
+                Click "Change Avatar" to choose an avatar from your available list. Some avatars require higher levels.
+              </div>
+            </section>
           </>
         )}
 
+        {/* MATCHES */}
         {activeTab === "matches" && (
           selectedMatch ? (
             <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
@@ -465,10 +489,13 @@ export default function Dashboard({ user }) {
           )
         )}
 
+        {/* TOPUP */}
         {activeTab === "topup" && <TopupPage user={user} profile={profile} />}
+
+        {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT */}
+        {/* ACCOUNT - includes AccountMenu and small avatar / "Change Avatar" (no duplicate big quick-card) */}
         {activeTab === "account" && (
           <div>
             <AccountMenu
@@ -478,30 +505,16 @@ export default function Dashboard({ user }) {
               addXP={addXP}
               onRankClick={() => setActiveTab("rank")}
               onLogout={handleLogoutNavigate}
+              openAvatarModal={openAvatarModal}  // pass handler so AccountMenu can open modal
             />
-
-            <section className="panel glow-panel" style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 72, height: 72, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6 }}>
-                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
-                  <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${profile.level || 1}`}</div>
-                </div>
-                <div style={{ marginLeft: "auto" }}>
-                  <button className="btn" onClick={openAvatarModal}>Change Avatar</button>
-                </div>
-              </div>
-              <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
-                Click "Change Avatar" to choose an avatar from your available list. Some avatars require higher levels.
-              </div>
-            </section>
+            {/* On account page we do not render the HOME quick-card — user asked it only on home */}
           </div>
         )}
 
+        {/* RANK full screen */}
         {activeTab === "rank" && <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />}
 
+        {/* ADMIN */}
         {activeTab === "admin" && profile.email === adminEmail && (
           <AdminPanel
             requests={requests}
@@ -512,6 +525,7 @@ export default function Dashboard({ user }) {
         )}
       </main>
 
+      {/* Bottom nav */}
       <footer className="bottom-nav glow-nav">
         {["home", "matches", "topup", "withdraw", "account"].map((tab) => (
           <button
@@ -527,21 +541,20 @@ export default function Dashboard({ user }) {
         ))}
       </footer>
 
-      {/* Avatar modal (keeps square tiles) */}
-      {showAvatarModal && (
+      {/* ---------- Avatar selection modal (Account-only) ---------- */}
+      {showAvatarModal && activeTab === "account" && (
         <div className="modal-overlay" onClick={closeAvatarModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3 className="modern-title">Choose Avatar</h3>
-            <p className="modern-subtitle">Avatars are in <code>public/avatars/</code>. Locked avatars show required level.</p>
+            <p className="modern-subtitle">Tap avatar to select. Locked avatars show tier (Bronze / Silver / Gold).</p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflowY: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflow: "auto", paddingRight: 8 }}>
               {AVATARS.map((f, idx) => {
                 const path = `/avatars/${f}`;
                 const required = avatarRequiredLevel(idx);
-                const tier = required <= 3 ? "Bronze" : required <= 6 ? "Silver" : required <= 10 ? "Gold" : required <= 14 ? "Platinum" : required <= 17 ? "Diamond" : "Heroic";
-                const stars = tier === "Bronze" ? "☆" : tier === "Silver" ? "☆☆" : tier === "Gold" ? "☆☆☆" : tier === "Platinum" ? "☆☆☆☆" : "☆☆☆☆☆";
-                const locked = f !== "default.jpg" && (profile.level || 1) < required;
-
+                const locked = (profile.level || 1) < required;
+                // convert required to tier stars (simple)
+                const tierStars = required <= 2 ? "☆" : required <= 6 ? "☆☆" : required <= 10 ? "☆☆☆" : "☆☆☆☆";
                 return (
                   <div key={f} style={{ textAlign: "center" }}>
                     <button
@@ -549,24 +562,29 @@ export default function Dashboard({ user }) {
                       style={{
                         width: 96,
                         height: 96,
+                        borderRadius: 8,
                         padding: 0,
                         overflow: "hidden",
                         position: "relative",
-                        borderRadius: 6,
                         border: profile.avatar === path ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
-                        background: locked ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)"
+                        background: locked ? "rgba(0,0,0,0.35)" : "transparent"
                       }}
-                      disabled={avatarSelecting || locked}
-                      onClick={() => selectAvatar(f)}
+                      disabled={avatarSelecting}
+                      onClick={() => !locked && selectAvatar(f)}
+                      title={locked ? `Locked — Tier ${tierStars}` : "Select avatar"}
                     >
-                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: locked ? 0.38 : 1 }} />
+                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       {locked && (
-                        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 12, padding: "6px 4px", fontWeight: 700 }}>
-                          {tier} {`(${stars})`}
+                        <div style={{
+                          position: "absolute",
+                          left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)",
+                          color: "#fff", fontSize: 13, padding: "6px 4px"
+                        }}>
+                          {tierStars}
                         </div>
                       )}
                     </button>
-                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>{f.replace(".jpg", "").replace(/-/g, " ")}</div>
+                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12, textTransform: "capitalize" }}>{f.replace(".jpg", "").replace(/-/g, " ")}</div>
                   </div>
                 );
               })}
@@ -579,6 +597,7 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
+      {/* ---------- Level up popup (simple) ---------- */}
       {showLevelUp && (
         <LevelUpPopup from={showLevelUp.from} to={showLevelUp.to} onClose={() => setShowLevelUp(null)} />
       )}
