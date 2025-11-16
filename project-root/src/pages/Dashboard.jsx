@@ -26,6 +26,15 @@ import AdminPanel from "../components/AdminPanel";
 import RankPage from "../components/RankPage";
 import LevelUpPopup from "../components/LevelUpPopup";
 
+/**
+ * Dashboard.jsx — Option A (Avatar modal only via Account page avatar click)
+ *
+ * Notes:
+ * - Avatar images expected under public/avatars/
+ * - Avatar select sound expected at public/select.mp3 (optional)
+ * - Level-up sound expected at public/levelup.mp3 (optional)
+ */
+
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,11 +47,13 @@ export default function Dashboard({ user }) {
   const [adWatchToday, setAdWatchToday] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
 
-  // Avatar selector modal
+  // Avatar modal state (only triggered from Account page)
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarSelecting, setAvatarSelecting] = useState(false);
 
-  const audioRef = useRef(null);
+  const audioRef = useRef(null); // level up sound
+  const selectAudioRef = useRef(null); // selection sound
+
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
@@ -59,7 +70,15 @@ export default function Dashboard({ user }) {
     return XP_LEVELS.length;
   }
 
-  // Avatar list (public/avatars/)
+  // ---------- Avatar list and required-rank mapping ----------
+  // You provided specific mapping — we translate to required numeric level and display label.
+  // Rank -> approximate required level mapping:
+  // Bronze1 -> level 1, Bronze2 -> 2, Bronze3 -> 3
+  // Silver1->4, Silver2->5, Silver3->6
+  // Gold1->7, Gold2->8, Gold3->9, Gold4->10
+  // Platinum1->11, P2->12, P3->13, P4->14
+  // Diamond1->15, D2->16, D3->17, D4->18
+  // Heroic -> 18 (cap)
   const AVATARS = [
     "angelic.jpg",
     "authentic.jpg",
@@ -89,6 +108,42 @@ export default function Dashboard({ user }) {
     "unknown.jpg",
     "water.jpg",
   ];
+
+  // mapping based on your list (filename -> { levelReq, label })
+  const AVATAR_META = {
+    "angelic.jpg": { level: 15, label: "Diamond ★★★" }, // diamond 3+
+    "authentic.jpg": { level: 8, label: "Gold ★★" }, // gold2+
+    "brain.jpg": { level: 3, label: "Bronze ★★★" }, // bronze3+
+    "chicken.jpg": { level: 5, label: "Silver ★★" }, // silver2+
+    "crown.jpg": { level: 14, label: "Platinum ★★★★" }, // platinum4+
+    "cyberpunk.jpg": { level: 4, label: "Silver ★" },
+    "default.jpg": { level: 1, label: "Bronze ★" }, // free/unlocked
+    "dragon.jpg": { level: 9, label: "Gold ★★★" }, // gold3+
+    "flame-falco.jpg": { level: 18, label: "Diamond ★★★★" },
+    "flower-wind.jpg": { level: 15, label: "Diamond ★" },
+    "flower.jpg": { level: 16, label: "Diamond ★★" },
+    "free.jpg": { level: 11, label: "Platinum ★" },
+    "freefire.jpg": { level: 18, label: "Heroic" },
+    "ghost-mask.jpg": { level: 15, label: "Diamond ★" },
+    "ghost.jpg": { level: 14, label: "Platinum ★★★★" },
+    "girl.jpg": { level: 2, label: "Bronze ★★" },
+    "helm.jpg": { level: 8, label: "Gold ★★" },
+    "panda.jpg": { level: 4, label: "Silver ★" },
+    "pink-glow.jpg": { level: 10, label: "Gold ★★★★" },
+    "purple.jpg": { level: 8, label: "Gold ★★" },
+    "radiation.jpg": { level: 17, label: "Diamond ★★★" },
+    "season7.jpg": { level: 14, label: "Platinum ★★★★" },
+    "season8.jpg": { level: 13, label: "Platinum ★★★" },
+    "season9.jpg": { level: 12, label: "Platinum ★★" },
+    "star.jpg": { level: 10, label: "Gold ★★★★" },
+    "unknown.jpg": { level: 18, label: "Heroic" },
+    "water.jpg": { level: 12, label: "Platinum ★★" },
+  };
+
+  // helper: get metadata for filename
+  function getAvatarMeta(filename) {
+    return AVATAR_META[filename] ?? { level: 18, label: "Heroic" };
+  }
 
   // ---------- Load / bootstrap profile ----------
   useEffect(() => {
@@ -153,7 +208,7 @@ export default function Dashboard({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.uid, user.email, user.displayName]);
 
-  // ---------- Load matches (when matches tab active) ----------
+  // ---------- Load matches only when user opens matches tab ----------
   useEffect(() => {
     if (activeTab !== "matches") return;
     let mounted = true;
@@ -320,7 +375,7 @@ export default function Dashboard({ user }) {
     else audioRef.current.pause();
   }
 
-  // ---------- Avatar selection (Account page only) ----------
+  // ---------- Avatar modal helpers ----------
   function openAvatarModal() {
     setShowAvatarModal(true);
   }
@@ -329,55 +384,19 @@ export default function Dashboard({ user }) {
     setAvatarSelecting(false);
   }
 
-  // compute required level for an avatar (simple mapping; we can change later)
-  function avatarRequiredLevel(index) {
-    // first avatar (default) is free
-    if (index === AVATARS.indexOf("default.jpg")) return 1;
-    // mapping from your provided mapping (converted to simple level requirements):
-    // We'll approximate: bronze 1..3 => levels 1-3, silver 1..4 => 4-7, gold 1..4 => 8-11, platinum 1..4 => 12-15, diamond 1..4 => 16-17, heroic => 18
-    // We'll use index-based fallback if not mapped exactly.
-    const name = AVATARS[index];
-    const map = {
-      "default.jpg": 1,
-      "brain.jpg": 3, // bronze3+
-      "girl.jpg": 2, // bronze2+
-      "panda.jpg": 4, // silver1+
-      "cyberpunk.jpg": 4, // silver1+
-      "chicken.jpg": 5, // silver2+
-      "authentic.jpg": 9, // gold2+
-      "helm.jpg": 9, // gold2+
-      "purple.jpg": 9, // gold2+
-      "pink-glow.jpg": 11, // gold4+
-      "star.jpg": 11, // gold4+
-      "angelic.jpg": 16, // diamond3+
-      "flame-falco.jpg": 17, // diamond4+
-      "radiation.jpg": 16,
-      "flower-wind.jpg": 16,
-      "flower.jpg": 16,
-      "crown.jpg": 15, // platinum4+
-      "ghost.jpg": 15,
-      "season7.jpg": 15,
-      "season8.jpg": 14,
-      "season9.jpg": 13,
-      "water.jpg": 13,
-      "free.jpg": 12,
-      "dragon.jpg": 10, // gold3+
-      "freefire.jpg": 18, // heroic
-      "unknown.jpg": 18,
-      "ghost-mask.jpg": 16,
-      "panda.jpg": 4,
-      "pink-glow.jpg": 11,
-      "radiation.jpg": 16,
-    };
-    return map[name] || Math.min(18, Math.floor(index / 2) + 1);
+  // compute required level for an avatar (from AVATAR_META)
+  function avatarRequiredLevelFor(filename) {
+    const meta = getAvatarMeta(filename);
+    return meta.level || 18;
   }
 
+  // select avatar (writes to firestore) — plays select sound
   async function selectAvatar(filename) {
     if (!profile) return;
-    const idx = AVATARS.indexOf(filename);
-    const required = avatarRequiredLevel(idx);
+    const required = avatarRequiredLevelFor(filename);
     if ((profile.level || 1) < required) {
-      return alert(`You need to be Level ${required} to use this avatar.`);
+      const meta = getAvatarMeta(filename);
+      return alert(`Locked — requires ${meta.label} (Level ${required}).`);
     }
     setAvatarSelecting(true);
     try {
@@ -385,6 +404,17 @@ export default function Dashboard({ user }) {
       await updateDoc(doc(db, "users", user.uid), { avatar: avatarPath });
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
+
+      // play select sound if available
+      try {
+        if (selectAudioRef.current) {
+          selectAudioRef.current.currentTime = 0;
+          await selectAudioRef.current.play();
+        }
+      } catch (e) {
+        // ignore play errors
+      }
+
       alert("Avatar updated!");
       closeAvatarModal();
     } catch (err) {
@@ -393,6 +423,20 @@ export default function Dashboard({ user }) {
       setAvatarSelecting(false);
     }
   }
+
+  // ---------- Setup audio refs on first mount ----------
+  useEffect(() => {
+    // level up audio
+    audioRef.current = new Audio("/levelup.mp3");
+    audioRef.current.volume = 0.9;
+    // selection audio
+    try {
+      selectAudioRef.current = new Audio("/select.mp3");
+      selectAudioRef.current.volume = 0.9;
+    } catch (e) {
+      selectAudioRef.current = null;
+    }
+  }, []);
 
   // ---------- Loading guard ----------
   if (loading || !profile) {
@@ -428,8 +472,11 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions-fixed">
+          {/* HomeButtons component used (keeps top actions compact). We intentionally removed top Logout button from header */}
           <HomeButtons onToggleSound={toggleSound} />
-          {profile.email === adminEmail && <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>}
+          {profile.email === adminEmail && (
+            <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>
+          )}
         </div>
       </header>
 
@@ -447,8 +494,31 @@ export default function Dashboard({ user }) {
           {/* compact profile card on the right (shows avatar + level + xp) - not floating */}
           <div style={{ maxWidth: 360 }}>
             <div className="modern-card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ width: 64, height: 64, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  cursor: "pointer",
+                }}
+                title="Click to change avatar (Account section only)"
+                // only open modal if user is on Account tab — user asked avatar selector to appear only in Account, but they want clicking avatar to open it when in Account.
+                onClick={() => {
+                  if (activeTab === "account") openAvatarModal();
+                  else {
+                    // polite hint
+                    setActiveTab("account");
+                    setTimeout(() => openAvatarModal(), 200);
+                  }
+                }}
+              >
+                <img
+                  src={profile.avatar || "/avatars/default.jpg"}
+                  alt="avatar"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
@@ -507,7 +577,7 @@ export default function Dashboard({ user }) {
         {/* ACCOUNT - includes avatar-change button & avatar grid modal (Account-only) */}
         {activeTab === "account" && (
           <div>
-            {/* AccountMenu component (keeps most account controls) */}
+            {/* AccountMenu component (keeps most account controls). We pass onLogout so user can logout from Account. */}
             <AccountMenu
               profile={profile}
               setProfile={setProfile}
@@ -521,7 +591,7 @@ export default function Dashboard({ user }) {
             <section className="panel glow-panel" style={{ marginTop: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} onClick={openAvatarModal} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
@@ -532,7 +602,7 @@ export default function Dashboard({ user }) {
                 </div>
               </div>
               <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
-                Click "Change Avatar" to choose an avatar from your available list. Some avatars require higher levels.
+                Click the avatar or "Change Avatar" to choose an avatar from your available list. Locked avatars show required rank/level.
               </div>
             </section>
           </div>
@@ -571,64 +641,90 @@ export default function Dashboard({ user }) {
       {/* ---------- Avatar selection modal (Account-only) ---------- */}
       {showAvatarModal && (
         <div className="modal-overlay" onClick={closeAvatarModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
             <h3 className="modern-title">Choose Avatar</h3>
-            <p className="modern-subtitle">Avatars are in <code>public/avatars/</code>. Locked avatars show required level.</p>
+            <p className="modern-subtitle">Avatars are located in <code>public/avatars/</code>. Locked avatars indicate required rank.</p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 12, marginTop: 12, maxHeight: "56vh", overflow: "auto", paddingRight: 6 }}>
-              {AVATARS.map((f, idx) => {
+            {/* Grid container: scrollable and compact */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+              gap: 12,
+              marginTop: 12,
+              maxHeight: "48vh",
+              overflowY: "auto",
+              paddingRight: 6
+            }}>
+              {AVATARS.map((f) => {
+                const meta = getAvatarMeta(f);
                 const path = `/avatars/${f}`;
-                const required = avatarRequiredLevel(idx);
-                const locked = (profile.level || 1) < required;
-                // display label (e.g., Bronze ★, Bronze ★★...) instead of numeric "Level X+"
-                function tierLabel(index) {
-                  // helper: map index/name to tier text approximations
-                  const name = AVATARS[index];
-                  // simplified mapping to tier names based on required level
-                  const r = avatarRequiredLevel(index);
-                  if (r === 1) return "Free (Bronze ★)";
-                  if (r <= 3) return "Bronze ★★";
-                  if (r <= 6) return "Silver ★★";
-                  if (r <= 11) return "Gold ★★★";
-                  if (r <= 15) return "Platinum ★★★★";
-                  if (r <= 17) return "Diamond ★★★★★";
-                  return "Heroic ★★★★★★";
-                }
+                const locked = (profile.level || 1) < meta.level;
+                const isSelected = (profile.avatar || "").endsWith(f) || profile.avatar === path;
+
                 return (
                   <div key={f} style={{ textAlign: "center" }}>
                     <button
-                      className="icon-button"
+                      className={`icon-button avatar-tile ${isSelected ? "selected-avatar" : ""}`}
                       style={{
-                        width: 96,
-                        height: 96,
-                        borderRadius: 10,
+                        width: 100,
+                        height: 100,
+                        borderRadius: 8,
                         padding: 0,
                         overflow: "hidden",
                         position: "relative",
-                        border: profile.avatar === path ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
-                        background: locked ? "rgba(0,0,0,0.12)" : "transparent",
+                        border: isSelected ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
+                        background: "transparent",
                       }}
                       disabled={avatarSelecting || locked}
                       onClick={() => selectAvatar(f)}
+                      title={locked ? `${meta.label} (locked)` : `Use this avatar — ${meta.label}`}
                     >
-                      <img src={path} alt={f} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img
+                        src={path}
+                        alt={f}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+
+                      {/* locked overlay */}
                       {locked && (
                         <div style={{
                           position: "absolute",
-                          left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)",
-                          color: "#fff", fontSize: 12, padding: "6px 4px"
+                          left: 0, right: 0, bottom: 0,
+                          background: "linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.6))",
+                          color: "#fff",
+                          fontSize: 12,
+                          padding: "6px 4px",
                         }}>
-                          {tierLabel(idx)}
+                          {meta.label} • Level {meta.level}
                         </div>
                       )}
+
+                      {/* selection check or glow icon */}
+                      {isSelected && !locked && (
+                        <div style={{
+                          position: "absolute",
+                          top: 6,
+                          right: 6,
+                          background: "rgba(0,0,0,0.45)",
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          color: "#fff",
+                          fontWeight: 700,
+                        }}>Selected</div>
+                      )}
                     </button>
-                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>{/* no raw filename shown per request */}</div>
+
+                    {/* we hide names per your request; small indicator below shows rank label (subtle) */}
+                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
+                      {meta.label}
+                    </div>
                   </div>
                 );
               })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
               <button className="btn small ghost" onClick={closeAvatarModal} disabled={avatarSelecting}>Cancel</button>
             </div>
           </div>
