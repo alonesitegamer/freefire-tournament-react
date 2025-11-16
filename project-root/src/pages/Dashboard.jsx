@@ -27,7 +27,7 @@ import RankPage from "../components/RankPage";
 import LevelUpPopup from "../components/LevelUpPopup";
 
 /**
- * Dashboard.jsx — Option A (Avatar modal only via Account page avatar click)
+ * Dashboard.jsx — Updated: removed Account-page lower avatar quick panel (per request)
  *
  * Notes:
  * - Avatar images expected under public/avatars/
@@ -71,14 +71,6 @@ export default function Dashboard({ user }) {
   }
 
   // ---------- Avatar list and required-rank mapping ----------
-  // You provided specific mapping — we translate to required numeric level and display label.
-  // Rank -> approximate required level mapping:
-  // Bronze1 -> level 1, Bronze2 -> 2, Bronze3 -> 3
-  // Silver1->4, Silver2->5, Silver3->6
-  // Gold1->7, Gold2->8, Gold3->9, Gold4->10
-  // Platinum1->11, P2->12, P3->13, P4->14
-  // Diamond1->15, D2->16, D3->17, D4->18
-  // Heroic -> 18 (cap)
   const AVATARS = [
     "angelic.jpg",
     "authentic.jpg",
@@ -109,16 +101,15 @@ export default function Dashboard({ user }) {
     "water.jpg",
   ];
 
-  // mapping based on your list (filename -> { levelReq, label })
   const AVATAR_META = {
-    "angelic.jpg": { level: 15, label: "Diamond ★★★" }, // diamond 3+
-    "authentic.jpg": { level: 8, label: "Gold ★★" }, // gold2+
-    "brain.jpg": { level: 3, label: "Bronze ★★★" }, // bronze3+
-    "chicken.jpg": { level: 5, label: "Silver ★★" }, // silver2+
-    "crown.jpg": { level: 14, label: "Platinum ★★★★" }, // platinum4+
+    "angelic.jpg": { level: 15, label: "Diamond ★★★" },
+    "authentic.jpg": { level: 8, label: "Gold ★★" },
+    "brain.jpg": { level: 3, label: "Bronze ★★★" },
+    "chicken.jpg": { level: 5, label: "Silver ★★" },
+    "crown.jpg": { level: 14, label: "Platinum ★★★★" },
     "cyberpunk.jpg": { level: 4, label: "Silver ★" },
-    "default.jpg": { level: 1, label: "Bronze ★" }, // free/unlocked
-    "dragon.jpg": { level: 9, label: "Gold ★★★" }, // gold3+
+    "default.jpg": { level: 1, label: "Bronze ★" },
+    "dragon.jpg": { level: 9, label: "Gold ★★★" },
     "flame-falco.jpg": { level: 18, label: "Diamond ★★★★" },
     "flower-wind.jpg": { level: 15, label: "Diamond ★" },
     "flower.jpg": { level: 16, label: "Diamond ★★" },
@@ -140,7 +131,6 @@ export default function Dashboard({ user }) {
     "water.jpg": { level: 12, label: "Platinum ★★" },
   };
 
-  // helper: get metadata for filename
   function getAvatarMeta(filename) {
     return AVATAR_META[filename] ?? { level: 18, label: "Heroic" };
   }
@@ -171,11 +161,9 @@ export default function Dashboard({ user }) {
             ...data,
           };
 
-          // ensure referral saved server-side
           if (!data.referralCode) {
             await updateDoc(ref, { referralCode: safe.referralCode });
           }
-          // ensure avatar saved server-side
           if (!data.avatar) {
             await updateDoc(ref, { avatar: safe.avatar });
           }
@@ -288,7 +276,6 @@ export default function Dashboard({ user }) {
           audioRef.current.play();
         } catch (e) {}
       }
-      // hide after a few seconds
       setTimeout(() => setShowLevelUp(null), 3500);
     }
   }
@@ -320,9 +307,8 @@ export default function Dashboard({ user }) {
     if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
     setAdLoading(true);
     try {
-      // placeholder for real ad flow
       await new Promise((r) => setTimeout(r, 1400));
-      await addCoins(2); // reward = 2 coins
+      await addCoins(2);
       await addXP(5);
       setAdWatchToday((c) => c + 1);
       alert("+2 coins for watching ad.");
@@ -384,13 +370,11 @@ export default function Dashboard({ user }) {
     setAvatarSelecting(false);
   }
 
-  // compute required level for an avatar (from AVATAR_META)
   function avatarRequiredLevelFor(filename) {
     const meta = getAvatarMeta(filename);
     return meta.level || 18;
   }
 
-  // select avatar (writes to firestore) — plays select sound
   async function selectAvatar(filename) {
     if (!profile) return;
     const required = avatarRequiredLevelFor(filename);
@@ -405,15 +389,12 @@ export default function Dashboard({ user }) {
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
 
-      // play select sound if available
       try {
         if (selectAudioRef.current) {
           selectAudioRef.current.currentTime = 0;
           await selectAudioRef.current.play();
         }
-      } catch (e) {
-        // ignore play errors
-      }
+      } catch (e) {}
 
       alert("Avatar updated!");
       closeAvatarModal();
@@ -426,10 +407,8 @@ export default function Dashboard({ user }) {
 
   // ---------- Setup audio refs on first mount ----------
   useEffect(() => {
-    // level up audio
     audioRef.current = new Audio("/levelup.mp3");
     audioRef.current.volume = 0.9;
-    // selection audio
     try {
       selectAudioRef.current = new Audio("/select.mp3");
       selectAudioRef.current.volume = 0.9;
@@ -472,7 +451,7 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions-fixed">
-          {/* HomeButtons component used (keeps top actions compact). We intentionally removed top Logout button from header */}
+          {/* HomeButtons component used (keeps top actions compact). Top logout removed from header */}
           <HomeButtons onToggleSound={toggleSound} />
           {profile.email === adminEmail && (
             <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>
@@ -504,11 +483,9 @@ export default function Dashboard({ user }) {
                   cursor: "pointer",
                 }}
                 title="Click to change avatar (Account section only)"
-                // only open modal if user is on Account tab — user asked avatar selector to appear only in Account, but they want clicking avatar to open it when in Account.
                 onClick={() => {
                   if (activeTab === "account") openAvatarModal();
                   else {
-                    // polite hint
                     setActiveTab("account");
                     setTimeout(() => openAvatarModal(), 200);
                   }
@@ -574,10 +551,9 @@ export default function Dashboard({ user }) {
         {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT - includes avatar-change button & avatar grid modal (Account-only) */}
+        {/* ACCOUNT - AccountMenu (avatar quick panel removed as requested) */}
         {activeTab === "account" && (
           <div>
-            {/* AccountMenu component (keeps most account controls). We pass onLogout so user can logout from Account. */}
             <AccountMenu
               profile={profile}
               setProfile={setProfile}
@@ -585,26 +561,9 @@ export default function Dashboard({ user }) {
               addXP={addXP}
               onRankClick={() => setActiveTab("rank")}
               onLogout={handleLogoutNavigate}
+              openAvatarModal={openAvatarModal}
             />
-
-            {/* Avatar quick panel that appears only on Account page */}
-            <section className="panel glow-panel" style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} onClick={openAvatarModal} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
-                  <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${profile.level || 1}`}</div>
-                </div>
-                <div style={{ marginLeft: "auto" }}>
-                  <button className="btn" onClick={openAvatarModal}>Change Avatar</button>
-                </div>
-              </div>
-              <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
-                Click the avatar or "Change Avatar" to choose an avatar from your available list. Locked avatars show required rank/level.
-              </div>
-            </section>
+            {/* NOTE: per your request the lower avatar quick panel was removed from Account screen */}
           </div>
         )}
 
@@ -645,7 +604,6 @@ export default function Dashboard({ user }) {
             <h3 className="modern-title">Choose Avatar</h3>
             <p className="modern-subtitle">Avatars are located in <code>public/avatars/</code>. Locked avatars indicate required rank.</p>
 
-            {/* Grid container: scrollable and compact */}
             <div style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
@@ -685,7 +643,6 @@ export default function Dashboard({ user }) {
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
 
-                      {/* locked overlay */}
                       {locked && (
                         <div style={{
                           position: "absolute",
@@ -699,7 +656,6 @@ export default function Dashboard({ user }) {
                         </div>
                       )}
 
-                      {/* selection check or glow icon */}
                       {isSelected && !locked && (
                         <div style={{
                           position: "absolute",
@@ -715,7 +671,7 @@ export default function Dashboard({ user }) {
                       )}
                     </button>
 
-                    {/* we hide names per your request; small indicator below shows rank label (subtle) */}
+                    {/* hide filename; show label only */}
                     <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
                       {meta.label}
                     </div>
@@ -738,3 +694,4 @@ export default function Dashboard({ user }) {
     </div>
   );
 }
+```0
