@@ -1,3 +1,4 @@
+// src/components/AccountMenu.jsx
 import React, { useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
@@ -8,7 +9,8 @@ export default function AccountMenu({
   updateProfileField = async () => {},
   addXP = async () => {},
   onRankClick = () => {},
-  onLogout = null // function from Dashboard to handle navigation
+  onLogout = null,
+  openAvatarModal = null, // Dashboard sends this
 }) {
   const [view, setView] = useState("main");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
@@ -23,64 +25,72 @@ export default function AccountMenu({
   }
 
   async function doLogout() {
-    if (typeof onLogout === "function") {
-      return onLogout();
-    }
-    // fallback
+    if (typeof onLogout === "function") return onLogout();
     await signOut(auth);
     window.location.href = "/login";
+  }
+
+  // tap avatar → open modal
+  function handleAvatarClick() {
+    if (typeof openAvatarModal === "function") openAvatarModal();
   }
 
   return (
     <div className="account-menu">
       {view === "main" && (
         <section className="panel account-profile-card">
-          {/* User card top */}
-          <div style={{display:"flex", flexDirection:"column", alignItems:"center", gap:8}}>
-            <div
+
+          {/* TOP USER INFO */}
+          <div style={{ 
+            display:"flex", 
+            flexDirection:"column", 
+            alignItems:"center", 
+            gap:10 
+          }}>
+            {/* TAP AVATAR TO CHANGE */}
+            <div 
+              onClick={handleAvatarClick}
               style={{
                 width:72,
                 height:72,
+                borderRadius:8,
                 overflow:"hidden",
-                background:"rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                borderRadius: 6 /* square-ish corners */
+                border:"2px solid var(--accent2)",
+                cursor:"pointer",
               }}
             >
-              {/* badge placeholder (replace if you have user image) */}
-              <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar"
-                   style={{width:"100%", height:"100%", objectFit:"cover", display:"block"}} />
+              <img 
+                src={profile.avatar || "/avatars/default.jpg"} 
+                alt="avatar" 
+                style={{ width:"100%", height:"100%", objectFit:"cover" }} 
+              />
             </div>
 
             <div style={{fontWeight:800, fontSize:18, color:"var(--accent2)"}}>
               {profile.username || profile.displayName || "Set Username"}
             </div>
-            <div style={{color:"var(--muted)"}}>{profile.email}</div>
+
+            <div style={{color:"var(--muted)"}}>
+              {profile.email}
+            </div>
           </div>
 
-          <div className="account-btn-group" style={{width:"100%", marginTop:14}}>
-            {/* Profile Settings */}
+          {/* MENU BUTTONS */}
+          <div className="account-btn-group" style={{width:"100%", marginTop:18}}>
             <button className="account-option" onClick={() => setView("profile")}>
-              <span style={{marginRight:12}}>👤</span>
-              <span>Profile Settings</span>
+              👤 Profile Settings
             </button>
 
-            {/* Rank */}
-            <button className="account-option" onClick={() => { onRankClick(); }}>
-              <span style={{marginRight:12}}>🏆</span>
-              <span>Rank</span>
+            <button className="account-option" onClick={onRankClick}>
+              🏆 Rank
             </button>
 
-            {/* Refer a Friend */}
             <button className="account-option" onClick={() => setView("refer")}>
-              <span style={{marginRight:12}}>🔗</span>
-              <span>Refer a Friend</span>
+              🔗 Refer a Friend
             </button>
 
-            {/* Logout */}
-            <button className="account-option" onClick={doLogout} style={{background:"rgba(255,255,255,0.04)"}}>
-              <span style={{marginRight:12}}>🚪</span>
-              <span>Logout</span>
+            <button className="account-option" onClick={doLogout}>
+              🚪 Logout
             </button>
           </div>
         </section>
@@ -91,7 +101,11 @@ export default function AccountMenu({
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Profile Settings</h3>
           <form onSubmit={saveName}>
-            <input className="modern-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            <input 
+              className="modern-input" 
+              value={displayName} 
+              onChange={(e)=>setDisplayName(e.target.value)} 
+            />
             <button className="btn">Save</button>
           </form>
         </section>
