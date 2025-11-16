@@ -27,12 +27,13 @@ import RankPage from "../components/RankPage";
 import LevelUpPopup from "../components/LevelUpPopup";
 
 /**
- * Dashboard.jsx — Updated: removed Account-page lower avatar quick panel (per request)
+ * Dashboard.jsx — Option A (Avatar modal only via Account page avatar click)
  *
- * Notes:
- * - Avatar images expected under public/avatars/
- * - Avatar select sound expected at public/select.mp3 (optional)
- * - Level-up sound expected at public/levelup.mp3 (optional)
+ * Changes made:
+ * - Avatar modal grouped & sorted by rank low -> high
+ * - `default.jpg` unlocked by default and auto-selected for new users
+ * - Lock overlay, selected glow, animated border, select sound
+ * - Clicking top-right or profile avatar opens modal (only allowed from Account tab)
  */
 
 export default function Dashboard({ user }) {
@@ -101,15 +102,16 @@ export default function Dashboard({ user }) {
     "water.jpg",
   ];
 
+  // mapping based on your list (filename -> { level, label })
   const AVATAR_META = {
-    "angelic.jpg": { level: 15, label: "Diamond ★★★" },
-    "authentic.jpg": { level: 8, label: "Gold ★★" },
-    "brain.jpg": { level: 3, label: "Bronze ★★★" },
-    "chicken.jpg": { level: 5, label: "Silver ★★" },
-    "crown.jpg": { level: 14, label: "Platinum ★★★★" },
+    "angelic.jpg": { level: 15, label: "Diamond ★★★" }, // diamond 3+
+    "authentic.jpg": { level: 8, label: "Gold ★★" }, // gold2+
+    "brain.jpg": { level: 3, label: "Bronze ★★★" }, // bronze3+
+    "chicken.jpg": { level: 5, label: "Silver ★★" }, // silver2+
+    "crown.jpg": { level: 14, label: "Platinum ★★★★" }, // platinum4+
     "cyberpunk.jpg": { level: 4, label: "Silver ★" },
-    "default.jpg": { level: 1, label: "Bronze ★" },
-    "dragon.jpg": { level: 9, label: "Gold ★★★" },
+    "default.jpg": { level: 1, label: "Bronze ★" }, // free/unlocked
+    "dragon.jpg": { level: 9, label: "Gold ★★★" }, // gold3+
     "flame-falco.jpg": { level: 18, label: "Diamond ★★★★" },
     "flower-wind.jpg": { level: 15, label: "Diamond ★" },
     "flower.jpg": { level: 16, label: "Diamond ★★" },
@@ -133,6 +135,19 @@ export default function Dashboard({ user }) {
 
   function getAvatarMeta(filename) {
     return AVATAR_META[filename] ?? { level: 18, label: "Heroic" };
+  }
+
+  // helper: derive rank category (Bronze/Silver/Gold/Platinum/Diamond/Heroic)
+  function rankCategory(label) {
+    if (!label) return "Other";
+    const low = label.toLowerCase();
+    if (low.includes("bronze")) return "Bronze";
+    if (low.includes("silver")) return "Silver";
+    if (low.includes("gold")) return "Gold";
+    if (low.includes("platinum")) return "Platinum";
+    if (low.includes("diamond")) return "Diamond";
+    if (low.includes("heroic")) return "Heroic";
+    return "Other";
   }
 
   // ---------- Load / bootstrap profile ----------
@@ -161,9 +176,11 @@ export default function Dashboard({ user }) {
             ...data,
           };
 
+          // ensure referral saved server-side
           if (!data.referralCode) {
             await updateDoc(ref, { referralCode: safe.referralCode });
           }
+          // ensure avatar saved server-side — default.jpg selected for new users
           if (!data.avatar) {
             await updateDoc(ref, { avatar: safe.avatar });
           }
@@ -186,7 +203,7 @@ export default function Dashboard({ user }) {
           if (mounted) setProfile({ id: ref.id, ...initial });
         }
       } catch (err) {
-        console.error("Dashboard load error:", err);
+        console.error("Dashboard load error", err);
       } finally {
         setLoading(false);
       }
@@ -276,6 +293,7 @@ export default function Dashboard({ user }) {
           audioRef.current.play();
         } catch (e) {}
       }
+      // hide after a few seconds
       setTimeout(() => setShowLevelUp(null), 3500);
     }
   }
@@ -307,8 +325,9 @@ export default function Dashboard({ user }) {
     if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
     setAdLoading(true);
     try {
+      // placeholder for real ad flow
       await new Promise((r) => setTimeout(r, 1400));
-      await addCoins(2);
+      await addCoins(2); // reward = 2 coins
       await addXP(5);
       setAdWatchToday((c) => c + 1);
       alert("+2 coins for watching ad.");
@@ -338,6 +357,9 @@ export default function Dashboard({ user }) {
       [type]: prev[type].filter((i) => i.id !== req.id),
     }));
   }
+
+  // ---------- End helpers (Part 1 continues) ----------
+// (continuation of src/pages/Dashboard.jsx)
 
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
@@ -389,14 +411,18 @@ export default function Dashboard({ user }) {
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
 
+      // play select sound if available
       try {
         if (selectAudioRef.current) {
           selectAudioRef.current.currentTime = 0;
           await selectAudioRef.current.play();
         }
-      } catch (e) {}
+      } catch (e) {
+        // ignore play errors
+      }
 
-      alert("Avatar updated!");
+      // small confirmation and close
+      setAvatarSelecting(false);
       closeAvatarModal();
     } catch (err) {
       console.error("selectAvatar error", err);
@@ -407,8 +433,14 @@ export default function Dashboard({ user }) {
 
   // ---------- Setup audio refs on first mount ----------
   useEffect(() => {
-    audioRef.current = new Audio("/levelup.mp3");
-    audioRef.current.volume = 0.9;
+    // level up audio
+    try {
+      audioRef.current = new Audio("/levelup.mp3");
+      audioRef.current.volume = 0.9;
+    } catch (e) {
+      audioRef.current = null;
+    }
+    // selection audio
     try {
       selectAudioRef.current = new Audio("/select.mp3");
       selectAudioRef.current.volume = 0.9;
@@ -431,8 +463,33 @@ export default function Dashboard({ user }) {
   const xpForCurLevel = XP_LEVELS[Math.max(0, Math.min(XP_LEVELS.length - 1, curLevel - 1))] || 100;
   const xpPercent = Math.min(100, Math.round(((profile.xp || 0) / xpForCurLevel) * 100));
 
+  // ---------- Prepare grouped & sorted avatars for modal (low -> high) ----------
+  const avatarsWithMeta = AVATARS.map((f) => {
+    const meta = getAvatarMeta(f);
+    return { file: f, meta, path: `/avatars/${f}` };
+  });
+
+  // Sort by required level ascending, with default.jpg forced first
+  avatarsWithMeta.sort((a, b) => {
+    if (a.file === "default.jpg") return -1;
+    if (b.file === "default.jpg") return 1;
+    return (a.meta.level || 999) - (b.meta.level || 999);
+  });
+
+  // Group into categories (Bronze/Silver/Gold/Platinum/Diamond/Heroic)
+  const grouped = {};
+  avatarsWithMeta.forEach((av) => {
+    const cat = rankCategory(av.meta.label) || "Other";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(av);
+  });
+
+  // Order of categories low->high
+  const categoryOrder = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Heroic", "Other"];
+
   return (
     <div className="dash-root">
+      {/* element for audio control (kept for compatibility) */}
       <audio ref={audioRef} src="/levelup.mp3" />
 
       {/* background video + overlay */}
@@ -451,7 +508,6 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className="header-actions-fixed">
-          {/* HomeButtons component used (keeps top actions compact). Top logout removed from header */}
           <HomeButtons onToggleSound={toggleSound} />
           {profile.email === adminEmail && (
             <button className="btn small" onClick={() => setActiveTab("admin")}>Admin</button>
@@ -487,7 +543,7 @@ export default function Dashboard({ user }) {
                   if (activeTab === "account") openAvatarModal();
                   else {
                     setActiveTab("account");
-                    setTimeout(() => openAvatarModal(), 200);
+                    setTimeout(() => openAvatarModal(), 220);
                   }
                 }}
               >
@@ -551,7 +607,7 @@ export default function Dashboard({ user }) {
         {/* WITHDRAW */}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
-        {/* ACCOUNT - AccountMenu (avatar quick panel removed as requested) */}
+        {/* ACCOUNT - includes avatar-change via clicking the avatar (no duplicate bottom panel) */}
         {activeTab === "account" && (
           <div>
             <AccountMenu
@@ -561,9 +617,10 @@ export default function Dashboard({ user }) {
               addXP={addXP}
               onRankClick={() => setActiveTab("rank")}
               onLogout={handleLogoutNavigate}
-              openAvatarModal={openAvatarModal}
+              openAvatarModal={openAvatarModal} // pass modal opener
             />
-            {/* NOTE: per your request the lower avatar quick panel was removed from Account screen */}
+
+            {/* NOTE: removed the bottom avatar panel you asked to remove — clicking the avatar in the card opens the modal */}
           </div>
         )}
 
@@ -602,87 +659,121 @@ export default function Dashboard({ user }) {
         <div className="modal-overlay" onClick={closeAvatarModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
             <h3 className="modern-title">Choose Avatar</h3>
-            <p className="modern-subtitle">Avatars are located in <code>public/avatars/</code>. Locked avatars indicate required rank.</p>
+            <p className="modern-subtitle">Tap avatar to select. Locked avatars show required rank.</p>
 
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
-              gap: 12,
-              marginTop: 12,
-              maxHeight: "48vh",
-              overflowY: "auto",
-              paddingRight: 6
-            }}>
-              {AVATARS.map((f) => {
-                const meta = getAvatarMeta(f);
-                const path = `/avatars/${f}`;
-                const locked = (profile.level || 1) < meta.level;
-                const isSelected = (profile.avatar || "").endsWith(f) || profile.avatar === path;
-
+            {/* Grouped categories in order */}
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 14 }}>
+              {categoryOrder.map((cat) => {
+                const items = grouped[cat];
+                if (!items || items.length === 0) return null;
                 return (
-                  <div key={f} style={{ textAlign: "center" }}>
-                    <button
-                      className={`icon-button avatar-tile ${isSelected ? "selected-avatar" : ""}`}
-                      style={{
-                        width: 100,
-                        height: 100,
-                        borderRadius: 8,
-                        padding: 0,
-                        overflow: "hidden",
-                        position: "relative",
-                        border: isSelected ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
-                        background: "transparent",
-                      }}
-                      disabled={avatarSelecting || locked}
-                      onClick={() => selectAvatar(f)}
-                      title={locked ? `${meta.label} (locked)` : `Use this avatar — ${meta.label}`}
-                    >
-                      <img
-                        src={path}
-                        alt={f}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                      />
+                  <div key={cat}>
+                    <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8 }}>{cat}</div>
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+                      gap: 12,
+                      alignItems: "start"
+                    }}>
+                      {items.map((av) => {
+                        const locked = (profile.level || 1) < (av.meta.level || 999);
+                        const isSelected = (profile.avatar || "").endsWith(av.file) || profile.avatar === av.path;
 
-                      {locked && (
-                        <div style={{
-                          position: "absolute",
-                          left: 0, right: 0, bottom: 0,
-                          background: "linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.6))",
-                          color: "#fff",
-                          fontSize: 12,
-                          padding: "6px 4px",
-                        }}>
-                          {meta.label} • Level {meta.level}
-                        </div>
-                      )}
+                        // Inline styles for selected glow & animated border
+                        const tileStyle = {
+                          width: 100,
+                          height: 100,
+                          borderRadius: 10,
+                          padding: 0,
+                          overflow: "hidden",
+                          position: "relative",
+                          border: isSelected ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
+                          boxShadow: isSelected ? "0 0 18px rgba(255,92,46,0.25), 0 0 40px rgba(255,92,46,0.06)" : undefined,
+                          transform: isSelected ? "translateY(-4px)" : undefined,
+                          transition: "transform .18s ease, box-shadow .2s ease, border .18s ease",
+                          background: "rgba(0,0,0,0.06)"
+                        };
 
-                      {isSelected && !locked && (
-                        <div style={{
-                          position: "absolute",
-                          top: 6,
-                          right: 6,
-                          background: "rgba(0,0,0,0.45)",
-                          padding: "4px 6px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          color: "#fff",
-                          fontWeight: 700,
-                        }}>Selected</div>
-                      )}
-                    </button>
+                        // shimmer keyframes fallback inline (for locked)
+                        const shimmer = {
+                          animation: locked ? "shimmer 1.6s infinite linear" : undefined,
+                          backgroundSize: locked ? "200% 100%" : undefined,
+                        };
 
-                    {/* hide filename; show label only */}
-                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
-                      {meta.label}
+                        return (
+                          <div key={av.file} style={{ textAlign: "center" }}>
+                            <button
+                              className="icon-button avatar-tile"
+                              style={{ ...tileStyle, ...shimmer }}
+                              disabled={avatarSelecting || locked}
+                              onClick={() => selectAvatar(av.file)}
+                              title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
+                            >
+                              <img
+                                src={av.path}
+                                alt={av.file}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                              />
+
+                              {/* locked overlay */}
+                              {locked && (
+                                <div style={{
+                                  position: "absolute",
+                                  left: 0, right: 0, bottom: 0,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 8,
+                                  background: "rgba(0,0,0,0.6)",
+                                  color: "#fff",
+                                  fontSize: 12,
+                                  padding: "6px 4px",
+                                }}>
+                                  <span style={{ opacity: 0.95 }}>🔒</span>
+                                  <span style={{ fontWeight: 700 }}>{av.meta.label}</span>
+                                </div>
+                              )}
+
+                              {/* Selected badge */}
+                              {isSelected && !locked && (
+                                <div style={{
+                                  position: "absolute",
+                                  top: 6,
+                                  right: 6,
+                                  background: "rgba(0,0,0,0.45)",
+                                  padding: "4px 6px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  color: "#fff",
+                                  fontWeight: 700,
+                                }}>Selected</div>
+                              )}
+                            </button>
+
+                            {/* subtle label (no filename) */}
+                            <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
+                              {av.meta.label}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
               <button className="btn small ghost" onClick={closeAvatarModal} disabled={avatarSelecting}>Cancel</button>
             </div>
+
+            {/* inline shimmer keyframes to ensure it works even if global CSS missing */}
+            <style>{`
+              @keyframes shimmer {
+                0% { background-position: -150% 0; }
+                100% { background-position: 150% 0; }
+              }
+            `}</style>
           </div>
         </div>
       )}
