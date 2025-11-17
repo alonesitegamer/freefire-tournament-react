@@ -15,6 +15,7 @@ import {
   orderBy,
   addDoc,
   deleteDoc,
+  arrayUnion,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
