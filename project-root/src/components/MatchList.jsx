@@ -1,20 +1,17 @@
 // src/components/MatchList.jsx
 import React from "react";
 
-export default function MatchList({ matches = [], onSelect = () => {} }) {
+export default function MatchList({ matches = [], onJoin = () => {} }) {
   return (
     <div className="matchlist-premium-grid">
       {matches.map((match) => {
-        const filled = (match.playersJoined?.length || 0);
+        const joined = match.playersJoined?.length || 0;
         const max = match.maxPlayers || 0;
-        const percent = max > 0 ? Math.min(100, Math.round((filled / max) * 100)) : 0;
+        const percent = max > 0 ? Math.min(100, Math.round((joined / max) * 100)) : 0;
 
         return (
-          <div
-            key={match.id}
-            className="match-card-premium"
-            onClick={() => onSelect(match)}
-          >
+          <div key={match.id} className="match-card-premium">
+
             {/* IMAGE */}
             <div className="match-card-img-wrapper">
               <img
@@ -23,23 +20,18 @@ export default function MatchList({ matches = [], onSelect = () => {} }) {
                 className="match-card-img"
                 onError={(e) => (e.target.src = "/bt.jpg")}
               />
-
-              {/* GRADIENT OVERLAY */}
               <div className="match-card-gradient" />
             </div>
 
-            {/* DETAILS */}
+            {/* INFO */}
             <div className="match-card-body">
               <div className="match-title">{match.title}</div>
 
               <div className="match-meta">
                 <span>Entry: {match.entryFee ?? 0}</span>
-                <span>
-                  {filled}/{max} joined
-                </span>
+                <span>{joined}/{max} players</span>
               </div>
 
-              {/* PROGRESS BAR */}
               <div className="match-progress">
                 <div
                   className="match-progress-fill"
@@ -47,9 +39,14 @@ export default function MatchList({ matches = [], onSelect = () => {} }) {
                 />
               </div>
 
-              {/* JOIN BUTTON */}
-              <button className="match-join-btn">Join</button>
+              <button
+                className="match-join-btn"
+                onClick={() => onJoin(match)}
+              >
+                Join Match
+              </button>
             </div>
+
           </div>
         );
       })}
