@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 // 🔹 Your Firebase config
@@ -21,11 +22,12 @@ const app = initializeApp(firebaseConfig);
 // Core services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);  // ✅ REQUIRED FOR FILE UPLOADS
 export const provider = new GoogleAuthProvider();
 
 // 🔹 Initialize App Check (reCAPTCHA v3)
 export const appCheckInstance = initializeAppCheck(app, {
-  provider: new ReCaptchaV3Provider("6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq"), // 👈 use your real site key
+  provider: new ReCaptchaV3Provider("6Lce7wMsAAAAAILiEOO6OQzY6_E62GixASyfi3Vq"),
   isTokenAutoRefreshEnabled: true,
 });
 
