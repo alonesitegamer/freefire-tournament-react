@@ -13,6 +13,8 @@ import {
   query,
   where,
   orderBy,
+  addDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -48,8 +50,8 @@ export default function Dashboard({ user }) {
   const adminEmail = "esportsimperial50@gmail.com";
 
   const XP_LEVELS = [
-    100, 200, 350, 500, 700, 900, 1200, 1500, 1900, 2300, 2800, 3400, 4000, 4700,
-    5500, 6300, 7200, 9999999,
+    100, 200, 350, 500, 700, 900, 1200, 1500, 1900, 2300,
+    2800, 3400, 4000, 4700, 5500, 6300, 7200, 9999999,
   ];
 
   function xpToLevel(xp = 0) {
@@ -60,33 +62,11 @@ export default function Dashboard({ user }) {
   }
 
   const AVATARS = [
-    "angelic.jpg",
-    "authentic.jpg",
-    "brain.jpg",
-    "chicken.jpg",
-    "crown.jpg",
-    "cyberpunk.jpg",
-    "default.jpg",
-    "dragon.jpg",
-    "flame-falco.jpg",
-    "flower-wind.jpg",
-    "flower.jpg",
-    "free.jpg",
-    "freefire.jpg",
-    "ghost-mask.jpg",
-    "ghost.jpg",
-    "girl.jpg",
-    "helm.jpg",
-    "panda.jpg",
-    "pink-glow.jpg",
-    "purple.jpg",
-    "radiation.jpg",
-    "season7.jpg",
-    "season8.jpg",
-    "season9.jpg",
-    "star.jpg",
-    "unknown.jpg",
-    "water.jpg",
+    "angelic.jpg","authentic.jpg","brain.jpg","chicken.jpg","crown.jpg","cyberpunk.jpg",
+    "default.jpg","dragon.jpg","flame-falco.jpg","flower-wind.jpg","flower.jpg","free.jpg",
+    "freefire.jpg","ghost-mask.jpg","ghost.jpg","girl.jpg","helm.jpg","panda.jpg",
+    "pink-glow.jpg","purple.jpg","radiation.jpg","season7.jpg","season8.jpg","season9.jpg",
+    "star.jpg","unknown.jpg","water.jpg",
   ];
 
   const AVATAR_META = {
@@ -135,10 +115,9 @@ export default function Dashboard({ user }) {
     return "Other";
   }
 
-  // tierClass helper - returns a small class name we can use in CSS if desired
   function tierClass(label) {
     const cat = rankCategory(label);
-    return `tier-${cat.toLowerCase()}`; // e.g., tier-bronze, tier-silver ...
+    return `tier-${cat.toLowerCase()}`;
   }
 
   useEffect(() => {
@@ -157,8 +136,7 @@ export default function Dashboard({ user }) {
             level: data.level ?? xpToLevel(data.xp ?? 0),
             username: data.username ?? "",
             displayName: data.displayName ?? "",
-            referralCode:
-              data.referralCode ?? user.uid.substring(0, 8).toUpperCase(),
+            referralCode: data.referralCode ?? user.uid.substring(0, 8).toUpperCase(),
             lastDaily: data.lastDaily ?? null,
             avatar: data.avatar ?? "/avatars/default.jpg",
             wins: data.wins ?? 0,
@@ -207,11 +185,7 @@ export default function Dashboard({ user }) {
     (async () => {
       try {
         const matchesRef = collection(db, "matches");
-        const q = query(
-          matchesRef,
-          where("status", "==", "upcoming"),
-          orderBy("createdAt", "desc")
-        );
+        const q = query(matchesRef, where("status", "==", "upcoming"), orderBy("createdAt", "desc"));
         const snap = await getDocs(q);
         const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (mounted) setMatches(arr);
@@ -226,15 +200,8 @@ export default function Dashboard({ user }) {
     if (profile?.email !== adminEmail) return;
     (async () => {
       try {
-        const top = await getDocs(
-          query(collection(db, "topupRequests"), where("status", "==", "pending"))
-        );
-        const wd = await getDocs(
-          query(
-            collection(db, "withdrawRequests"),
-            where("status", "==", "pending")
-          )
-        );
+        const top = await getDocs(query(collection(db, "topupRequests"), where("status", "==", "pending")));
+        const wd = await getDocs(query(collection(db, "withdrawRequests"), where("status", "==", "pending")));
         setRequests({
           topup: top.docs.map((d) => ({ id: d.id, ...d.data() })),
           withdraw: wd.docs.map((d) => ({ id: d.id, ...d.data() })),
@@ -283,20 +250,13 @@ export default function Dashboard({ user }) {
 
   async function claimDaily() {
     if (!profile) return;
-    const last =
-      profile.lastDaily && typeof profile.lastDaily.toDate === "function"
-        ? profile.lastDaily.toDate()
-        : profile.lastDaily
-        ? new Date(profile.lastDaily)
-        : null;
+    const last = profile.lastDaily && typeof profile.lastDaily.toDate === "function"
+      ? profile.lastDaily.toDate() : profile.lastDaily ? new Date(profile.lastDaily) : null;
     const now = new Date();
     if (last && last.toDateString() === now.toDateString()) {
       return alert("You already claimed today's reward.");
     }
-    await updateDoc(doc(db, "users", user.uid), {
-      coins: (profile.coins || 0) + 1,
-      lastDaily: serverTimestamp(),
-    });
+    await updateDoc(doc(db, "users", user.uid), { coins: (profile.coins || 0) + 1, lastDaily: serverTimestamp() });
     await addXP(10);
     alert("+1 coin credited!");
   }
@@ -326,24 +286,16 @@ export default function Dashboard({ user }) {
       const uRef = doc(db, "users", req.userId);
       const snap = await getDoc(uRef);
       if (snap.exists()) {
-        await updateDoc(uRef, {
-          coins: (snap.data().coins || 0) + (req.coins || req.amount || 0),
-        });
+        await updateDoc(uRef, { coins: (snap.data().coins || 0) + (req.coins || req.amount || 0) });
       }
     }
-    setRequests((prev) => ({
-      ...prev,
-      [type]: prev[type].filter((i) => i.id !== req.id),
-    }));
+    setRequests((prev) => ({ ...prev, [type]: prev[type].filter((i) => i.id !== req.id) }));
   }
 
   async function rejectRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "rejected", processedAt: serverTimestamp() });
-    setRequests((prev) => ({
-      ...prev,
-      [type]: prev[type].filter((i) => i.id !== req.id),
-    }));
+    setRequests((prev) => ({ ...prev, [type]: prev[type].filter((i) => i.id !== req.id) }));
   }
 
   async function handleLogoutNavigate() {
@@ -383,14 +335,12 @@ export default function Dashboard({ user }) {
       await updateDoc(doc(db, "users", user.uid), { avatar: avatarPath });
       const snap = await getDoc(doc(db, "users", user.uid));
       setProfile({ id: snap.id, ...snap.data() });
-
       try {
         if (selectAudioRef.current) {
           selectAudioRef.current.currentTime = 0;
           await selectAudioRef.current.play();
         }
       } catch (e) {}
-
       setAvatarSelecting(false);
       closeAvatarModal();
     } catch (err) {
@@ -399,7 +349,6 @@ export default function Dashboard({ user }) {
       setAvatarSelecting(false);
     }
   }
-
   useEffect(() => {
     try {
       audioRef.current = new Audio("/levelup.mp3");
@@ -424,8 +373,12 @@ export default function Dashboard({ user }) {
   }
 
   const curLevel = profile.level || xpToLevel(profile.xp || 0);
-  const xpForCurLevel = XP_LEVELS[Math.max(0, Math.min(XP_LEVELS.length - 1, curLevel - 1))] || 100;
-  const xpPercent = Math.min(100, Math.round(((profile.xp || 0) / xpForCurLevel) * 100));
+  const xpForCurLevel =
+    XP_LEVELS[Math.max(0, Math.min(XP_LEVELS.length - 1, curLevel - 1))] || 100;
+  const xpPercent = Math.min(
+    100,
+    Math.round(((profile.xp || 0) / xpForCurLevel) * 100)
+  );
 
   const avatarsWithMeta = AVATARS.map((f) => {
     const meta = getAvatarMeta(f);
@@ -494,7 +447,7 @@ export default function Dashboard({ user }) {
                   border: "1px solid rgba(255,255,255,0.06)",
                   cursor: "pointer",
                 }}
-                title="Click to change avatar (Account section only)"
+                title="Click to change avatar"
                 onClick={() => {
                   if (activeTab === "account") openAvatarModal();
                   else {
@@ -510,12 +463,19 @@ export default function Dashboard({ user }) {
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800 }}>{profile.displayName || profile.username || "Player"}</div>
-                <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Level ${curLevel} • ${profile.xp || 0} XP`}</div>
+                <div style={{ fontWeight: 800 }}>
+                  {profile.displayName || profile.username || "Player"}
+                </div>
+                <div style={{ color: "#bfc7d1", fontSize: 13 }}>
+                  Level {curLevel} • {profile.xp || 0} XP
+                </div>
 
                 <div className="xpbar-root" style={{ marginTop: 8 }}>
                   <div className="xpbar-track" style={{ height: 10 }}>
-                    <div className="xpbar-fill" style={{ width: `${xpPercent}%`, height: 10, borderRadius: 8 }} />
+                    <div
+                      className="xpbar-fill"
+                      style={{ width: `${xpPercent}%`, height: 10, borderRadius: 8 }}
+                    />
                   </div>
                 </div>
               </div>
@@ -539,41 +499,49 @@ export default function Dashboard({ user }) {
 
             <section className="panel glow-panel">
               <h3>Featured Matches</h3>
-              <MatchList matches={matches} onSelect={(m) => { setSelectedMatch(m); setActiveTab("matches"); }} />
+              <MatchList
+                matches={matches}
+                onSelect={(m) => {
+                  setSelectedMatch(m);
+                  setActiveTab("matches");
+                }}
+              />
             </section>
           </>
         )}
 
-        {activeTab === "matches" && (
-          selectedMatch ? (
+        {activeTab === "matches" &&
+          (selectedMatch ? (
             <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
           ) : (
             <section className="panel glow-panel">
               <h3>Matches</h3>
-              <MatchList matches={matches} onSelect={(m) => setSelectedMatch(m)} />
+              <MatchList matches={matches} onSelect={setSelectedMatch} />
             </section>
-          )
-        )}
+          ))}
 
         {activeTab === "topup" && <TopupPage user={user} profile={profile} />}
-
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
 
         {activeTab === "account" && (
-          <div>
-            <AccountMenu
-              profile={profile}
-              setProfile={setProfile}
-              updateProfileField={updateProfileField}
-              addXP={addXP}
-              onRankClick={() => setActiveTab("rank")}
-              onLogout={handleLogoutNavigate}
-              openAvatarModal={openAvatarModal}
-            />
-          </div>
+          <AccountMenu
+            profile={profile}
+            setProfile={setProfile}
+            updateProfileField={updateProfileField}
+            addXP={addXP}
+            onRankClick={() => setActiveTab("rank")}
+            onLogout={handleLogoutNavigate}
+            openAvatarModal={openAvatarModal}
+          />
         )}
 
-        {activeTab === "rank" && <RankPage profile={profile} xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]} onBack={() => setActiveTab("account")} />}
+        {activeTab === "rank" && (
+          <RankPage
+            profile={profile}
+            xpForLevel={(l) => XP_LEVELS[Math.max(0, l - 1)]}
+            onBack={() => setActiveTab("account")}
+          />
+        )}
 
         {activeTab === "admin" && profile.email === adminEmail && (
           <AdminPanel
@@ -602,7 +570,11 @@ export default function Dashboard({ user }) {
 
       {showAvatarModal && (
         <div className="modal-overlay" onClick={closeAvatarModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 920 }}
+          >
             <h3 className="modern-title">Choose Avatar</h3>
             <p className="modern-subtitle">Tap avatar to select. Locked avatars show required rank.</p>
 
@@ -610,87 +582,68 @@ export default function Dashboard({ user }) {
               {categoryOrder.map((cat) => {
                 const items = grouped[cat];
                 if (!items || items.length === 0) return null;
+
                 return (
                   <div key={cat}>
-                    <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8 }}>{cat}</div>
-                    <div style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
-                      gap: 12,
-                      alignItems: "start"
-                    }}>
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>{cat}</div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+                        gap: 12,
+                      }}
+                    >
                       {items.map((av) => {
                         const locked = (profile.level || 1) < (av.meta.level || 999);
-                        const isSelected = (profile.avatar || "").endsWith(av.file) || profile.avatar === av.path;
-
-                        const tileStyle = {
-                          width: 100,
-                          height: 100,
-                          borderRadius: 10,
-                          padding: 0,
-                          overflow: "hidden",
-                          position: "relative",
-                          border: isSelected ? "2px solid var(--accent2)" : "1px solid rgba(255,255,255,0.06)",
-                          boxShadow: isSelected ? "0 0 18px rgba(255,92,46,0.25), 0 0 40px rgba(255,92,46,0.06)" : undefined,
-                          transform: isSelected ? "translateY(-4px)" : undefined,
-                          transition: "transform .18s ease, box-shadow .2s ease, border .18s ease",
-                          background: "rgba(0,0,0,0.06)"
-                        };
-
-                        const shimmer = {
-                          animation: locked ? "shimmer 1.6s infinite linear" : undefined,
-                          backgroundSize: locked ? "200% 100%" : undefined,
-                        };
+                        const isSelected =
+                          (profile.avatar || "").endsWith(av.file) ||
+                          profile.avatar === av.path;
 
                         return (
                           <div key={av.file} style={{ textAlign: "center" }}>
                             <button
-                              className={`icon-button avatar-tile ${tierClass(av.meta.label)} ${locked ? "locked" : ""} ${isSelected ? "selected-avatar" : ""}`}
-                              style={{ ...tileStyle, ...shimmer }}
+                              className={`icon-button avatar-tile ${tierClass(av.meta.label)} 
+                                ${locked ? "locked" : ""} 
+                                ${isSelected ? "selected-avatar" : ""}`}
+                              style={{
+                                width: 100,
+                                height: 100,
+                                borderRadius: 10,
+                                padding: 0,
+                                overflow: "hidden",
+                                position: "relative",
+                                border: isSelected
+                                  ? "2px solid var(--accent2)"
+                                  : "1px solid rgba(255,255,255,0.06)",
+                              }}
                               disabled={avatarSelecting || locked}
                               onClick={() => selectAvatar(av.file)}
-                              title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
                             >
                               <img
                                 src={av.path}
-                                alt={av.file}
-                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
                               />
 
                               {locked && (
-                                <div style={{
-                                  position: "absolute",
-                                  left: 0, right: 0, bottom: 0,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: 8,
-                                  background: "rgba(0,0,0,0.6)",
-                                  color: "#fff",
-                                  fontSize: 12,
-                                  padding: "6px 4px",
-                                }}>
-                                  <span style={{ opacity: 0.95 }}>🔒</span>
-                                  <span style={{ fontWeight: 700 }}>{av.meta.label}</span>
+                                <div className="avatar-locked-label">
+                                  🔒 {av.meta.label}
                                 </div>
                               )}
 
                               {isSelected && !locked && (
-                                <div style={{
-                                  position: "absolute",
-                                  top: 6,
-                                  right: 6,
-                                  background: "rgba(0,0,0,0.45)",
-                                  padding: "4px 6px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  color: "#fff",
-                                  fontWeight: 700,
-                                }}>Selected</div>
+                                <div className="avatar-selected-badge">Selected</div>
                               )}
                             </button>
 
-                            <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
+                            <div
+                              style={{
+                                marginTop: 8,
+                                color: "var(--muted)",
+                                fontSize: 12,
+                              }}
+                            >
                               {av.meta.label}
                             </div>
                           </div>
@@ -702,23 +655,26 @@ export default function Dashboard({ user }) {
               })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-              <button className="btn small ghost" onClick={closeAvatarModal} disabled={avatarSelecting}>Cancel</button>
+            <div className="avatar-modal-footer">
+              <button
+                className="btn small ghost"
+                onClick={closeAvatarModal}
+                disabled={avatarSelecting}
+              >
+                Cancel
+              </button>
             </div>
-
-            <style>{`
-              @keyframes shimmer {
-                0% { background-position: -150% 0; }
-                100% { background-position: 150% 0; }
-              }
-            `}</style>
           </div>
         </div>
       )}
 
       {showLevelUp && (
-        <LevelUpPopup from={showLevelUp.from} to={showLevelUp.to} onClose={() => setShowLevelUp(null)} />
+        <LevelUpPopup
+          from={showLevelUp.from}
+          to={showLevelUp.to}
+          onClose={() => setShowLevelUp(null)}
+        />
       )}
     </div>
   );
-}
+    }
