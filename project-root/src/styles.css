@@ -563,3 +563,136 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
   font-weight: 700;
   color: #fff;
 }
+/* ============================================
+   ADMIN PANEL — Clean Glass UI + Better Layout
+   ============================================ */
+
+/* Main container */
+.admin-panel-clean {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 22px rgba(0,0,0,0.4);
+}
+
+/* Section Title */
+.admin-section-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 12px 0;
+  color: var(--accent2);
+  text-shadow: 0 0 8px rgba(255,92,46,0.25);
+}
+
+/* Improve separation between sections */
+.admin-block {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+}
+
+/* Better match rows */
+.admin-match-row {
+  background: rgba(255,255,255,0.03);
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform .15s ease, box-shadow .2s ease;
+}
+
+.admin-match-row:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 26px rgba(255,92,46,0.15);
+}
+
+/* Match title */
+.admin-match-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+/* Match meta info */
+.admin-match-meta {
+  font-size: .88rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Buttons group */
+.admin-match-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.admin-match-actions .btn.small {
+  padding: 8px 12px;
+  font-size: .85rem;
+}
+
+/* Make admin create/edit form cleaner */
+.admin-form {
+  background: rgba(0,0,0,0.25) !important;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.04);
+  backdrop-filter: blur(10px);
+}
+
+/* Labels */
+.admin-form label {
+  color: var(--muted);
+  font-size: .86rem;
+  margin-top: 8px;
+}
+
+/* Inputs */
+.admin-form .modern-input {
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* Fix select dropdown look */
+.admin-form select.modern-input {
+  color: #fff;
+}
+
+/* Modal improvement */
+.modal-content {
+  background: rgba(10,10,10,0.80) !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+  backdrop-filter: blur(12px);
+}
+
+/* Room details modal */
+.room-modal-clean {
+  padding: 20px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+/* Buttons */
+.btn.small {
+  border-radius: 10px;
+}
+
+/* Create button bigger and clearer */
+.btn.admin-create-btn {
+  font-size: 1rem;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, var(--accent2), #ff8a66);
+  box-shadow: 0 6px 22px rgba(255,92,46,0.25);
+}
