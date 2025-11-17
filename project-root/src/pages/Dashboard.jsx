@@ -373,35 +373,73 @@ export default function Dashboard({ user }) {
   }, []);
 
   // ---------------------------
-  // JOIN integration: when clicking Join from MatchList we open MatchDetails and trigger join
+  // JOIN integration: join logic inside Dashboard (used by MatchList Join + preview join)
   // ---------------------------
-  async function handleJoinFromList(match) {
-    // focus the selected match
+  async function joinMatch(matchObj) {
+    if (!profile) return alert("Profile missing.");
+    // Save username if missing
+    let ingame = profile.username || profile.displayName || "";
+    if (!ingame) {
+      ingame = window.prompt("Enter your in-game username (this will be saved):", "");
+      if (!ingame) return alert("You must enter an in-game username to join.");
+      try {
+        await updateProfileField({ username: ingame });
+      } catch (e) {
+        console.error("save username", e);
+      }
+    }
+
+    // reload latest match (avoid stale)
+    try {
+      const ref = doc(db, "matches", matchObj.id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return alert("Match not found.");
+      const match = { id: snap.id, ...snap.data() };
+
+      const playerCount = (match.playersJoined || []).length;
+      if (match.maxPlayers && playerCount >= match.maxPlayers) return alert("Match is full.");
+
+      // push join
+      const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
+      await updateDoc(ref, { playersJoined: arrayUnion(playerObj) });
+
+      // refresh matches locally
+      const snap2 = await getDoc(ref);
+      const updated = { id: snap2.id, ...snap2.data() };
+      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      setSelectedMatch(updated);
+      setActiveTab("matches");
+      alert("Joined match!");
+      return true;
+    } catch (err) {
+      console.error("joinMatch error", err);
+      alert("Failed to join.");
+      return false;
+    }
+  }
+
+  // Called when pressing Join from MatchList (outer button)
+  function handleJoinFromList(match) {
+    // open matches tab and show preview; auto attempt join then open details if successful
     setSelectedMatch(match);
     setActiveTab("matches");
 
-    // trigger global join function inside MatchDetails (it exposes window.joinMatchDirect)
-    // delay a bit so MatchDetails mounts first
-    setTimeout(() => {
-      if (typeof window.joinMatchDirect === "function") {
-        try { window.joinMatchDirect(); } catch (e) { /* ignore */ }
-      }
-    }, 350);
+    // short delay to ensure UI updated
+    setTimeout(async () => {
+      await joinMatch(match);
+    }, 300);
   }
 
   // ---------------------------
   // Admin helpers: create / edit / delete match (exposed to AdminPanel)
-  // AdminPanel UI can call these props (we keep them simple)
   // ---------------------------
   async function createMatch(payload) {
-    // payload should include fields: title, mode, maxPlayers, entryFee, startTime, mapPool, autoRotate, revealDelayMinutes, type, killReward, imageUrl, status
     const docRef = await addDoc(collection(db, "matches"), {
       ...payload,
       createdAt: serverTimestamp(),
       playersJoined: [],
       status: payload.status || "upcoming",
     });
-    // refresh
     const snap = await getDoc(docRef);
     setMatches((prev) => [{ id: snap.id, ...snap.data() }, ...prev]);
     return docRef.id;
@@ -409,10 +447,10 @@ export default function Dashboard({ user }) {
 
   async function editMatch(matchId, patch) {
     await updateDoc(doc(db, "matches", matchId), patch);
-    // refresh local list
     const snap = await getDoc(doc(db, "matches", matchId));
-    setMatches((prev) => prev.map((m) => (m.id === matchId ? { id: snap.id, ...snap.data() } : m)));
-    if (selectedMatch?.id === matchId) setSelectedMatch({ id: snap.id, ...snap.data() });
+    const updated = { id: snap.id, ...snap.data() };
+    setMatches((prev) => prev.map((m) => (m.id === matchId ? updated : m)));
+    if (selectedMatch?.id === matchId) setSelectedMatch(updated);
   }
 
   async function removeMatch(matchId) {
@@ -459,6 +497,12 @@ export default function Dashboard({ user }) {
   });
 
   const categoryOrder = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Heroic", "Other"];
+
+  // small helper: detect if profile has joined a specific match
+  function profileHasJoined(match) {
+    if (!match) return false;
+    return (match.playersJoined || []).some((p) => p.uid === user.uid);
+  }
 
   return (
     <div className="dash-root">
@@ -571,21 +615,61 @@ export default function Dashboard({ user }) {
           </>
         )}
 
-        {activeTab === "matches" &&
-          (selectedMatch ? (
-            <MatchDetails
-              match={selectedMatch}
-              onBack={() => setSelectedMatch(null)}
-              user={user}
-              profile={profile}
-              updateProfileField={updateProfileField}
-            />
+        {activeTab === "matches" && (
+          selectedMatch ? (
+            profileHasJoined(selectedMatch) ? (
+              // player already joined -> show full details
+              <MatchDetails
+                match={selectedMatch}
+                onBack={() => setSelectedMatch(null)}
+                user={user}
+                profile={profile}
+                updateProfileField={updateProfileField}
+              />
+            ) : (
+              // player hasn't joined -> show compact preview + big Join button
+              <section className="panel match-preview">
+                <button className="back-btn" onClick={() => setSelectedMatch(null)}>Back</button>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 360px", minWidth: 260 }}>
+                    <img className="match-details-image" src={selectedMatch.imageUrl || "/match-default.jpg"} alt={selectedMatch.title} />
+                  </div>
+                  <div style={{ flex: "1 1 320px", minWidth: 260 }}>
+                    <h2 style={{ margin: 0 }}>{selectedMatch.title}</h2>
+                    <div className="match-meta time" style={{ marginTop: 6 }}>{selectedMatch.mode || selectedMatch.teamType || "Solo"}</div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ color: "#bfc7d1", fontSize: 13 }}>Entry: {selectedMatch.entryFee ?? 0}</div>
+                      <div style={{ fontWeight: 800, marginTop: 8 }}>{(selectedMatch.playersJoined || []).length}/{selectedMatch.maxPlayers || "?"}</div>
+                    </div>
+
+                    <div style={{ marginTop: 18 }}>
+                      <button className="btn large" onClick={() => joinMatch(selectedMatch)}>Join Match</button>
+                    </div>
+
+                    <div style={{ marginTop: 18, color: "var(--muted)" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
+                      <div>
+                        Room ID & Password are hidden until you join. Room details are revealed {selectedMatch.revealDelayMinutes ? `${selectedMatch.revealDelayMinutes} minute(s)` : "a few minutes"} before match.
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        <strong>Map:</strong> { (selectedMatch.mapPool && selectedMatch.mapPool[0]) || selectedMatch.map || "Bermuda" } {selectedMatch.autoRotate ? "(auto-rotate)" : ""}
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        <strong>Rules:</strong> 1 Kill = {selectedMatch.type === "custom" ? (selectedMatch.killReward ?? "custom") : 75} coins. Total coins decide ranking.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )
           ) : (
             <section className="panel glow-panel">
               <h3>Matches</h3>
               <MatchList matches={matches} onSelect={setSelectedMatch} onJoin={(m) => handleJoinFromList(m)} />
             </section>
-          ))}
+          )
+        )}
 
         {activeTab === "topup" && <TopupPage user={user} profile={profile} />}
         {activeTab === "withdraw" && <WithdrawPage profile={profile} />}
