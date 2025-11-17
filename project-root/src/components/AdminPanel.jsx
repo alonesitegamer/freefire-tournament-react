@@ -1,7 +1,5 @@
 // src/components/AdminPanel.jsx
 import React, { useState } from "react";
-import { db } from "../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function AdminPanel({
   requests = { topup: [], withdraw: [] },
@@ -9,200 +7,255 @@ export default function AdminPanel({
   rejectRequest = () => {},
   matches = []
 }) {
-  const [creating, setCreating] = useState(false);
+  // -------------------------
+  // Default Tournament Rules
+  // -------------------------
+  const defaultRules = `
+Tournament Format
 
-  const [form, setForm] = useState({
+Modes: Solo, Duo, Squad
+
+Map Pool: Bermuda, Purgatory, Kalahari (rotating)
+
+Point System:
+No placement points.
+Kills Only: 1 Kill = 75 Coins
+Total coins determine final ranking.
+
+--------------------------------------------------
+
+Player Requirements
+Players may participate solo, duo, or in squads.
+In-game usernames must be clean and not offensive.
+
+--------------------------------------------------
+
+Match Rules
+All players must join the lobby within the given time.
+No teaming, stream-sniping, or exploiting bugs.
+No scripts, hacks, cheats, macros, or modded APKs.
+
+--------------------------------------------------
+
+Device & Network Rules
+Allowed devices: Mobile phones only (unless stated otherwise).
+No tablets or emulators unless approved.
+Network issues are the player’s own responsibility.
+
+--------------------------------------------------
+
+Character / Loadout Rules
+All characters, skills, pets, and weapons allowed.
+No throwable limits.
+Grenade launcher ammo allowed.
+
+--------------------------------------------------
+
+Disconnection Policy
+No rematches for individual disconnections.
+If 50%+ players disconnect due to server issues, match will be replayed.
+
+--------------------------------------------------
+
+Cheating & Penalties
+Any cheating = instant disqualification.
+Reports require valid proof (screen recording / screenshot / POV).
+
+--------------------------------------------------
+
+Reporting Issues
+Must be reported within 10 minutes after match completion.
+Proof required.
+
+--------------------------------------------------
+
+Referee/Admin Decisions
+All decisions made by officials are final.
+
+--------------------------------------------------
+
+Prize Distribution
+Prize pool will be announced before the event.
+Players must provide correct payout information.
+
+--------------------------------------------------
+
+Code of Conduct
+No toxicity, racism, harassment, or abusive language.
+Violations may lead to warnings or removal.
+
+--------------------------------------------------
+
+Streaming Rules
+Recommended delay: 5–10 minutes.
+Streamers must not reveal enemy positions.
+Lobby passwords must not be shared.
+
+--------------------------------------------------
+
+Lobby Rules
+Late players may be skipped for that round.
+Wrong team placement is not remade once the plane takes off.
+
+--------------------------------------------------
+
+Organizer Rights
+Organizer may modify rules at any time.
+Joining automatically means accepting all rules.
+`;
+
+  // --------------------------------------
+  // MATCH CREATION STATE
+  // --------------------------------------
+  const [matchForm, setMatchForm] = useState({
     title: "",
-    type: "",
-    mode: "",
-    teamType: "",
-    entryFee: "",
-    perKillReward: "",
-    maxPlayers: "",
-    prizeModel: "",
-    imageUrl: "",
+    mode: "solo", // solo, duo, squad, custom, tournament
+    entryFee: 0,
+    prize: "",
+    map: "Bermuda",
     rules: "",
     startTime: "",
+    roomId: "",
+    roomPassword: ""
   });
 
-  const MODE_OPTIONS = ["Custom", "Tournament"];
-
-  function updateField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function updateField(field, value) {
+    setMatchForm(prev => ({ ...prev, [field]: value }));
   }
 
+  // ---------------------------
+  // Submit new match (Firestore)
+  // ---------------------------
   async function createMatch(e) {
     e.preventDefault();
-
-    // ---------- Full Validation ----------
-    if (!form.title.trim()) return alert("Match title is required.");
-    if (!form.type.trim()) return alert("Match type is required.");
-    if (!form.mode.trim()) return alert("Mode is required.");
-    if (!form.teamType.trim()) return alert("Team type is required.");
-    if (!form.entryFee || form.entryFee < 0)
-      return alert("Entry fee cannot be negative.");
-    if (!form.perKillReward || form.perKillReward < 0)
-      return alert("Per kill reward cannot be negative.");
-    if (!form.maxPlayers || form.maxPlayers < 2)
-      return alert("Max players must be at least 2.");
-    if (!form.startTime.trim()) return alert("Start time is required.");
-
-    if (new Date(form.startTime) < new Date())
-      return alert("Start time cannot be in the past.");
-
-    if (!form.imageUrl.trim()) return alert("Image URL is required.");
-
-    setCreating(true);
-
     try {
-      await addDoc(collection(db, "matches"), {
-        title: form.title,
-        type: form.type,
-        mode: form.mode,
-        teamType: form.teamType,
-        entryFee: Number(form.entryFee),
-        perKillReward: Number(form.perKillReward),
-        maxPlayers: Number(form.maxPlayers),
-        prizeModel: form.prizeModel,
-        imageUrl: form.imageUrl,
-        rules: form.rules,
-        startTime: form.startTime,
+      const ref = collection(db, "matches");
+      await addDoc(ref, {
+        ...matchForm,
         status: "upcoming",
-        createdAt: serverTimestamp(),
-        playersJoined: [],
+        createdAt: serverTimestamp()
       });
-
-      alert("Match created successfully!");
-
-      // reset form
-      setForm({
+      alert("Match Created!");
+      setMatchForm({
         title: "",
-        type: "",
-        mode: "",
-        teamType: "",
-        entryFee: "",
-        perKillReward: "",
-        maxPlayers: "",
-        prizeModel: "",
-        imageUrl: "",
+        mode: "solo",
+        entryFee: 0,
+        prize: "",
+        map: "Bermuda",
         rules: "",
         startTime: "",
+        roomId: "",
+        roomPassword: ""
       });
     } catch (err) {
-      console.error("Match create error:", err);
-      alert("Failed to create match.");
+      console.error(err);
+      alert("Error creating match!");
     }
-
-    setCreating(false);
   }
 
   return (
     <section className="panel">
       <h3>Admin Panel</h3>
 
-      {/* ---------------- CREATE MATCH ---------------- */}
-      <div className="admin-form" style={{ marginBottom: 30 }}>
-        <h4>Create Match</h4>
+      {/* ---------------------- CREATE MATCH ---------------------- */}
+      <h4 style={{ marginTop: 16 }}>Create Match</h4>
 
-        <form onSubmit={createMatch}>
-          <label>Title</label>
-          <input
-            className="modern-input"
-            value={form.title}
-            onChange={(e) => updateField("title", e.target.value)}
-          />
+      <form onSubmit={createMatch} className="admin-form">
+        <label>Match Title</label>
+        <input
+          className="modern-input"
+          value={matchForm.title}
+          onChange={(e) => updateField("title", e.target.value)}
+          placeholder="Tournament | Solo | Duo | Squad"
+        />
 
-          <label>Type (BR, CS, etc)</label>
-          <input
-            className="modern-input"
-            value={form.type}
-            onChange={(e) => updateField("type", e.target.value)}
-          />
+        <label>Mode</label>
+        <select
+          className="modern-input"
+          value={matchForm.mode}
+          onChange={(e) => updateField("mode", e.target.value)}
+        >
+          <option value="solo">Solo</option>
+          <option value="duo">Duo</option>
+          <option value="squad">Squad</option>
+          <option value="custom">Custom</option>
+          <option value="tournament">Tournament</option>
+        </select>
 
-          <label>Mode</label>
-          <select
-            className="modern-input"
-            value={form.mode}
-            onChange={(e) => updateField("mode", e.target.value)}
-          >
-            <option value="">Select Mode</option>
-            {MODE_OPTIONS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+        <label>Entry Fee</label>
+        <input
+          type="number"
+          className="modern-input"
+          value={matchForm.entryFee}
+          onChange={(e) => updateField("entryFee", e.target.value)}
+        />
 
-          <label>Team Type (Solo / Duo / Squad)</label>
-          <input
-            className="modern-input"
-            value={form.teamType}
-            onChange={(e) => updateField("teamType", e.target.value)}
-          />
+        <label>Prize / Winning Amount</label>
+        <input
+          className="modern-input"
+          value={matchForm.prize}
+          onChange={(e) => updateField("prize", e.target.value)}
+          placeholder="Example: 200 coins / ₹100"
+        />
 
-          <label>Entry Fee</label>
-          <input
-            type="number"
-            className="modern-input"
-            value={form.entryFee}
-            onChange={(e) => updateField("entryFee", e.target.value)}
-          />
+        <label>Map</label>
+        <select
+          className="modern-input"
+          value={matchForm.map}
+          onChange={(e) => updateField("map", e.target.value)}
+        >
+          <option>Bermuda</option>
+          <option>Purgatory</option>
+          <option>Kalahari</option>
+        </select>
 
-          <label>Per Kill Reward</label>
-          <input
-            type="number"
-            className="modern-input"
-            value={form.perKillReward}
-            onChange={(e) => updateField("perKillReward", e.target.value)}
-          />
+        <label>Start Time</label>
+        <input
+          className="modern-input"
+          type="datetime-local"
+          value={matchForm.startTime}
+          onChange={(e) => updateField("startTime", e.target.value)}
+        />
 
-          <label>Max Players</label>
-          <input
-            type="number"
-            className="modern-input"
-            value={form.maxPlayers}
-            onChange={(e) => updateField("maxPlayers", e.target.value)}
-          />
+        <label>Room ID</label>
+        <input
+          className="modern-input"
+          value={matchForm.roomId}
+          onChange={(e) => updateField("roomId", e.target.value)}
+        />
 
-          <label>Prize Model (1st, 2nd, etc)</label>
-          <input
-            className="modern-input"
-            value={form.prizeModel}
-            onChange={(e) => updateField("prizeModel", e.target.value)}
-          />
+        <label>Room Password</label>
+        <input
+          className="modern-input"
+          value={matchForm.roomPassword}
+          onChange={(e) => updateField("roomPassword", e.target.value)}
+        />
 
-          <label>Image URL</label>
-          <input
-            className="modern-input"
-            value={form.imageUrl}
-            onChange={(e) => updateField("imageUrl", e.target.value)}
-          />
-
-          <label>Rules</label>
+        {/* RULES */}
+        <label>Rules</label>
+        <div style={{ display: "flex", gap: 10 }}>
           <textarea
             className="modern-input"
-            value={form.rules}
+            style={{ flex: 1, height: 180 }}
+            value={matchForm.rules}
             onChange={(e) => updateField("rules", e.target.value)}
+            placeholder="Enter rules or click button →"
           />
-
-          <label>Start Time</label>
-          <input
-            type="datetime-local"
-            className="modern-input"
-            value={form.startTime}
-            onChange={(e) => updateField("startTime", e.target.value)}
-          />
-
           <button
-            className="btn"
-            disabled={creating}
-            style={{ marginTop: 10 }}
+            type="button"
+            className="btn small"
+            onClick={() => updateField("rules", defaultRules)}
+            style={{ whiteSpace: "nowrap", height: 40 }}
           >
-            {creating ? "Creating..." : "Create Match"}
+            Use Default Rules
           </button>
-        </form>
-      </div>
+        </div>
 
-      {/* ---------------- TOP-UP REQUESTS ---------------- */}
-      <h4>Top-up Requests</h4>
+        <button className="btn" type="submit">Create Match</button>
+      </form>
+
+      {/* ---------------------- TOPUP REQUESTS ---------------------- */}
+      <h4 style={{ marginTop: 30 }}>Top-up Requests</h4>
       {requests.topup.length === 0 ? (
         <p className="muted-small">No topups.</p>
       ) : (
@@ -217,7 +270,7 @@ export default function AdminPanel({
         ))
       )}
 
-      {/* ---------------- WITHDRAW REQUESTS ---------------- */}
+      {/* ---------------------- WITHDRAW REQUESTS ---------------------- */}
       <h4 style={{ marginTop: 16 }}>Withdraw Requests</h4>
       {requests.withdraw.length === 0 ? (
         <p className="muted-small">No withdrawals.</p>
