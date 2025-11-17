@@ -47,6 +47,9 @@ export default function Dashboard({ user }) {
   const audioRef = useRef(null);
   const selectAudioRef = useRef(null);
 
+  // admin create/edit UI state (optional small helpers)
+  const [adminCreateOpen, setAdminCreateOpen] = useState(false);
+
   const navigate = useNavigate();
   const adminEmail = "esportsimperial50@gmail.com";
 
@@ -180,8 +183,9 @@ export default function Dashboard({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.uid, user.email, user.displayName]);
 
+  // load matches when matches tab or on initial
   useEffect(() => {
-    if (activeTab !== "matches") return;
+    if (activeTab !== "matches" && activeTab !== "home") return;
     let mounted = true;
     (async () => {
       try {
@@ -197,6 +201,7 @@ export default function Dashboard({ user }) {
     return () => (mounted = false);
   }, [activeTab]);
 
+  // admin pending requests
   useEffect(() => {
     if (profile?.email !== adminEmail) return;
     (async () => {
@@ -280,6 +285,7 @@ export default function Dashboard({ user }) {
     }
   }
 
+  // admin approve/reject
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
     await updateDoc(ref, { status: "approved", processedAt: serverTimestamp() });
@@ -350,6 +356,7 @@ export default function Dashboard({ user }) {
       setAvatarSelecting(false);
     }
   }
+
   useEffect(() => {
     try {
       audioRef.current = new Audio("/levelup.mp3");
@@ -365,6 +372,58 @@ export default function Dashboard({ user }) {
     }
   }, []);
 
+  // ---------------------------
+  // JOIN integration: when clicking Join from MatchList we open MatchDetails and trigger join
+  // ---------------------------
+  async function handleJoinFromList(match) {
+    // focus the selected match
+    setSelectedMatch(match);
+    setActiveTab("matches");
+
+    // trigger global join function inside MatchDetails (it exposes window.joinMatchDirect)
+    // delay a bit so MatchDetails mounts first
+    setTimeout(() => {
+      if (typeof window.joinMatchDirect === "function") {
+        try { window.joinMatchDirect(); } catch (e) { /* ignore */ }
+      }
+    }, 350);
+  }
+
+  // ---------------------------
+  // Admin helpers: create / edit / delete match (exposed to AdminPanel)
+  // AdminPanel UI can call these props (we keep them simple)
+  // ---------------------------
+  async function createMatch(payload) {
+    // payload should include fields: title, mode, maxPlayers, entryFee, startTime, mapPool, autoRotate, revealDelayMinutes, type, killReward, imageUrl, status
+    const docRef = await addDoc(collection(db, "matches"), {
+      ...payload,
+      createdAt: serverTimestamp(),
+      playersJoined: [],
+      status: payload.status || "upcoming",
+    });
+    // refresh
+    const snap = await getDoc(docRef);
+    setMatches((prev) => [{ id: snap.id, ...snap.data() }, ...prev]);
+    return docRef.id;
+  }
+
+  async function editMatch(matchId, patch) {
+    await updateDoc(doc(db, "matches", matchId), patch);
+    // refresh local list
+    const snap = await getDoc(doc(db, "matches", matchId));
+    setMatches((prev) => prev.map((m) => (m.id === matchId ? { id: snap.id, ...snap.data() } : m)));
+    if (selectedMatch?.id === matchId) setSelectedMatch({ id: snap.id, ...snap.data() });
+  }
+
+  async function removeMatch(matchId) {
+    await deleteDoc(doc(db, "matches", matchId));
+    setMatches((prev) => prev.filter((m) => m.id !== matchId));
+    if (selectedMatch?.id === matchId) setSelectedMatch(null);
+  }
+
+  // ---------------------------
+  // Derived values / avatar grouping
+  // ---------------------------
   if (loading || !profile) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
@@ -506,6 +565,7 @@ export default function Dashboard({ user }) {
                   setSelectedMatch(m);
                   setActiveTab("matches");
                 }}
+                onJoin={(m) => handleJoinFromList(m)}
               />
             </section>
           </>
@@ -513,17 +573,17 @@ export default function Dashboard({ user }) {
 
         {activeTab === "matches" &&
           (selectedMatch ? (
-            <MatchDetails 
-  match={selectedMatch} 
-  onBack={() => setSelectedMatch(null)} 
-  user={user}
-  profile={profile}
-  updateProfileField={updateProfileField}
-/>
+            <MatchDetails
+              match={selectedMatch}
+              onBack={() => setSelectedMatch(null)}
+              user={user}
+              profile={profile}
+              updateProfileField={updateProfileField}
+            />
           ) : (
             <section className="panel glow-panel">
               <h3>Matches</h3>
-              <MatchList matches={matches} onSelect={setSelectedMatch} />
+              <MatchList matches={matches} onSelect={setSelectedMatch} onJoin={(m) => handleJoinFromList(m)} />
             </section>
           ))}
 
@@ -556,6 +616,9 @@ export default function Dashboard({ user }) {
             approveRequest={approveRequest}
             rejectRequest={rejectRequest}
             matches={matches}
+            createMatch={createMatch}
+            editMatch={editMatch}
+            deleteMatch={removeMatch}
           />
         )}
       </main>
@@ -626,6 +689,7 @@ export default function Dashboard({ user }) {
                               }}
                               disabled={avatarSelecting || locked}
                               onClick={() => selectAvatar(av.file)}
+                              title={locked ? `${av.meta.label} (locked)` : `Use this avatar — ${av.meta.label}`}
                             >
                               <img
                                 src={av.path}
@@ -684,4 +748,4 @@ export default function Dashboard({ user }) {
       )}
     </div>
   );
-    }
+}
