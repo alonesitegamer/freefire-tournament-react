@@ -513,7 +513,13 @@ export default function Dashboard({ user }) {
 
         {activeTab === "matches" &&
           (selectedMatch ? (
-            <MatchDetails match={selectedMatch} onBack={() => setSelectedMatch(null)} />
+            <MatchDetails 
+  match={selectedMatch} 
+  onBack={() => setSelectedMatch(null)} 
+  user={user}
+  profile={profile}
+  updateProfileField={updateProfileField}
+/>
           ) : (
             <section className="panel glow-panel">
               <h3>Matches</h3>
