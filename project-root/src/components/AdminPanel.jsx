@@ -2,19 +2,37 @@
 import React, { useEffect, useState } from "react";
 import {
   collection,
-  query,
-  orderBy,
-  onSnapshot,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
-  getDoc,
-  setDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
-const DEFAULT_RULES = `Tournament Format
+/**
+ * AdminPanel
+ *
+ * Features:
+ * - View matches list (from Firestore)
+ * - Create match (form)
+ * - Edit match
+ * - Delete match
+ * - Separate "Add Room Details" action (roomId + roomPassword, revealed 2-5 minutes before match)
+ * - Auto-rotate map system (bermuda -> purgatory -> kalahari). Manual override allowed.
+ * - Tournament mode: kills => 75 coins (enforced)
+ * - Custom mode: admin can set custom kill reward
+ * - Validates maxPlayers (2..48)
+ */
+
+const MAP_POOL = ["bermuda", "purgatory", "kalahari"];
+
+// Final fixed rules text (the global rules you provided)
+const GLOBAL_RULES = `Tournament Format
 
 Modes: Solo, Duo, Squad
 
@@ -138,361 +156,402 @@ The organizer reserves full rights to modify rules when required.
 
 All participants automatically accept the rules upon joining.`;
 
-const MAP_POOL = ["Bermuda", "Purgatory", "Kalahari"];
-
-export default function AdminPanel({
-  requests = { topup: [], withdraw: [] },
-  approveRequest = () => {},
-  rejectRequest = () => {},
-  matches: matchesProp = [],
-}) {
-  const [matches, setMatches] = useState([]);
+export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
+  const [matches, setMatches] = useState([]);
 
-  // modal state
-  const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showEdit, setShowEdit] = useState(null); // match id being edited
+  const [showRoomModal, setShowRoomModal] = useState(null); // match id for room details modal
 
-  // form fields
-  const [form, setForm] = useState({
+  // form state for create/edit
+  const defaultForm = {
     title: "",
-    mode: "Solo",
-    category: "Tournament",
-    map: "Bermuda",
-    autoRotate: false,
-    maxPlayersFixed: true,
-    maxPlayers: 4,
-    customMaxPlayers: 16,
+    mode: "custom", // custom, tournament, solo, duo, squad
     entryFee: 0,
-    prize: 0,
-    startAt: "", // ISO string or datetime-local value
-    roomId: "Will be given 2–5 minutes before match",
-    roomPassword: "Will be given 2–5 minutes before match",
-    rules: DEFAULT_RULES,
-  });
+    time: "", // ISO string / datetime-local
+    maxPlayers: 16,
+    map: "auto", // 'auto' or map name
+    autoRotate: true,
+    killReward: 0, // for custom mode
+    cover: "/covers/default.jpg",
+    rules: GLOBAL_RULES,
+    status: "upcoming",
+  };
+  const [form, setForm] = useState(defaultForm);
+
+  // room form
+  const [roomForm, setRoomForm] = useState({ roomId: "", roomPassword: "" });
 
   useEffect(() => {
-    const q = query(collection(db, "matches"), orderBy("startAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMatches(arr);
-      setLoading(false);
-    }, (err) => {
-      console.error("matches snapshot error", err);
-      setLoading(false);
-    });
-    return () => unsub();
+    loadMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // helper to reset modal form
+  async function loadMatches() {
+    setLoading(true);
+    try {
+      const col = collection(db, "matches");
+      const q = query(col, orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMatches(arr);
+    } catch (err) {
+      console.error("loadMatches", err);
+      alert("Failed to load matches.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Determine next map index for auto-rotate: looks at last created match with a defined map
+  async function computeNextMap() {
+    try {
+      // query latest match that has a map set (createdAt desc)
+      const col = collection(db, "matches");
+      const q = query(col, orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      const docs = snap.docs.map((d) => d.data()).filter(Boolean);
+      if (!docs || docs.length === 0) return MAP_POOL[0];
+      // find last match map that is in pool (skip 'auto' entries)
+      const lastUsed = docs.find((m) => m.map && MAP_POOL.includes(String(m.map).toLowerCase()));
+      let lastMap = lastUsed ? String(lastUsed.map).toLowerCase() : MAP_POOL[0];
+      const idx = MAP_POOL.indexOf(lastMap);
+      const next = MAP_POOL[(idx + 1) % MAP_POOL.length];
+      return next;
+    } catch (err) {
+      console.warn("computeNextMap error", err);
+      return MAP_POOL[0];
+    }
+  }
+
   function resetForm() {
-    setEditingId(null);
-    setForm({
-      title: "",
-      mode: "Solo",
-      category: "Tournament",
-      map: "Bermuda",
-      autoRotate: false,
-      maxPlayersFixed: true,
-      maxPlayers: 4,
-      customMaxPlayers: 16,
-      entryFee: 0,
-      prize: 0,
-      startAt: "",
-      roomId: "Will be given 2–5 minutes before match",
-      roomPassword: "Will be given 2–5 minutes before match",
-      rules: DEFAULT_RULES,
-    });
+    setForm({ ...defaultForm });
   }
 
-  async function getAndAdvanceRotationIndex() {
-    const ref = doc(db, "settings", "mapRotation");
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      // create initial doc
-      await setDoc(ref, { index: 0, pool: MAP_POOL });
-      return { map: MAP_POOL[0], newIndex: 1 };
+  // Validate form before create/update
+  function validateForm(f) {
+    if (!f.title || f.title.trim().length < 2) return "Enter a title";
+    if (!f.time) return "Select date/time";
+    const mp = Number(f.maxPlayers) || 0;
+    if (mp < 2 || mp > 48) return "maxPlayers must be between 2 and 48";
+    if (f.mode === "custom") {
+      const kr = Number(f.killReward);
+      if (!kr || kr <= 0) return "Set a valid kill reward for custom mode";
     }
-    const data = snap.data();
-    const idx = typeof data.index === "number" ? data.index : 0;
-    const pool = Array.isArray(data.pool) && data.pool.length ? data.pool : MAP_POOL;
-    const map = pool[idx % pool.length];
-    const newIndex = (idx + 1) % pool.length;
-    // write back new index
-    await updateDoc(ref, { index: newIndex, pool });
-    return { map, newIndex };
+    return null;
   }
 
-  async function handleCreateOrUpdate(e) {
-    e.preventDefault();
-    // validation
-    if (!form.title) return alert("Please enter a title");
-    if (isNaN(Number(form.entryFee))) return alert("Entry fee must be a number");
-    if (isNaN(Number(form.prize))) return alert("Prize must be a number");
-
-    // determine map
-    let selectedMap = form.map;
-    if (form.autoRotate) {
-      try {
-        const r = await getAndAdvanceRotationIndex();
-        selectedMap = r.map;
-      } catch (err) {
-        console.error("rotation error", err);
-        // fallback to chosen map
-        selectedMap = form.map || MAP_POOL[0];
-      }
-    }
-
-    const payload = {
-      title: form.title,
-      mode: form.mode,
-      category: form.category,
-      map: selectedMap,
-      autoRotate: !!form.autoRotate,
-      maxPlayers: form.maxPlayersFixed ? Number(form.maxPlayers) : Number(form.customMaxPlayers),
-      entryFee: Number(form.entryFee || 0),
-      prize: Number(form.prize || 0),
-      startAt: form.startAt ? new Date(form.startAt).toISOString() : null,
-      roomId: form.roomId || null,
-      roomPassword: form.roomPassword || null,
-      rules: form.rules || DEFAULT_RULES,
-      createdAt: new Date().toISOString(),
-      // optional counters
-      playersJoined: 0,
-    };
+  async function handleCreate(e) {
+    e && e.preventDefault();
+    const err = validateForm(form);
+    if (err) return alert(err);
 
     try {
-      if (editingId) {
-        const dref = doc(db, "matches", editingId);
-        await updateDoc(dref, payload);
-        alert("Match updated");
-      } else {
-        await addDoc(collection(db, "matches"), payload);
-        alert("Match created");
+      // enforce tournament kill reward
+      const payload = { ...form };
+      if (payload.mode === "tournament") {
+        payload.killReward = 75; // enforced
+      } else if (payload.mode !== "custom") {
+        // default for modes (solo/duo/squad) we set 75 for tournament only, others can have 0 or custom value
+        payload.killReward = payload.killReward || 0;
       }
+
+      // handle auto-rotate: if autoRotate true, compute next map and set as 'map' value unless admin chose manual map
+      if (payload.autoRotate && (payload.map === "auto" || !MAP_POOL.includes(payload.map))) {
+        payload.map = await computeNextMap();
+      } else if (payload.map === "auto") {
+        // if autoRotate false but map==='auto', pick first pool map
+        payload.map = MAP_POOL[0];
+      }
+
+      payload.maxPlayers = Number(payload.maxPlayers);
+      payload.entryFee = Number(payload.entryFee) || 0;
+      payload.createdAt = serverTimestamp();
+
+      const col = collection(db, "matches");
+      await addDoc(col, payload);
       resetForm();
-      setShowModal(false);
+      setShowCreate(false);
+      await loadMatches();
+      alert("Match created.");
     } catch (err) {
-      console.error("create/update match error", err);
-      alert("Failed to save match");
+      console.error("create match", err);
+      alert("Failed to create match.");
     }
   }
 
-  async function handleEdit(match) {
-    setEditingId(match.id);
+  async function openEdit(match) {
+    // clone match into form
+    const copy = { ...match };
+    // if this match map is in pool but original was created with auto-rotate we still allow edit
     setForm({
-      title: match.title || "",
-      mode: match.mode || "Solo",
-      category: match.category || "Tournament",
-      map: match.map || MAP_POOL[0],
-      autoRotate: !!match.autoRotate,
-      maxPlayersFixed: true,
-      maxPlayers: match.maxPlayers || 4,
-      customMaxPlayers: match.maxPlayers || 16,
-      entryFee: match.entryFee ?? 0,
-      prize: match.prize ?? 0,
-      startAt: match.startAt ? new Date(match.startAt).toISOString().slice(0, 16) : "",
-      roomId: match.roomId || "Will be given 2–5 minutes before match",
-      roomPassword: match.roomPassword || "Will be given 2–5 minutes before match",
-      rules: match.rules || DEFAULT_RULES,
+      title: copy.title || "",
+      mode: copy.mode || "custom",
+      entryFee: copy.entryFee || 0,
+      time: copy.time || "",
+      maxPlayers: copy.maxPlayers || 16,
+      map: copy.map || "auto",
+      autoRotate: !!copy.autoRotate,
+      killReward: copy.killReward || 0,
+      cover: copy.cover || "/covers/default.jpg",
+      rules: copy.rules || GLOBAL_RULES,
+      status: copy.status || "upcoming",
     });
-    setShowModal(true);
+    setShowEdit(match.id);
+  }
+
+  async function handleUpdate(e) {
+    e && e.preventDefault();
+    if (!showEdit) return;
+    const err = validateForm(form);
+    if (err) return alert(err);
+
+    try {
+      const ref = doc(db, "matches", showEdit);
+      const payload = { ...form };
+      if (payload.mode === "tournament") payload.killReward = 75;
+      payload.maxPlayers = Number(payload.maxPlayers);
+      payload.entryFee = Number(payload.entryFee) || 0;
+      payload.updatedAt = serverTimestamp();
+
+      // if autoRotate true and map is 'auto' or not in pool, compute next map
+      if (payload.autoRotate && (payload.map === "auto" || !MAP_POOL.includes(payload.map))) {
+        payload.map = await computeNextMap();
+      } else if (payload.map === "auto") {
+        payload.map = MAP_POOL[0];
+      }
+
+      await updateDoc(ref, payload);
+      setShowEdit(null);
+      resetForm();
+      await loadMatches();
+      alert("Match updated.");
+    } catch (err) {
+      console.error("update match", err);
+      alert("Failed to update match.");
+    }
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("Delete this match? This cannot be undone.")) return;
+    if (!confirm("Delete match? This is permanent.")) return;
     try {
       await deleteDoc(doc(db, "matches", id));
-      alert("Match deleted");
+      await loadMatches();
+      alert("Match deleted.");
     } catch (err) {
-      console.error("delete match error", err);
-      alert("Failed to delete");
+      console.error("delete match", err);
+      alert("Failed to delete match.");
     }
   }
 
-  // helper to toggle manual override of map for a match (admin convenience)
-  async function overrideMap(matchId, newMap) {
+  // open room modal (separate workflow per your choice B)
+  function openRoomDetails(match) {
+    setShowRoomModal(match.id);
+    setRoomForm({ roomId: match.roomId || "", roomPassword: match.roomPassword || "" });
+  }
+
+  async function saveRoomDetails(e) {
+    e && e.preventDefault();
+    if (!showRoomModal) return;
     try {
-      await updateDoc(doc(db, "matches", matchId), { map: newMap, autoRotate: false });
-      alert("Map updated");
+      await updateDoc(doc(db, "matches", showRoomModal), {
+        roomId: roomForm.roomId || null,
+        roomPassword: roomForm.roomPassword || null,
+        roomUpdatedAt: serverTimestamp(),
+      });
+      setShowRoomModal(null);
+      await loadMatches();
+      alert("Room details saved.");
     } catch (err) {
-      console.error("override map error", err);
-      alert("Failed to update map");
+      console.error("save room", err);
+      alert("Failed to save room details.");
     }
   }
 
+  // small UI helpers
+  function modeRequiresKillReward(mode) {
+    return mode === "custom";
+  }
+
+  // Render
   return (
     <section className="panel">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3>Admin Panel</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h3>Admin Panel — Matches</h3>
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            className="btn"
-            onClick={() => {
-              resetForm();
-              setShowModal(true);
-            }}
-          >
-            Create Match
-          </button>
+          <button className="btn" onClick={() => { setShowCreate(true); resetForm(); }}>Create Match</button>
+          <button className="btn ghost" onClick={() => loadMatches()}>Refresh</button>
         </div>
       </div>
 
-      <h4 style={{ marginTop: 12 }}>Top-up Requests</h4>
-      {requests.topup.length === 0 ? (
-        <p className="muted-small">No topups.</p>
-      ) : (
-        requests.topup.map((r) => (
-          <div key={r.id} className="admin-row">
-            <span>{r.email} | ₹{r.amount} | UPI:{r.upiId}</span>
-            <div>
-              <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
-              <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
-            </div>
-          </div>
-        ))
-      )}
-
-      <h4 style={{ marginTop: 16 }}>Withdraw Requests</h4>
-      {requests.withdraw.length === 0 ? (
-        <p className="muted-small">No withdrawals.</p>
-      ) : (
-        requests.withdraw.map((r) => (
-          <div key={r.id} className="admin-row">
-            <span>
-              {r.email} | ₹{r.amount} | {r.type} {r.upiId ? `| UPI:${r.upiId}` : ""}
-            </span>
-            <div>
-              <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
-              <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
-            </div>
-          </div>
-        ))
-      )}
-
-      <h4 style={{ marginTop: 18 }}>Matches</h4>
-      {loading ? (
-        <p className="muted-small">Loading matches…</p>
-      ) : matches.length === 0 ? (
-        <p className="muted-small">No matches created.</p>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <th style={{ padding: "8px 6px" }}>Title</th>
-                <th>Mode</th>
-                <th>Map</th>
-                <th>Entry (₹)</th>
-                <th>Prize (₹)</th>
-                <th>Start</th>
-                <th>Players</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+      <div style={{ marginTop: 12 }}>
+        <h4>Existing Matches</h4>
+        {loading ? <p className="muted-small">Loading...</p> : (
+          matches.length === 0 ? <p className="muted-small">No matches created.</p> : (
+            <div className="admin-match-list">
               {matches.map((m) => (
-                <tr key={m.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                  <td style={{ padding: "10px 6px", fontWeight: 700 }}>{m.title}</td>
-                  <td style={{ padding: "10px 6px" }}>{m.mode}</td>
-                  <td style={{ padding: "10px 6px" }}>
-                    {m.map} {m.autoRotate ? <span style={{ opacity: 0.7, fontSize: 12 }}>(auto)</span> : null}
-                  </td>
-                  <td style={{ padding: "10px 6px" }}>{m.entryFee ?? 0}</td>
-                  <td style={{ padding: "10px 6px" }}>{m.prize ?? 0}</td>
-                  <td style={{ padding: "10px 6px" }}>{m.startAt ? new Date(m.startAt).toLocaleString() : "TBD"}</td>
-                  <td style={{ padding: "10px 6px" }}>{m.playersJoined ?? 0} / {m.maxPlayers ?? "-"}</td>
-                  <td style={{ padding: "10px 6px", display: "flex", gap: 8 }}>
-                    <button className="btn small" onClick={() => handleEdit(m)}>Edit</button>
-                    <button className="btn small ghost" onClick={() => handleDelete(m.id)}>Delete</button>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {/* quick map override */}
-                      <select
-                        value={m.map}
-                        onChange={(e) => overrideMap(m.id, e.target.value)}
-                        style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,0.05)", padding: "6px", borderRadius: 8 }}
-                      >
-                        {MAP_POOL.map((mp) => <option key={mp} value={mp}>{mp}</option>)}
-                      </select>
+                <div key={m.id} className="admin-row" style={{ alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700 }}>{m.title} <span style={{ color: "var(--muted)", fontSize: 12 }}>({m.mode})</span></div>
+                    <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>
+                      Map: <strong>{m.map}</strong> • Max: <strong>{m.maxPlayers}</strong> • Entry: <strong>₹{m.entryFee}</strong> • Kill Reward: <strong>{m.killReward || 0}</strong>
                     </div>
-                  </td>
-                </tr>
+                    <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>
+                      Room: {m.roomId ? <span> {m.roomId} / <small>{m.roomPassword || "-"}</small></span> : <em>Not revealed</em>}
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <small className="muted-small">{m.rules ? (m.rules.length > 160 ? m.rules.slice(0, 160) + "…" : m.rules) : "No rules"}</small>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
+                    <button className="btn small" onClick={() => openEdit(m)}>Edit</button>
+                    <button className="btn small ghost" onClick={() => openRoomDetails(m)}>{m.roomId ? "Update Room" : "Add Room Details"}</button>
+                    <button className="btn small ghost" onClick={() => handleDelete(m.id)}>Delete</button>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* CREATE MODAL */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modern-title">Create Match</h3>
+            <form className="admin-form" onSubmit={handleCreate}>
+              <label>Title</label>
+              <input className="modern-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+
+              <label>Mode</label>
+              <select className="modern-input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+                <option value="custom">Custom (1v1 / special)</option>
+                <option value="tournament">Tournament (BR)</option>
+                <option value="solo">Solo</option>
+                <option value="duo">Duo</option>
+                <option value="squad">Squad</option>
+              </select>
+
+              <label>Entry Fee (₹)</label>
+              <input type="number" min="0" className="modern-input" value={form.entryFee} onChange={(e) => setForm({ ...form, entryFee: e.target.value })} />
+
+              <label>Scheduled Time</label>
+              <input type="datetime-local" className="modern-input" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+
+              <label>Max Players (2 - 48)</label>
+              <input type="number" min="2" max="48" className="modern-input" value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: e.target.value })} />
+
+              <label>Map</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select className="modern-input" value={form.map} onChange={(e) => setForm({ ...form, map: e.target.value })}>
+                  <option value="auto">Auto (use rotation)</option>
+                  {MAP_POOL.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <label style={{ alignSelf: "center", display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="checkbox" checked={form.autoRotate} onChange={(e) => setForm({ ...form, autoRotate: e.target.checked })} />
+                  Auto-rotate
+                </label>
+              </div>
+
+              {modeRequiresKillReward(form.mode) && (
+                <>
+                  <label>Kill Reward (coins) — Custom mode</label>
+                  <input type="number" min="1" className="modern-input" value={form.killReward} onChange={(e) => setForm({ ...form, killReward: e.target.value })} />
+                </>
+              )}
+
+              <label>Cover image (url)</label>
+              <input className="modern-input" value={form.cover} onChange={(e) => setForm({ ...form, cover: e.target.value })} />
+
+              <label>Rules (editable)</label>
+              <textarea className="modern-input" rows={6} value={form.rules} onChange={(e) => setForm({ ...form, rules: e.target.value })} />
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn small ghost" onClick={() => setShowCreate(false)}>Cancel</button>
+                <button className="btn small" type="submit">Create</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => { setShowModal(false); resetForm(); }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
-            <h3 className="modern-title">{editingId ? "Edit Match" : "Create Match"}</h3>
-            <form onSubmit={handleCreateOrUpdate}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <input
-                  className="modern-input"
-                  placeholder="Title"
-                  value={form.title}
-                  onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
-                  required
-                />
-                <select className="modern-input" value={form.mode} onChange={(e) => setForm((s) => ({ ...s, mode: e.target.value }))}>
-                  <option>Solo</option>
-                  <option>Duo</option>
-                  <option>Squad</option>
-                  <option>Custom</option>
-                  <option>Tournament</option>
+      {/* EDIT MODAL */}
+      {showEdit && (
+        <div className="modal-overlay" onClick={() => { setShowEdit(null); resetForm(); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modern-title">Edit Match</h3>
+            <form className="admin-form" onSubmit={handleUpdate}>
+              <label>Title</label>
+              <input className="modern-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+
+              <label>Mode</label>
+              <select className="modern-input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+                <option value="custom">Custom (1v1 / special)</option>
+                <option value="tournament">Tournament (BR)</option>
+                <option value="solo">Solo</option>
+                <option value="duo">Duo</option>
+                <option value="squad">Squad</option>
+              </select>
+
+              <label>Entry Fee (₹)</label>
+              <input type="number" min="0" className="modern-input" value={form.entryFee} onChange={(e) => setForm({ ...form, entryFee: e.target.value })} />
+
+              <label>Scheduled Time</label>
+              <input type="datetime-local" className="modern-input" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+
+              <label>Max Players (2 - 48)</label>
+              <input type="number" min="2" max="48" className="modern-input" value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: e.target.value })} />
+
+              <label>Map</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select className="modern-input" value={form.map} onChange={(e) => setForm({ ...form, map: e.target.value })}>
+                  <option value="auto">Auto (use rotation)</option>
+                  {MAP_POOL.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
-
-                <select className="modern-input" value={form.category} onChange={(e) => setForm((s) => ({ ...s, category: e.target.value }))}>
-                  <option value="Tournament">Tournament</option>
-                  <option value="Custom">Custom</option>
-                  <option value="Classic">Classic</option>
-                </select>
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <select className="modern-input" value={form.map} onChange={(e) => setForm((s) => ({ ...s, map: e.target.value }))} style={{ flex: 1 }}>
-                    {MAP_POOL.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <input type="checkbox" checked={form.autoRotate} onChange={(e) => setForm((s) => ({ ...s, autoRotate: e.target.checked }))} />
-                    Auto-rotate
-                  </label>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="radio" checked={form.maxPlayersFixed} onChange={() => setForm((s) => ({ ...s, maxPlayersFixed: true }))} />
-                    Fixed
-                  </label>
-                  <select className="modern-input" value={form.maxPlayers} onChange={(e) => setForm((s) => ({ ...s, maxPlayers: e.target.value }))} style={{ flex: 1 }}>
-                    {[2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="radio" checked={!form.maxPlayersFixed} onChange={() => setForm((s) => ({ ...s, maxPlayersFixed: false }))} />
-                    Custom
-                  </label>
-                  <input className="modern-input" type="number" min={1} max={500} value={form.customMaxPlayers} onChange={(e) => setForm((s) => ({ ...s, customMaxPlayers: e.target.value }))} style={{ flex: 1 }} />
-                </div>
-
-                <input className="modern-input" type="number" placeholder="Entry Fee (number)" value={form.entryFee} onChange={(e) => setForm((s) => ({ ...s, entryFee: e.target.value }))} />
-                <input className="modern-input" type="number" placeholder="Prize (number)" value={form.prize} onChange={(e) => setForm((s) => ({ ...s, prize: e.target.value }))} />
-
-                <input className="modern-input" type="datetime-local" value={form.startAt} onChange={(e) => setForm((s) => ({ ...s, startAt: e.target.value }))} />
-                <input className="modern-input" placeholder="Room ID (or leave default)" value={form.roomId} onChange={(e) => setForm((s) => ({ ...s, roomId: e.target.value }))} />
-
-                <input className="modern-input" placeholder="Room Password" value={form.roomPassword} onChange={(e) => setForm((s) => ({ ...s, roomPassword: e.target.value }))} />
-                <textarea className="modern-input" placeholder="Rules" value={form.rules} onChange={(e) => setForm((s) => ({ ...s, rules: e.target.value }))} style={{ minHeight: 120, gridColumn: "1 / -1" }} />
-
+                <label style={{ alignSelf: "center", display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="checkbox" checked={form.autoRotate} onChange={(e) => setForm({ ...form, autoRotate: e.target.checked })} />
+                  Auto-rotate
+                </label>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-                <button type="button" className="btn small ghost" onClick={() => { setShowModal(false); resetForm(); }}>Cancel</button>
-                <button className="btn small" type="submit">{editingId ? "Save changes" : "Create Match"}</button>
+              {modeRequiresKillReward(form.mode) && (
+                <>
+                  <label>Kill Reward (coins) — Custom mode</label>
+                  <input type="number" min="1" className="modern-input" value={form.killReward} onChange={(e) => setForm({ ...form, killReward: e.target.value })} />
+                </>
+              )}
+
+              <label>Cover image (url)</label>
+              <input className="modern-input" value={form.cover} onChange={(e) => setForm({ ...form, cover: e.target.value })} />
+
+              <label>Rules (editable)</label>
+              <textarea className="modern-input" rows={6} value={form.rules} onChange={(e) => setForm({ ...form, rules: e.target.value })} />
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn small ghost" onClick={() => { setShowEdit(null); resetForm(); }}>Cancel</button>
+                <button className="btn small" type="submit">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ROOM DETAILS MODAL (separate workflow B) */}
+      {showRoomModal && (
+        <div className="modal-overlay" onClick={() => setShowRoomModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modern-title">Add / Update Room Details</h3>
+            <form className="admin-form" onSubmit={saveRoomDetails}>
+              <label>Room ID</label>
+              <input className="modern-input" value={roomForm.roomId} onChange={(e) => setRoomForm({ ...roomForm, roomId: e.target.value })} />
+              <label>Room Password</label>
+              <input className="modern-input" value={roomForm.roomPassword} onChange={(e) => setRoomForm({ ...roomForm, roomPassword: e.target.value })} />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="btn small ghost" type="button" onClick={() => setShowRoomModal(null)}>Cancel</button>
+                <button className="btn small" type="submit">Save</button>
               </div>
             </form>
           </div>
