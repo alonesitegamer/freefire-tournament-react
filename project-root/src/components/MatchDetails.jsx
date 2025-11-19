@@ -1,212 +1,165 @@
 // src/components/MatchDetails.jsx
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  arrayUnion,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function MatchDetails({
-  match: initialMatch,
-  onBack,
-  user,
-  profile,
-  updateProfileField,
-}) {
+export default function MatchDetails({ match: initialMatch, onBack, user, profile, updateProfileField }) {
   const [match, setMatch] = useState(initialMatch);
-  const [loadingJoin, setLoadingJoin] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [loadingJoin, setLoadingJoin] = useState(false);
   const [now, setNow] = useState(Date.now());
 
-  // Expose join function so MatchList join works
-  useEffect(() => {
-    window.joinMatchDirect = () => {
-      handleJoin();
-    };
-  });
+  useEffect(() => setMatch(initialMatch), [initialMatch]);
 
-  // Sync match on change
   useEffect(() => {
-    setMatch(initialMatch);
-  }, [initialMatch]);
-
-  // detect if joined
-  useEffect(() => {
-    const players = match?.playersJoined || [];
-    setJoined(players.some((p) => p.uid === user.uid));
-  }, [match, user.uid]);
-
-  // refresh timer
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => setNow(Date.now()), 8000);
+    return () => clearInterval(t);
   }, []);
 
-  // refresh match from firestore
+  useEffect(() => {
+    const isJoined =
+      match?.playersJoined?.some((p) => p.uid === user.uid) || false;
+    setJoined(isJoined);
+  }, [match, user.uid]);
+
   async function refreshMatch() {
-    try {
-      const ref = doc(db, "matches", match.id);
-      const snap = await getDoc(ref);
-      if (snap.exists()) setMatch({ id: snap.id, ...snap.data() });
-    } catch (err) {
-      console.error("Match refresh error:", err);
-    }
+    const ref = doc(db, "matches", match.id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) setMatch({ id: snap.id, ...snap.data() });
   }
 
-  // JOIN MATCH
   async function handleJoin() {
-    if (!profile) return alert("Profile missing.");
+    if (joined) return alert("Already joined!");
 
-    let ingame = profile.username || profile.displayName || "";
-    if (!ingame) {
-      ingame = window.prompt("Enter your in-game username:", "");
-      if (!ingame) return alert("You must enter a username.");
-      await updateProfileField({ username: ingame });
+    let name = profile.username || profile.displayName || "";
+
+    if (!name) {
+      name = prompt("Enter your in-game name:");
+      if (!name) return alert("Username required!");
+      await updateProfileField({ username: name });
     }
 
-    const count = match.playersJoined?.length || 0;
-    if (match.maxPlayers && count >= match.maxPlayers)
-      return alert("Match is full.");
-
     setLoadingJoin(true);
-
     try {
-      const ref = doc(db, "matches", match.id);
-
-      await updateDoc(ref, {
+      await updateDoc(doc(db, "matches", match.id), {
         playersJoined: arrayUnion({
           uid: user.uid,
-          username: ingame,
+          username: name,
           joinedAt: serverTimestamp(),
         }),
       });
 
       await refreshMatch();
+      alert("Joined!");
       setJoined(true);
-      alert("Joined match successfully!");
     } catch (e) {
-      console.error("Join error:", e);
+      console.error("joinMatch error", e);
       alert("Failed to join match.");
     }
-
     setLoadingJoin(false);
   }
 
-  // Reveal time calculation
-  const revealAt = match?.revealAt?.seconds
+  // reveal logic
+  const revealAt = match.revealAt?.seconds
     ? match.revealAt.toDate().getTime()
-    : match?.revealAt
+    : match.revealAt
     ? new Date(match.revealAt).getTime()
     : null;
 
-  const revealReady = revealAt ? now >= revealAt : false;
+  const canReveal = joined && revealAt && now >= revealAt;
 
-  // Auto-rotate map
+  // auto-rotate
   const displayMap = useMemo(() => {
-    const pool =
-      match.mapPool?.length > 0
-        ? match.mapPool
-        : ["Bermuda", "Purgatory", "Kalahari"];
-
+    const pool = match.mapPool?.length ? match.mapPool : ["Bermuda", "Purgatory", "Kalahari"];
     if (!match.autoRotate) return match.map || pool[0];
-
     const created = match.createdAt?.seconds
       ? match.createdAt.toDate().getTime()
       : Date.now();
-
-    const minutes = Math.floor((now - created) / (1000 * 60));
-    return pool[minutes % pool.length];
+    const min = Math.floor((now - created) / (1000 * 60));
+    return pool[min % pool.length];
   }, [match, now]);
 
+  function copy(text) {
+    navigator.clipboard.writeText(text);
+    alert("Copied!");
+  }
+
   return (
-    <section className="panel match-details-view">
-      <button className="back-btn" onClick={onBack}>Back</button>
+    <section className="panel match-details-view premium-style">
+      <button className="back-btn" onClick={onBack}>← Back</button>
 
-      <div className="match-details-header">
-        <div>
-          <h2>{match.title}</h2>
-          <div className="match-meta">{match.mode}</div>
+      <div className="match-header-premium">
+        <h2>{match.title}</h2>
+        <div className="mini-meta">
+          {match.mode} • Entry {match.entryFee} • {match.playersJoined?.length}/{match.maxPlayers}
         </div>
 
-        <div style={{ textAlign: "right" }}>
-          <div className="match-meta">Entry: {match.entryFee}</div>
-          <div style={{ fontWeight: 800, marginTop: 6 }}>
-            {match.playersJoined?.length || 0}/{match.maxPlayers}
-          </div>
-
-          <button
-            className="btn"
-            disabled={loadingJoin || joined}
-            onClick={handleJoin}
-            style={{ marginTop: 10 }}
-          >
-            {joined ? "Joined" : loadingJoin ? "Joining..." : "Join"}
-          </button>
-        </div>
+        <button
+          className={`join-premium-btn ${joined ? "joined" : ""}`}
+          onClick={handleJoin}
+          disabled={loadingJoin || joined}
+        >
+          {joined ? "Joined ✓" : loadingJoin ? "Joining..." : "Join Match"}
+        </button>
       </div>
 
       <img
-        className="match-details-image"
-        src={match.imageUrl || "/match-default.jpg"}
-        alt=""
+        className="match-big-banner"
+        src={match.imageUrl || "/bt.jpg"}
+        alt="Match"
       />
 
-      <div className="match-details-time">
-        Starts:{" "}
-        {match.startTime?.seconds
-          ? match.startTime.toDate().toLocaleString()
-          : "TBD"}
-      </div>
+      {/* 🔐 LOCKED VIEW */}
+      {!joined && (
+        <div className="locked-overlay">
+          <div className="locked-content">
+            <h3>Join to Unlock Details</h3>
+            <p>Room ID, Password, Rules & Map become visible only after joining.</p>
+            <button className="join-small-btn" onClick={handleJoin}>
+              Join Now
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* ROOM DETAILS */}
-      <div className="room-details">
-        <h4>Room Details</h4>
+      {/* 🔓 REVEALED VIEW */}
+      {joined && (
+        <div className="details-container">
+          <h3 className="section-title">Room Details</h3>
 
-        {/* ❌ Not joined → cannot see details */}
-        {!joined && (
-          <p style={{ color: "#f77" }}>
-            Join the match to unlock room details.
+          {!canReveal ? (
+            <p className="muted">Room will be revealed shortly before match.</p>
+          ) : (
+            <>
+              <div className="detail-row">
+                <strong>Room ID:</strong> {match.roomID || "TBD"}
+                <button className="copy-btn" onClick={() => copy(match.roomID)}>Copy</button>
+              </div>
+
+              <div className="detail-row">
+                <strong>Password:</strong> {match.roomPassword || "—"}
+                <button className="copy-btn" onClick={() => copy(match.roomPassword)}>Copy</button>
+              </div>
+            </>
+          )}
+
+          <div className="detail-row">
+            <strong>Map:</strong> {displayMap}
+          </div>
+
+          <div className="detail-row">
+            <strong>Mode:</strong> {match.mode}
+          </div>
+
+          <h3 className="section-title" style={{ marginTop: 20 }}>Rules</h3>
+          <p className="rules-text">
+            1 Kill = {match.type === "custom" ? match.killReward : 75} coins.{"\n"}
+            No teaming, hacking, exploiting or emulator unless stated.{"\n"}
+            Admin decisions are final.{"\n"}
+            Room ID is private — do not share.
           </p>
-        )}
-
-        {/* 🟡 Joined but reveal not ready */}
-        {joined && !revealReady && (
-          <p>
-            Room ID & Password will be revealed{" "}
-            {match.revealDelayMinutes || 5} minutes before match start.
-          </p>
-        )}
-
-        {/* 🟢 Joined + reveal time reached */}
-        {joined && revealReady && (
-          <>
-            <p><strong>ID:</strong> {match.roomID || "Not set"}</p>
-            <p><strong>Password:</strong> {match.roomPassword || "Not set"}</p>
-          </>
-        )}
-
-        <p><strong>Map:</strong> {displayMap} {match.autoRotate ? "(auto)" : ""}</p>
-        <p><strong>Mode:</strong> {match.mode}</p>
-      </div>
-
-      {/* RULES */}
-      <div className="match-rules">
-        <h4>Rules</h4>
-        <p style={{ whiteSpace: "pre-wrap" }}>
-{`Point System:
-1 Kill = ${
-  match.type === "custom"
-    ? (match.killReward || "Custom reward")
-    : 75
-} Coins
-
-No teaming, hacking, exploiting, macros.
-Organizer decisions are final.`}
-        </p>
-      </div>
+        </div>
+      )}
     </section>
   );
 }
