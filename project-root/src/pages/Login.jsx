@@ -1,78 +1,27 @@
 // src/pages/Login.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  sendEmailVerification,
   signInWithPopup,
   sendPasswordResetEmail,
-  signOut,
 } from "firebase/auth";
-import {
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  deleteDoc,
-} from "firebase/firestore";
-
 import { auth, db, provider } from "../firebase";
-import "../styles/Login.css";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
+import "../styles/Login.css"; // make sure this exists (you said you added it)
 
-function friendlyFirebaseMessage(code, fallback) {
-  if (!code) return fallback || "Something went wrong.";
-  const map = {
-    "auth/email-already-in-use": "This email is already registered. Try logging in or reset the password.",
-    "auth/invalid-email": "Please enter a valid email address.",
-    "auth/weak-password": "Password is too weak — use at least 6 characters.",
-    "auth/wrong-password": "Incorrect password. Try again or use 'Forgot Password'.",
-    "auth/user-not-found": "No account found with that email. Please register first.",
-    "auth/too-many-requests": "Too many attempts. Try again later.",
-    "auth/network-request-failed": "Network error. Check your connection.",
-  };
-  return map[code] ?? fallback ?? code;
-}
+/*
+  Login.jsx: Email/password + OTP verification for registration
+  - Option C: 6 large boxes OTP input
+  - Animated eye toggle (🙈 / 👀)
+  - Resend OTP with cooldown
+  - Dev fallback logs OTP to console if /api/send-otp not available
+*/
 
-// generate numeric OTP
-function genOTP() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-export default function LoginPage() {
-  const [isRegister, setIsRegister] = useState(false);
-  const [isResetMode, setIsResetMode] = useState(false);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [referral, setReferral] = useState("");
-
-  const [loading, setLoading] = useState(false);
-  const [pwLoading, setPwLoading] = useState(false); // little loader in password field
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  const [showPassword, setShowPassword] = useState(false);
-
-  const [awaitingVerifyUser, setAwaitingVerifyUser] = useState(null); // user object waiting for verification
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState(""); // UI code typed by user
-  const [devOtpHint, setDevOtpHint] = useState(null); // displayed only in dev mode
-
-  const navigate = useNavigate();
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  // create minimal user document in Firestore
-  async function saveInitialUser(user, referralCode = "") {
+function SaveInitialUserToFirestore(user, referralCode = "") {
+  // helper to create the user doc if not exists
+  return (async function () {
     try {
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
@@ -90,345 +39,556 @@ export default function LoginPage() {
           createdAt: serverTimestamp(),
         });
       }
-    } catch (e) {
-      console.error("saveInitialUser error:", e);
-    }
-  }
-
-  // Register (with OTP attempt)
-  async function handleRegister(e) {
-    e?.preventDefault?.();
-    setError(""); setNotice(""); setLoading(true); setDevOtpHint(null);
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const user = cred.user;
-
-      // save initial Firestore user
-      await saveInitialUser(user, referral);
-
-      // generate OTP to try to send via /sendOtp endpoint (if you have a backend)
-      const otp = genOTP();
-
-      // Try to POST to /sendOtp (if you have such endpoint) — if it fails we fallback
-      let sentOk = false;
-      try {
-        const res = await fetch("/sendOtp", {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify({ email: user.email, otp, uid: user.uid }),
-        });
-        if (res.ok) {
-          sentOk = true;
-        } else {
-          console.warn("sendOtp returned non-ok", res.status);
-        }
-      } catch (err) {
-        console.warn("sendOtp POST failed (no endpoint?)", err);
-      }
-
-      if (sentOk) {
-        setAwaitingVerifyUser({ uid: user.uid, email: user.email });
-        setOtpSent(true);
-        setNotice("OTP sent to your email. Enter it below to verify.");
-      } else {
-        // Fallback: in dev mode generate an OTP, save to Firestore and log it
-        if (import.meta.env.DEV) {
-          try {
-            // Save dev OTP in firestore collection 'devOtps' so UI can validate it
-            await addDoc(collection(db, "devOtps"), {
-              uid: user.uid,
-              email: user.email,
-              otp,
-              createdAt: serverTimestamp(),
-              expiresAt: new Date(Date.now() + 1000 * 60 * 10), // 10 min
-            });
-            console.debug(`[DEV OTP] for ${user.email} => ${otp}`);
-            setDevOtpHint(`DEV OTP logged to console and saved to Firestore (10m).`);
-            setAwaitingVerifyUser({ uid: user.uid, email: user.email });
-            setOtpSent(true);
-            setNotice("DEV OTP created — check browser console (dev only). Enter OTP below to verify.");
-          } catch (err) {
-            console.error("dev OTP save error", err);
-            // fallback to email verification link
-            await sendEmailVerification(user);
-            setAwaitingVerifyUser({ uid: user.uid, email: user.email });
-            setNotice("Verification email sent. Click the link in your inbox to verify.");
-          }
-        } else {
-          // Production fallback — use Firebase sendEmailVerification (link)
-          await sendEmailVerification(user, {
-            // You can pass actionCodeSettings here if you want to control the continue URL
-          });
-          setAwaitingVerifyUser({ uid: user.uid, email: user.email });
-          setNotice("Verification email sent. Click the link in your inbox to verify.");
-        }
-      }
     } catch (err) {
-      console.error("Registration error:", err);
-      setError(friendlyFirebaseMessage(err.code, err.message));
-    } finally {
-      if (mountedRef.current) setLoading(false);
+      console.error("Firestore user creation failed:", err);
     }
+  })();
+}
+
+export default function Login() {
+  const navigate = useNavigate();
+
+  // auth UI
+  const [isRegister, setIsRegister] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
+
+  // fields
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [referral, setReferral] = useState("");
+
+  // UX state
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  // password reveal
+  const [showPwd, setShowPwd] = useState(false);
+  const pwdAnimateRef = useRef(null);
+
+  // OTP flow
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpSentTo, setOtpSentTo] = useState(null);
+  const [otpRequestId, setOtpRequestId] = useState(null); // optional server id
+  const [devOtp, setDevOtp] = useState(null); // dev fallback OTP store
+  const [otpInputs, setOtpInputs] = useState(["", "", "", "", "", ""]);
+  const inputsRef = useRef([]);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const resendTimerRef = useRef(null);
+
+  // helper: show errors with custom mapping
+  function showError(e) {
+    if (!e) {
+      setErr("");
+      return;
+    }
+    // custom messages for common Firebase errors
+    const msg = (e && e.code) || (e && e.message) || String(e);
+    if (msg.includes("auth/invalid-email")) setErr("Please enter a valid email address.");
+    else if (msg.includes("auth/weak-password")) setErr("Password should be at least 6 characters.");
+    else if (msg.includes("auth/email-already-in-use")) setErr("Email already in use. Try signing in.");
+    else if (msg.includes("auth/wrong-password")) setErr("Incorrect password. Try again.");
+    else if (msg.includes("auth/user-not-found")) setErr("No account found with this email.");
+    else setErr(typeof e === "string" ? e : msg);
   }
 
-  // Resend verification email (or resend OTP in dev)
-  async function resendVerification() {
-    setError(""); setNotice(""); setLoading(true);
-    try {
-      const user = auth.currentUser;
-      if (user && !user.emailVerified) {
-        // Attempt to resend link
-        await sendEmailVerification(user);
-        setNotice("Verification email resent — check your inbox.");
-      } else if (awaitingVerifyUser) {
-        // If we have a still-pending user and dev mode, regenerate dev-OTP
-        if (import.meta.env.DEV) {
-          const otp = genOTP();
-          await addDoc(collection(db, "devOtps"), {
-            uid: awaitingVerifyUser.uid,
-            email: awaitingVerifyUser.email,
-            otp,
-            createdAt: serverTimestamp(),
-            expiresAt: new Date(Date.now() + 1000 * 60 * 10),
-          });
-          console.debug(`[DEV OTP] resend for ${awaitingVerifyUser.email} => ${otp}`);
-          setDevOtpHint("DEV OTP resent and logged to console (dev only).");
-          setNotice("DEV OTP resent — check console.");
-          setOtpSent(true);
-        } else {
-          // Production - we can't send OTP, fallback to link
-          setNotice("No OTP service available. Please use verification link sent earlier.");
+  // OTP helpers
+  useEffect(() => {
+    return () => clearInterval(resendTimerRef.current);
+  }, []);
+
+  function startResendCooldown(seconds = 30) {
+    setResendCooldown(seconds);
+    clearInterval(resendTimerRef.current);
+    resendTimerRef.current = setInterval(() => {
+      setResendCooldown((s) => {
+        if (s <= 1) {
+          clearInterval(resendTimerRef.current);
+          return 0;
         }
-      } else {
-        setError("No pending verification found.");
-      }
-    } catch (err) {
-      console.error("resend error", err);
-      setError("Failed to resend verification — try again.");
-    } finally {
-      setLoading(false);
-    }
+        return s - 1;
+      });
+    }, 1000);
   }
 
-  // Validate OTP from Firestore dev collection (dev fallback)
-  async function validateDevOtpAndFinalize() {
-    setError(""); setLoading(true);
+  async function callSendOtp(emailToSend) {
+    // Try server endpoint first
     try {
-      if (!awaitingVerifyUser) throw new Error("No pending user.");
-      // look for matching OTP in devOtps
-      const q = query(collection(db, "devOtps"), where("email", "==", awaitingVerifyUser.email));
-      const snap = await getDocs(q);
-      let found = null;
-      snap.forEach((d) => {
-        const data = d.data();
-        // match otp and not expired
-        if (data.otp === otpCode && new Date(data.expiresAt?.toMillis ? data.expiresAt.toMillis() : data.expiresAt).getTime() > Date.now()) {
-          found = { id: d.id, data };
-        }
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToSend }),
       });
 
-      if (!found) {
-        setError("OTP not found or expired.");
-        return;
+      if (!res.ok) {
+        // server returned error — allow fallback for dev
+        const text = await res.text();
+        console.warn("send-otp failed:", res.status, text);
+        throw new Error("send-otp failed");
       }
 
-      // mark user as verified — easiest approach: update users doc (your code treats emailVerified as firebase auth property,
-      // but we can't set firebase.auth().currentUser.emailVerified from client. We'll instead keep a flag in users doc
-      // and also signOut current auth to force re-login. For dev this suffices.
-      // In production you'd verify OTP on the server and set a custom claim or call Admin SDK.
-
-      // find user by uid
-      const userRef = doc(db, "users", awaitingVerifyUser.uid);
-      await setDoc(userRef, { emailVerified: true }, { merge: true });
-
-      // cleanup dev OTP doc
-      await deleteDoc(doc(db, "devOtps", found.id));
-      setNotice("Verified (dev). You can now sign in.");
-      setAwaitingVerifyUser(null);
-      setOtpSent(false);
-      setOtpCode("");
-    } catch (err) {
-      console.error("validateDevOtp error", err);
-      setError("OTP validation failed.");
-    } finally {
-      setLoading(false);
+      const json = await res.json();
+      // expected shape: { ok: true, requestId?: "...", message?: "..."}
+      return { ok: true, requestId: json.requestId || null };
+    } catch (e) {
+      // Dev fallback: generate OTP locally and log it for developer to see
+      // IMPORTANT: only for dev/testing. Remove or disable in production.
+      if (import.meta.env && import.meta.env.DEV) {
+        const fallback = String(Math.floor(100000 + Math.random() * 900000));
+        console.info("%c[DEV-OTP] OTP for", "color: #8af", emailToSend, "=>", fallback);
+        return { ok: false, devOtp: fallback };
+      }
+      // if not dev, bubble up the error to show user
+      throw e;
     }
   }
 
-  // Login
-  async function handleLogin(e) {
-    e?.preventDefault?.();
-    setError(""); setLoading(true);
+  async function callVerifyOtp(emailToVerify, otp) {
+    // Attempt server verify (optional)
     try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const user = cred.user;
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToVerify, otp }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn("verify-otp failed:", res.status, text);
+        throw new Error("verify-otp failed");
+      }
+      const json = await res.json();
+      // expects { ok: true } if valid
+      return json.ok === true;
+    } catch (e) {
+      // If server isn't present, rely on devOtp fallback match
+      if (import.meta.env && import.meta.env.DEV) {
+        return otp === devOtp;
+      }
+      // If server exists but error, treat as invalid
+      console.error("verify-otp error:", e);
+      return false;
+    }
+  }
 
-      // reload user to get latest emailVerified
-      await user.reload();
+  // *** UI: OTP modal helpers ***
+  function openOtpModalFor(emailTo) {
+    setOtpInputs(["", "", "", "", "", ""]);
+    inputsRef.current = [];
+    setOtpModalOpen(true);
+    setOtpSentTo(emailTo);
+    setErr("");
+    setSuccessMsg("");
+    startResendCooldown(30);
+    // focus first input shortly after modal open
+    setTimeout(() => inputsRef.current[0]?.focus?.(), 260);
+  }
 
-      // read Firestore users doc for dev emailVerified fallback
-      const uDoc = await getDoc(doc(db, "users", user.uid));
-      const fsEmailVerified = uDoc.exists() && uDoc.data().emailVerified;
+  function closeOtpModal() {
+    setOtpModalOpen(false);
+    setOtpSentTo(null);
+    setOtpRequestId(null);
+    setDevOtp(null);
+    setOtpInputs(["", "", "", "", "", ""]);
+  }
 
-      if (!user.emailVerified && !fsEmailVerified) {
-        // not verified — block sign in and prompt to verify
-        await signOut(auth); // immediately sign out to prevent access
-        setAwaitingVerifyUser({ uid: user.uid, email: user.email });
-        setNotice("Your email is not verified. Please verify first (link sent to email).");
+  function otpValue() {
+    return otpInputs.join("");
+  }
+
+  function handleOtpChange(index, val) {
+    if (!val) {
+      // deleting char
+      setOtpInputs((prev) => {
+        const copy = [...prev];
+        copy[index] = "";
+        return copy;
+      });
+      return;
+    }
+    const ch = val.slice(-1).replace(/\D/g, ""); // only last digit, numeric
+    if (!ch) return;
+    setOtpInputs((prev) => {
+      const copy = [...prev];
+      copy[index] = ch;
+      return copy;
+    });
+    // focus next
+    const next = index + 1;
+    if (next < 6) inputsRef.current[next]?.focus?.();
+  }
+
+  function handleOtpKeyDown(e, i) {
+    if (e.key === "Backspace" && !otpInputs[i]) {
+      const prev = i - 1;
+      if (prev >= 0) inputsRef.current[prev]?.focus?.();
+    }
+    if (e.key === "ArrowLeft") {
+      const prev = i - 1;
+      if (prev >= 0) inputsRef.current[prev]?.focus?.();
+    }
+    if (e.key === "ArrowRight") {
+      const next = i + 1;
+      if (next < 6) inputsRef.current[next]?.focus?.();
+    }
+    // allow paste handling via onPaste
+  }
+
+  function handleOtpPaste(e) {
+    e.preventDefault();
+    const pasted = (e.clipboardData || window.clipboardData).getData("text").replace(/\D/g, "");
+    if (!pasted) return;
+    const chars = pasted.slice(0, 6).split("");
+    const filled = [...otpInputs];
+    for (let i = 0; i < 6; i++) filled[i] = chars[i] || "";
+    setOtpInputs(filled);
+    // focus end
+    const firstEmpty = filled.findIndex((c) => !c);
+    if (firstEmpty >= 0) inputsRef.current[firstEmpty]?.focus?.();
+    else inputsRef.current[5]?.focus?.();
+  }
+
+  // -------- AUTH HANDLERS --------
+  async function handleAuthSubmit(e) {
+    e?.preventDefault?.();
+    setErr("");
+    setSuccessMsg("");
+    setLoading(true);
+
+    // Reset mode quick handling
+    if (isResetMode) {
+      if (!email) {
+        setErr("Enter your email to reset password.");
         setLoading(false);
         return;
       }
+      try {
+        await sendPasswordResetEmail(auth, email);
+        setSuccessMsg("Reset link sent. Check your inbox.");
+      } catch (ex) {
+        showError(ex);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
-      // successful login
-      setNotice("");
-      navigate("/"); // go to dashboard
-    } catch (err) {
-      console.error("Login error:", err);
-      setError(friendlyFirebaseMessage(err.code, err.message));
+    if (!email) {
+      setErr("Please enter email.");
+      setLoading(false);
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErr("Password must be at least 6 characters.");
+      setLoading(false);
+      return;
+    }
+
+    if (isRegister) {
+      // Registration: initiate OTP send -> open modal
+      try {
+        const resp = await callSendOtp(email);
+        if (resp.ok && resp.requestId) {
+          setOtpRequestId(resp.requestId);
+        } else if (resp.ok === false && resp.devOtp) {
+          // dev fallback: server missing; store OTP locally for verification
+          setDevOtp(resp.devOtp);
+          console.info("[DEV-OTP GENERATED]", resp.devOtp);
+        }
+        openOtpModalFor(email);
+        setSuccessMsg("OTP sent to your email — check inbox/spam.");
+      } catch (ex) {
+        console.error("sendOtp failed", ex);
+        showError(ex);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Sign in (normal)
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      navigate("/"); // or dashboard route
+    } catch (ex) {
+      showError(ex);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      setLoading(false);
     }
   }
 
-  // Google sign-in
-  async function handleGoogle(e) {
-    e?.preventDefault?.();
-    setError(""); setLoading(true);
+  async function handleGoogleSignIn() {
+    setErr("");
+    setSuccessMsg("");
+    setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
-      await saveInitialUser(res.user, referral);
-      // check verification: with google provider, email is usually verified by Google
+      await SaveInitialUserToFirestore(res.user, referral);
       navigate("/");
-    } catch (err) {
-      console.error("Google sign-in error:", err);
-      setError("Google sign-in failed.");
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
   }
 
-  // Password reset
-  async function handlePasswordReset(e) {
-    e?.preventDefault?.();
-    if (!email) { setError("Enter email first."); return; }
-    setError(""); setLoading(true);
+  async function handleVerifyOtpAndCreate() {
+    setErr("");
+    setLoading(true);
+    const otp = otpValue();
+    if (otp.length !== 6) {
+      setErr("Enter the 6-digit OTP.");
+      setLoading(false);
+      return;
+    }
+
+    // verify via server if available; else use devOtp fallback
+    let ok = false;
     try {
-      await sendPasswordResetEmail(auth, email);
-      setNotice("Password reset email sent.");
-    } catch (err) {
-      console.error("reset error", err);
-      setError("Failed to send reset email.");
+      ok = await callVerifyOtp(email, otp);
+      if (!ok && devOtp && otp === devOtp) ok = true;
+    } catch (e) {
+      console.error("verifyOtp error", e);
+    }
+
+    if (!ok) {
+      setErr("Invalid OTP. Try again or resend.");
+      setLoading(false);
+      return;
+    }
+
+    // OTP OK: create user account
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // save initial user doc
+      await SaveInitialUserToFirestore(cred.user, referral);
+      // optionally mark email verified server-side if your server supports it.
+      // We log in the user directly because OTP validated the email.
+      navigate("/");
+    } catch (e) {
+      console.error("createUser error", e);
+      showError(e);
+    } finally {
+      setLoading(false);
+      closeOtpModal();
+    }
+  }
+
+  async function handleResendOtp() {
+    setErr("");
+    setLoading(true);
+    try {
+      const resp = await callSendOtp(email);
+      if (resp.ok && resp.requestId) setOtpRequestId(resp.requestId);
+      else if (resp.ok === false && resp.devOtp) {
+        setDevOtp(resp.devOtp);
+        console.info("[DEV-OTP GENERATED]", resp.devOtp);
+      }
+      startResendCooldown(30);
+      setSuccessMsg("OTP resent. Check your inbox.");
+    } catch (e) {
+      console.error("resendOtp error", e);
+      showError(e);
     } finally {
       setLoading(false);
     }
   }
 
-  // OTP entry UI submit (for dev fallback)
-  async function handleOtpSubmit(e) {
-    e?.preventDefault?.();
-    if (!otpCode) { setError("Enter the OTP"); return; }
-    await validateDevOtpAndFinalize();
+  // small animated helper for password loader
+  function eyeClicked() {
+    // small pulse animation
+    if (pwdAnimateRef.current) {
+      pwdAnimateRef.current.classList.remove("eye-tap");
+      // reflow
+      void pwdAnimateRef.current.offsetWidth;
+      pwdAnimateRef.current.classList.add("eye-tap");
+    }
+    setShowPwd((s) => !s);
   }
 
-  // small helper to toggle pw show/hide with animation hint
-  function toggleShowPass() {
-    setShowPassword((s) => !s);
-  }
-
+  // ------------ RENDER ------------
   return (
-    <div className="auth-root login-screen">
+    <div className="auth-root">
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
       <div className="auth-overlay" />
+      <div className="auth-card">
+        <img
+          src="/icon.jpg"
+          className="logo-small"
+          alt="logo"
+          onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")}
+        />
 
-      <div className="auth-card login-card">
-        <img src="/icon.jpg" className="logo-small" alt="logo" onError={(e)=>{e.currentTarget.src="/bt.jpg"}} />
-
-        <h2 className="login-title">{isRegister ? "Create Account" : (isResetMode ? "Reset Password" : "Sign In")}</h2>
-
-        {error && <div className="error">{error}</div>}
-        {notice && <div className="notice">{notice}</div>}
-        {devOtpHint && <div className="notice dev">Dev: {devOtpHint}</div>}
-
-        {/* If user pending verification show OTP / resend UI */}
-        {awaitingVerifyUser ? (
-          <div className="verify-block">
-            <p className="muted">A verification was sent to <strong>{awaitingVerifyUser.email}</strong></p>
-
-            {otpSent && (
-              <form onSubmit={handleOtpSubmit} className="otp-form">
-                <input className="field otp-field" placeholder="Enter OTP" value={otpCode} onChange={(e)=>setOtpCode(e.target.value.trim())} />
-                <button className="btn" type="submit" disabled={loading}>{loading ? "Verifying..." : "Verify OTP"}</button>
-              </form>
-            )}
-
-            <div className="verify-actions">
-              <button className="btn small ghost" onClick={resendVerification} disabled={loading}>{loading ? "Please wait..." : "Resend Verification"}</button>
-              <button className="btn small ghost" onClick={() => { setAwaitingVerifyUser(null); setOtpSent(false); setOtpCode(""); setNotice(""); }}>Cancel</button>
-            </div>
-          </div>
-        ) : isResetMode ? (
-          <form onSubmit={handlePasswordReset} className="form-col">
-            <input placeholder="Email" type="email" className="field" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-            <div className="form-actions">
-              <button className="btn" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Reset Link"}</button>
-            </div>
-          </form>
+        {isResetMode ? (
+          <>
+            <h2>Reset Password</h2>
+            <p className="text-muted">Enter email to receive a reset link.</p>
+            <form onSubmit={handleAuthSubmit} className="form-col">
+              <input
+                placeholder="Email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              {err && <div className="error">{err}</div>}
+              {successMsg && <div className="success">{successMsg}</div>}
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+            <p className="text-muted">
+              Back to{" "}
+              <span className="link" onClick={() => { setIsResetMode(false); setErr(""); }}>
+                Sign In
+              </span>
+            </p>
+          </>
         ) : (
           <>
-            <form onSubmit={isRegister ? handleRegister : handleLogin} className="form-col">
-              <input placeholder="Email" type="email" className="field" value={email} onChange={(e)=>setEmail(e.target.value)} required />
+            <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
+            <form onSubmit={handleAuthSubmit} className="form-col" autoComplete="on">
+              <input
+                placeholder="Email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
 
-              <div className={`password-wrap ${pwLoading ? "pw-loading" : ""}`}>
+              <div className="password-row">
                 <input
                   placeholder="Password (6+ characters)"
-                  type={showPassword ? "text" : "password"}
-                  className="field password-field"
+                  type={showPwd ? "text" : "password"}
+                  className={`field password-field ${loading ? "loading" : ""}`}
                   value={password}
-                  onChange={(e)=>setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <button type="button" className="eye-btn" onClick={toggleShowPass} aria-label="Toggle password">
-                  {showPassword ? "👀" : "🙈"}
+                <button
+                  type="button"
+                  ref={pwdAnimateRef}
+                  className="eye-toggle"
+                  title={showPwd ? "Hide password" : "Show password"}
+                  onClick={eyeClicked}
+                >
+                  <span className="eye-emoji">{showPwd ? "👀" : "🙈"}</span>
                 </button>
-                <div className="pw-loader" aria-hidden />
               </div>
 
               {isRegister && (
-                <input placeholder="Referral Code (optional)" type="text" className="field" value={referral} onChange={(e)=>setReferral(e.target.value)} />
+                <input
+                  placeholder="Referral Code (optional)"
+                  type="text"
+                  className="field"
+                  value={referral}
+                  onChange={(e) => setReferral(e.target.value)}
+                />
               )}
 
-              <div className="form-actions">
-                <button className="btn" type="submit" disabled={loading}>
-                  {loading ? (isRegister ? "Registering..." : "Signing in...") : (isRegister ? "Register" : "Sign In")}
-                </button>
-              </div>
+              {!isRegister && (
+                <div className="forgot-password">
+                  <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>
+                    Forgot Password?
+                  </span>
+                </div>
+              )}
+
+              {err && <div className="error">{err}</div>}
+              {successMsg && <div className="success">{successMsg}</div>}
+
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? (isRegister ? "Sending OTP..." : "Signing in...") : (isRegister ? "Register" : "Sign In")}
+              </button>
             </form>
 
-            <div className="alt-actions">
-              {!isRegister && <span className="link" onClick={()=>{ setIsResetMode(true); setError(""); }}>Forgot Password?</span>}
-              <span className="link" onClick={()=>{ setIsRegister(!isRegister); setError(""); }}>
-                {isRegister ? "Already have an account? Sign in" : "Don't have an account? Register"}
+            <p className="text-muted">
+              {isRegister ? "Already have an account? " : "Don't have an account? "}
+              <span
+                className="link"
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setErr("");
+                  setSuccessMsg("");
+                }}
+              >
+                {isRegister ? "Sign In" : "Register"}
               </span>
-            </div>
+              { !isRegister && <> • <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>Reset</span></>}
+            </p>
 
             <div className="sep">OR</div>
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn google" onClick={handleGoogle} disabled={loading}>Sign in with Google</button>
-            </div>
+            <button className="btn google" onClick={handleGoogleSignIn} disabled={loading}>
+              Sign in with Google
+            </button>
           </>
         )}
-
-        <div className="login-footer-links">
-          <Link to="/privacy-policy">Privacy Policy</Link>
-          <span>•</span>
-          <Link to="/terms-of-service">Terms</Link>
-          <span>•</span>
-          <Link to="/about">About</Link>
-        </div>
       </div>
+
+      <div className="login-footer-links">
+        <Link to="/privacy-policy">Privacy Policy</Link>
+        <span>•</span>
+        <Link to="/terms-of-service">Terms of Service</Link>
+        <span>•</span>
+        <Link to="/about">About Us</Link>
+        <span>•</span>
+        <Link to="/contact">Contact</Link>
+      </div>
+
+      {/* ===== OTP Modal (Style C: big boxes) ===== */}
+      {otpModalOpen && (
+        <div className="modal-overlay otp-modal" onClick={closeOtpModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Verify your email</h3>
+            <p className="muted">We've sent a 6-digit code to <strong>{otpSentTo}</strong>. Enter it below.</p>
+
+            <div className="otp-boxes" onPaste={handleOtpPaste}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <input
+                  key={i}
+                  ref={(el) => (inputsRef.current[i] = el)}
+                  value={otpInputs[i]}
+                  onChange={(e) => handleOtpChange(i, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(e, i)}
+                  className="otp-input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={1}
+                />
+              ))}
+            </div>
+
+            <div className="otp-actions-row">
+              <button className="btn small primary" onClick={handleVerifyOtpAndCreate} disabled={loading}>
+                {loading ? "Verifying..." : "Verify & Create Account"}
+              </button>
+
+              <button className="btn small ghost" onClick={closeOtpModal} disabled={loading}>
+                Cancel
+              </button>
+            </div>
+
+            <div className="otp-footer">
+              <div>
+                {resendCooldown > 0 ? (
+                  <span className="muted">Resend available in {resendCooldown}s</span>
+                ) : (
+                  <button className="link small" onClick={handleResendOtp} disabled={loading}>
+                    Resend OTP
+                  </button>
+                )}
+              </div>
+
+              <div className="muted small" style={{ marginTop: 8 }}>
+                <em>Didn't receive? check spam. (For dev, OTP will appear in console.)</em>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
