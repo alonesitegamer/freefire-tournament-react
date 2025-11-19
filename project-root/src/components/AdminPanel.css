@@ -1,13 +1,65 @@
+.admin-panel {
+  margin-top: 10px;
+}
+
+/* Header */
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* List Rows */
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.05);
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.small-muted {
+  color: #bfc7d1;
+  font-size: 13px;
+}
+
+.admin-match-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Modal */
+.admin-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.admin-modal input,
+.admin-modal select {
+  margin-bottom: 10px;
+}
+
+.admin-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* UPLOADER */
 .glass-upload {
   border: 2px dashed rgba(255,255,255,0.2);
-  padding: 25px;
-  text-align: center;
+  padding: 20px;
   border-radius: 14px;
   background: rgba(255,255,255,0.05);
   backdrop-filter: blur(12px);
   cursor: pointer;
-  transition: 0.25s;
+  text-align: center;
+  margin-bottom: 14px;
   position: relative;
+  transition: 0.25s;
 }
 
 .glass-upload.dragging {
@@ -15,9 +67,20 @@
   background: rgba(255,255,255,0.1);
 }
 
+.upload-preview {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.upload-placeholder {
+  opacity: 0.6;
+}
+
 .upload-icon {
   font-size: 32px;
-  opacity: 0.8;
+  margin-bottom: 8px;
 }
 
 .upload-btn {
@@ -26,8 +89,8 @@
   padding: 8px 14px;
   border-radius: 8px;
   color: white;
-  cursor: pointer;
   font-weight: 700;
+  cursor: pointer;
   margin-top: 8px;
 }
 
@@ -35,16 +98,9 @@
   display: none;
 }
 
-.upload-preview {
-  width: 100%;
-  max-height: 200px;
-  border-radius: 10px;
-  object-fit: cover;
-}
-
 .upload-loading {
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--accent2);
-  font-size: 14px;
   font-weight: bold;
+  font-size: 14px;
 }
