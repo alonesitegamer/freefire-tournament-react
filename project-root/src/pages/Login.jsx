@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db, provider } from "../firebase";
-import "./login.css";
+import "../styles/Login.css";
 import { Link, useNavigate } from "react-router-dom";
 
 function friendlyFirebaseMessage(code, fallback) {
