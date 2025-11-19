@@ -11,131 +11,139 @@ import { auth, db, provider } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
+// ------------------------------------------------------
+// 🔥 Friendly Error Translator
+// ------------------------------------------------------
+function friendlyFirebaseError(code) {
+  switch (code) {
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/email-already-in-use":
+      return "This email is already registered. Try logging in.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters long.";
+    case "auth/wrong-password":
+      return "Incorrect password. Try again.";
+    case "auth/user-not-found":
+      return "No account exists with this email.";
+    case "auth/missing-password":
+      return "Please enter your password.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a moment.";
+    case "auth/popup-closed-by-user":
+      return "Google sign-in was closed. Try again.";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
+
+// ------------------------------------------------------
+// Create Firestore User
+// ------------------------------------------------------
+async function saveInitialUser(user, referralCode = "") {
+  try {
+    const ref = doc(db, "users", user.uid);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      const newReferralCode = user.uid.substring(0, 8).toUpperCase();
+      await setDoc(ref, {
+        email: user.email,
+        displayName: user.displayName || "",
+        username: "",
+        coins: 0,
+        lastDaily: null,
+        referral: referralCode || null,
+        referralCode: newReferralCode,
+        hasRedeemedReferral: !!referralCode,
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.error("Firestore creation error:", err);
+  }
+}
+
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isResetMode, setIsResetMode] = useState(false);
   const [referral, setReferral] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [isResetMode, setIsResetMode] = useState(false);
 
-  // 🔥 Animated message system
-  const message = err ? (
-    <div className={`msg-box ${err.includes("✔") ? "success" : "error"}`}>
-      {err}
-    </div>
-  ) : null;
-
-  async function saveInitialUser(user, referralCode = "") {
-    try {
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-
-      if (!snap.exists()) {
-        const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-
-        await setDoc(ref, {
-          email: user.email,
-          displayName: user.displayName || "",
-          username: "",
-          coins: 0,
-          lastDaily: null,
-          referral: referralCode || null,
-          referralCode: newReferralCode,
-          hasRedeemedReferral: !!referralCode,
-          createdAt: serverTimestamp(),
-        });
-      }
-    } catch (err) {
-      console.error("saveInitialUser error:", err);
-    }
-  }
-
-  // ---------------------------------------
-  // 🔥 REGISTER → Must Verify Email Before Login
-  // ---------------------------------------
+  // ------------------------------------------------------
+  // REGISTER / LOGIN
+  // ------------------------------------------------------
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
 
     if (isRegister) {
+      // -------------------
+      // ✔ Register User
+      // -------------------
       try {
-        const res = await createUserWithEmailAndPassword(auth, email, password);
-        const user = res.user;
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        await saveInitialUser(userCred.user, referral);
 
-        // save in DB
-        await saveInitialUser(user, referral);
+        // 🔐 EMAIL VERIFICATION REQUIRED
+        await sendEmailVerification(userCred.user);
 
-        // send verification email
-        await sendEmailVerification(user);
-
-        // force logout immediately
-        await auth.signOut();
-
-        setErr(
-          "✔ Registration successful! Please verify your email before signing in."
-        );
-      } catch (error) {
-        setErr(error.message);
-      }
-      setLoading(false);
-      return;
-    }
-
-    // ---------------------------------------
-    // 🔥 LOGIN → Check Email Verification
-    // ---------------------------------------
-    try {
-      const res = await signInWithEmailAndPassword(auth, email, password);
-
-      if (!res.user.emailVerified) {
-        await sendEmailVerification(res.user);
-        await auth.signOut();
-
-        setErr(
-          "⚠ Please verify your email before logging in. A verification email has been resent."
-        );
+        setErr("A verification email has been sent. Please verify before logging in.");
         setLoading(false);
-        return;
+      } catch (error) {
+        setErr(friendlyFirebaseError(error.code));
+        setLoading(false);
       }
-    } catch (error) {
-      setErr(error.message);
-    }
+    } else {
+      // -------------------
+      // ✔ LOGIN USER (only if verified)
+      // -------------------
+      try {
+        const res = await signInWithEmailAndPassword(auth, email, password);
 
-    setLoading(false);
+        if (!res.user.emailVerified) {
+          setErr("Please verify your email before logging in.");
+          setLoading(false);
+          return;
+        }
+
+        setLoading(false);
+      } catch (error) {
+        setErr(friendlyFirebaseError(error.code));
+        setLoading(false);
+      }
+    }
   };
 
-  // ---------------------------------------
-  // 🔥 GOOGLE LOGIN (Also requires verified email)
-  // ---------------------------------------
+  // ------------------------------------------------------
+  // Google Login
+  // ------------------------------------------------------
   const handleGoogle = async () => {
     setErr("");
     setLoading(true);
-
     try {
       const res = await signInWithPopup(auth, provider);
-      await saveInitialUser(res.user, referral);
 
       if (!res.user.emailVerified) {
         await sendEmailVerification(res.user);
-        await auth.signOut();
-
-        setErr(
-          "⚠ Please verify your Google email before signing in. Verification link sent."
-        );
+        setErr("Google account detected! Please verify the email sent to your inbox.");
       }
-    } catch (error) {
-      setErr(error.message);
-    }
 
-    setLoading(false);
+      await saveInitialUser(res.user, referral);
+    } catch (error) {
+      setErr(friendlyFirebaseError(error.code));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ---------------------------------------
-  // 🔥 RESET PASSWORD
-  // ---------------------------------------
+  // ------------------------------------------------------
+  // Reset Password
+  // ------------------------------------------------------
   const handlePasswordReset = async (e) => {
     e.preventDefault();
 
@@ -144,67 +152,89 @@ export default function Login() {
       return;
     }
 
+    setLoading(true);
+    setErr("");
+
     try {
       await sendPasswordResetEmail(auth, email);
-      setErr("✔ Password reset email sent!");
+      setErr("A password reset link has been sent to your email.");
     } catch (error) {
-      setErr(error.message);
+      setErr(friendlyFirebaseError(error.code));
+    } finally {
+      setLoading(false);
     }
   };
+
+  // ------------------------------------------------------
+  // UI
+  // ------------------------------------------------------
 
   return (
     <div className="auth-root">
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
+
       <div className="auth-overlay" />
 
-      <div className="auth-card fancy-card">
-        <img src="/icon.jpg" className="logo-small" alt="logo" />
+      <div className="auth-card">
+        <img
+          src="/icon.jpg"
+          className="logo-small"
+          alt="logo"
+        />
 
+        {/* ----------------------------------------------- */}
+        {/* RESET PASSWORD MODE */}
+        {/* ----------------------------------------------- */}
         {isResetMode ? (
           <>
-            <h2>Password Reset</h2>
-            {message}
+            <h2>Reset Password</h2>
+            <p className="text-muted">Enter your email to receive a reset link.</p>
 
             <form onSubmit={handlePasswordReset} className="form-col">
               <input
+                placeholder="Email"
                 type="email"
                 className="field"
-                placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
               />
-              <button className="btn" type="submit" disabled={loading}>
+
+              {err && <div className="error">{err}</div>}
+
+              <button className="btn" disabled={loading} type="submit">
                 {loading ? "Sending..." : "Send Reset Link"}
               </button>
             </form>
 
             <p className="text-muted">
-              Remembered it?{" "}
+              Remembered?{" "}
               <span className="link" onClick={() => setIsResetMode(false)}>
-                Back to Sign In
+                Back to Login
               </span>
             </p>
           </>
         ) : (
           <>
+            {/* ----------------------------------------------- */}
+            {/* LOGIN / REGISTER MODE */}
+            {/* ----------------------------------------------- */}
             <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
-            {message}
 
             <form onSubmit={handleAuthSubmit} className="form-col">
               <input
-                type="email"
                 placeholder="Email"
+                type="email"
                 className="field"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
+
               <input
-                type="password"
                 placeholder="Password"
+                type="password"
                 className="field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -213,8 +243,8 @@ export default function Login() {
 
               {isRegister && (
                 <input
-                  type="text"
                   placeholder="Referral Code (optional)"
+                  type="text"
                   className="field"
                   value={referral}
                   onChange={(e) => setReferral(e.target.value)}
@@ -222,36 +252,30 @@ export default function Login() {
               )}
 
               {!isRegister && (
-                <p className="forgot-password">
+                <div className="forgot-password">
                   <span className="link" onClick={() => setIsResetMode(true)}>
-                    Forgot password?
+                    Forgot Password?
                   </span>
-                </p>
+                </div>
               )}
 
-              <button className="btn" type="submit" disabled={loading}>
-                {loading ? "Loading..." : isRegister ? "Register" : "Sign In"}
+              {err && <div className="error">{err}</div>}
+
+              <button className="btn" disabled={loading} type="submit">
+                {loading ? "Please wait..." : (isRegister ? "Register" : "Login")}
               </button>
             </form>
 
             <p className="text-muted">
-              {isRegister
-                ? "Already have an account?"
-                : "Don't have an account?"}{" "}
-              <span
-                className="link"
-                onClick={() => {
-                  setIsRegister(!isRegister);
-                  setErr("");
-                }}
-              >
-                {isRegister ? "Sign In" : "Register"}
+              {isRegister ? "Already have an account? " : "Don't have an account? "}
+              <span className="link" onClick={() => { setIsRegister(!isRegister); setErr(""); }}>
+                {isRegister ? "Login" : "Register"}
               </span>
             </p>
 
             <div className="sep">OR</div>
 
-            <button className="btn google" onClick={handleGoogle}>
+            <button className="btn google" disabled={loading} onClick={handleGoogle}>
               Sign in with Google
             </button>
           </>
@@ -259,9 +283,12 @@ export default function Login() {
       </div>
 
       <div className="login-footer-links">
-        <Link to="/privacy-policy">Privacy Policy</Link>• 
-        <Link to="/terms-of-service">Terms</Link>• 
-        <Link to="/about">About</Link>• 
+        <Link to="/privacy-policy">Privacy Policy</Link>
+        <span>•</span>
+        <Link to="/terms-of-service">Terms of Service</Link>
+        <span>•</span>
+        <Link to="/about">About Us</Link>
+        <span>•</span>
         <Link to="/contact">Contact</Link>
       </div>
     </div>
