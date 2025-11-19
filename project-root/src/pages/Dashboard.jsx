@@ -420,16 +420,10 @@ export default function Dashboard({ user }) {
 
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
-    // open matches tab and show preview; auto attempt join then open details if successful
-    setSelectedMatch(match);
-    setActiveTab("matches");
-
-    // short delay to ensure UI updated
-    setTimeout(async () => {
-      await joinMatch(match);
-    }, 300);
+  // When selecting from MatchList, send autoJoin flag
+  setSelectedMatch({ ...match, _autoJoin: true });
+  setActiveTab("matches");
   }
-
   // ---------------------------
   // Admin helpers: create / edit / delete match (exposed to AdminPanel)
   // ---------------------------
@@ -441,7 +435,7 @@ export default function Dashboard({ user }) {
       status: payload.status || "upcoming",
     });
     const snap = await getDoc(docRef);
-    setMatches((prev) => [{ id: snap.id, ...snap.data() }, ...prev]);
+    setMatches((prev)matc{ id: snap.id, ...snap.data() }, ...prev]);
     return docRef.id;
   }
 
