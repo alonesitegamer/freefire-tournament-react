@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import "./styles/matchdetails.css";
+import "./matchdetails.css";
 
 export default function MatchDetails({ match: initialMatch, onBack, user, profile, updateProfileField }) {
   const [match, setMatch] = useState(initialMatch);
