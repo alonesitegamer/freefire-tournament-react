@@ -424,20 +424,7 @@ export default function Dashboard({ user }) {
   setSelectedMatch({ ...match, _autoJoin: true });
   setActiveTab("matches");
   }
-  // ---------------------------
-  // Admin helpers: create / edit / delete match (exposed to AdminPanel)
-  // ---------------------------
-  async function createMatch(payload) {
-    const docRef = await addDoc(collection(db, "matches"), {
-      ...payload,
-      createdAt: serverTimestamp(),
-      playersJoined: [],
-      status: payload.status || "upcoming",
-    });
-    const snap = await getDoc(docRef);
-    setMatches((prev)matc{ id: snap.id, ...snap.data() }, ...prev]);
-    return docRef.id;
-  }
+  
 
   async function editMatch(matchId, patch) {
     await updateDoc(doc(db, "matches", matchId), patch);
@@ -450,7 +437,29 @@ export default function Dashboard({ user }) {
   async function removeMatch(matchId) {
     await deleteDoc(doc(db, "matches", matchId));
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
-    if (selectedMatch?.id === matchId) setSelectedMatch(null);
+    if (selectedMatch?.id
+// ---------------------------
+// Admin: Create Match
+// ---------------------------
+async function createMatch(payload) {
+  const docRef = await addDoc(collection(db, "matches"), {
+    ...payload,
+    createdAt: serverTimestamp(),
+    playersJoined: [],
+    status: payload.status || "upcoming",
+  });
+
+  // fetch back the saved document
+  const snap = await getDoc(docRef);
+
+  // update local match list
+  setMatches((prev) => [
+    { id: snap.id, ...snap.data() },
+    ...prev,
+  ]);
+
+  return docRef.id;
+}=== matchId) setSelectedMatch(null);
   }
 
   // ---------------------------
