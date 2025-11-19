@@ -886,3 +886,34 @@ html,body,#root{height:100%;margin:0;font-family:Inter, system-ui, -apple-system
 .match-join-btn:hover {
   opacity: 0.85;
 }
+.msg-box {
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  animation: fadeIn 0.3s ease;
+  font-weight: 600;
+  text-align: center;
+}
+
+.msg-box.success {
+  background: rgba(0, 255, 120, 0.2);
+  color: #00ff90;
+  border: 1px solid #00ff90;
+}
+
+.msg-box.error {
+  background: rgba(255, 100, 100, 0.2);
+  color: #ff6060;
+  border: 1px solid #ff6060;
+}
+
+.fancy-card {
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 0 20px rgba(255, 90, 60, 0.3);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
