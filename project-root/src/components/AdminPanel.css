@@ -1,0 +1,50 @@
+.glass-upload {
+  border: 2px dashed rgba(255,255,255,0.2);
+  padding: 25px;
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: 0.25s;
+  position: relative;
+}
+
+.glass-upload.dragging {
+  border-color: var(--accent2);
+  background: rgba(255,255,255,0.1);
+}
+
+.upload-icon {
+  font-size: 32px;
+  opacity: 0.8;
+}
+
+.upload-btn {
+  display: inline-block;
+  background: var(--accent2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.upload-btn input {
+  display: none;
+}
+
+.upload-preview {
+  width: 100%;
+  max-height: 200px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.upload-loading {
+  margin-top: 10px;
+  color: var(--accent2);
+  font-size: 14px;
+  font-weight: bold;
+}
