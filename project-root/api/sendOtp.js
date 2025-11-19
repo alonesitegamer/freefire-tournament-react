@@ -1,3 +1,4 @@
+// /api/send-otp.js
 import nodemailer from "nodemailer";
 
 export default async function handler(req, res) {
@@ -5,37 +6,38 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: "Email required" });
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Missing fields" });
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.OTP_EMAIL,
-      pass: process.env.OTP_PASS,
-    },
-  });
-
   try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.OTP_EMAIL,
+        pass: process.env.OTP_PASS,
+      },
+    });
+
     await transporter.sendMail({
-      from: `"Imperial X Esports" <${process.env.OTP_EMAIL}>`,
+      from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
       to: email,
-      subject: "Your Verification Code",
+      subject: "Your Verification OTP",
       html: `
-        <h2>Your OTP</h2>
-        <div style="font-size:32px;font-weight:bold;margin:20px 0;">${otp}</div>
-        <p>Enter this code in the app to verify your email.</p>
-        <p>Do not share this code with anyone.</p>
+        <div style="font-family: Arial; padding: 20px; background: #000; color: white;">
+          <h2 style="color:#ffb347">Your OTP Code</h2>
+          <p style="font-size: 18px">Use the OTP below to verify your account:</p>
+          <h1 style="font-size: 40px; letter-spacing: 4px;">${otp}</h1>
+          <p>This OTP will expire in 10 minutes.</p>
+        </div>
       `,
     });
 
-    return res.status(200).json({ otp });
+    return res.status(200).json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("Mail error", err);
     return res.status(500).json({ error: "Failed to send OTP" });
   }
 }
