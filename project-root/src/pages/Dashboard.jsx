@@ -399,8 +399,10 @@ export default function Dashboard({ user }) {
       const playerCount = (match.playersJoined || []).length;
       if (match.maxPlayers && playerCount >= match.maxPlayers) return alert("Match is full.");
 
-      // push join
+      // create player object
       const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
+
+      // push join
       await updateDoc(ref, { playersJoined: arrayUnion(playerObj) });
 
       // refresh matches locally
@@ -420,12 +422,20 @@ export default function Dashboard({ user }) {
 
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
-  // When selecting from MatchList, send autoJoin flag
-  setSelectedMatch({ ...match, _autoJoin: true });
-  setActiveTab("matches");
-  }
-  
+    // select and switch to matches view
+    setSelectedMatch(match);
+    setActiveTab("matches");
 
+    // small delay to allow UI to render, then attempt join (use non-blocking)
+    setTimeout(() => {
+      joinMatch(match).catch((e) => {
+        // handled in joinMatch, but catch to avoid unhandled promise
+        console.error("join attempt failed", e);
+      });
+    }, 300);
+  }
+
+  // Admin helpers: edit / delete match
   async function editMatch(matchId, patch) {
     await updateDoc(doc(db, "matches", matchId), patch);
     const snap = await getDoc(doc(db, "matches", matchId));
@@ -437,29 +447,28 @@ export default function Dashboard({ user }) {
   async function removeMatch(matchId) {
     await deleteDoc(doc(db, "matches", matchId));
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
-    if (selectedMatch?.id
-// ---------------------------
-// Admin: Create Match
-// ---------------------------
-async function createMatch(payload) {
-  const docRef = await addDoc(collection(db, "matches"), {
-    ...payload,
-    createdAt: serverTimestamp(),
-    playersJoined: [],
-    status: payload.status || "upcoming",
-  });
+    if (selectedMatch?.id === matchId) setSelectedMatch(null);
+  }
 
-  // fetch back the saved document
-  const snap = await getDoc(docRef);
+  // Admin: Create Match
+  async function createMatch(payload) {
+    const docRef = await addDoc(collection(db, "matches"), {
+      ...payload,
+      createdAt: serverTimestamp(),
+      playersJoined: [],
+      status: payload.status || "upcoming",
+    });
 
-  // update local match list
-  setMatches((prev) => [
-    { id: snap.id, ...snap.data() },
-    ...prev,
-  ]);
+    // fetch back the saved document
+    const snap = await getDoc(docRef);
 
-  return docRef.id;
-}=== matchId) setSelectedMatch(null);
+    // update local match list
+    setMatches((prev) => [
+      { id: snap.id, ...snap.data() },
+      ...prev,
+    ]);
+
+    return docRef.id;
   }
 
   // ---------------------------
