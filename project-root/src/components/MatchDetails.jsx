@@ -1,102 +1,124 @@
 // src/components/MatchDetails.jsx
-import React, { useMemo, useState, useEffect } from "react";
-import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function MatchDetails({ match: initialMatch, onBack, user, profile, updateProfileField }) {
+export default function MatchDetails({
+  match: initialMatch,
+  onBack,
+  user,
+  profile,
+  updateProfileField,
+}) {
   const [match, setMatch] = useState(initialMatch);
   const [loadingJoin, setLoadingJoin] = useState(false);
   const [joined, setJoined] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  // Expose join function so MatchList join works
+  useEffect(() => {
+    window.joinMatchDirect = () => {
+      handleJoin();
+    };
+  });
+
+  // Sync match on change
   useEffect(() => {
     setMatch(initialMatch);
   }, [initialMatch]);
 
-  useEffect(() => {
-    // live "now" tick for reveal logic / rotating map display
-    const id = setInterval(() => setNow(Date.now()), 10_000);
-    return () => clearInterval(id);
-  }, []);
-
+  // detect if joined
   useEffect(() => {
     const players = match?.playersJoined || [];
     setJoined(players.some((p) => p.uid === user.uid));
   }, [match, user.uid]);
 
+  // refresh timer
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // refresh match from firestore
   async function refreshMatch() {
     try {
       const ref = doc(db, "matches", match.id);
       const snap = await getDoc(ref);
       if (snap.exists()) setMatch({ id: snap.id, ...snap.data() });
-    } catch (e) {
-      console.error("refreshMatch", e);
+    } catch (err) {
+      console.error("Match refresh error:", err);
     }
   }
 
+  // JOIN MATCH
   async function handleJoin() {
     if (!profile) return alert("Profile missing.");
-    if (joined) return alert("You already joined this match.");
 
-    // ensure ingame name exists
     let ingame = profile.username || profile.displayName || "";
     if (!ingame) {
-      ingame = window.prompt("Enter your in-game username (this will be saved):", "");
-      if (!ingame) return alert("You must enter an in-game username to join.");
-      try {
-        if (typeof updateProfileField === "function") {
-          await updateProfileField({ username: ingame });
-        } else {
-          // fallback direct update (best effort)
-          await updateDoc(doc(db, "users", user.uid), { username: ingame });
-        }
-        // optimistic local update
-        setTimeout(() => {}, 200);
-      } catch (e) {
-        console.error("save username", e);
-      }
+      ingame = window.prompt("Enter your in-game username:", "");
+      if (!ingame) return alert("You must enter a username.");
+      await updateProfileField({ username: ingame });
     }
 
-    const maxP = match.maxPlayers || 0;
-    const playerCount = (match.playersJoined || []).length;
-    if (maxP > 0 && playerCount >= maxP) return alert("Match is full.");
+    const count = match.playersJoined?.length || 0;
+    if (match.maxPlayers && count >= match.maxPlayers)
+      return alert("Match is full.");
 
     setLoadingJoin(true);
+
     try {
       const ref = doc(db, "matches", match.id);
 
-      const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
       await updateDoc(ref, {
-        playersJoined: arrayUnion(playerObj),
+        playersJoined: arrayUnion({
+          uid: user.uid,
+          username: ingame,
+          joinedAt: serverTimestamp(),
+        }),
       });
 
-      // refresh local
       await refreshMatch();
       setJoined(true);
-      alert("Joined match!");
-    } catch (err) {
-      console.error("join error", err);
-      alert("Failed to join.");
-    } finally {
-      setLoadingJoin(false);
+      alert("Joined match successfully!");
+    } catch (e) {
+      console.error("Join error:", e);
+      alert("Failed to join match.");
     }
+
+    setLoadingJoin(false);
   }
 
-  // compute whether to show room
-  const revealAt = match?.revealAt ? (match.revealAt.seconds ? match.revealAt.toDate().getTime() : new Date(match.revealAt).getTime()) : null;
-  const canReveal = revealAt ? now >= revealAt : false;
+  // Reveal time calculation
+  const revealAt = match?.revealAt?.seconds
+    ? match.revealAt.toDate().getTime()
+    : match?.revealAt
+    ? new Date(match.revealAt).getTime()
+    : null;
 
-  // compute displayed map (auto-rotate)
+  const revealReady = revealAt ? now >= revealAt : false;
+
+  // Auto-rotate map
   const displayMap = useMemo(() => {
-    const pool = match?.mapPool?.length ? match.mapPool : ["Bermuda", "Purgatory", "Kalahari"];
-    if (!match) return pool[0];
-    if (!match.autoRotate) {
-      return match.map || pool[0];
-    }
-    // simple rotation: index by minutes since creation /  % pool.length
-    const created = match.createdAt ? (match.createdAt.seconds ? match.createdAt.toDate().getTime() : new Date(match.createdAt).getTime()) : Date.now();
-    const minutesSince = Math.floor((now - created) / (60 * 1000));
-    return pool[minutesSince % pool.length];
+    const pool =
+      match.mapPool?.length > 0
+        ? match.mapPool
+        : ["Bermuda", "Purgatory", "Kalahari"];
+
+    if (!match.autoRotate) return match.map || pool[0];
+
+    const created = match.createdAt?.seconds
+      ? match.createdAt.toDate().getTime()
+      : Date.now();
+
+    const minutes = Math.floor((now - created) / (1000 * 60));
+    return pool[minutes % pool.length];
   }, [match, now]);
 
   return (
@@ -105,173 +127,84 @@ export default function MatchDetails({ match: initialMatch, onBack, user, profil
 
       <div className="match-details-header">
         <div>
-          <h2 style={{ margin: 0 }}>{match.title}</h2>
-          <div className="match-meta time">{match.teamType || match.mode || "Solo"}</div>
+          <h2>{match.title}</h2>
+          <div className="match-meta">{match.mode}</div>
         </div>
 
-        <div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#bfc7d1", fontSize: 13 }}>{`Entry: ${match.entryFee ?? 0}`}</div>
-            <div style={{ fontWeight: 800, marginTop: 8 }}>{`${(match.playersJoined || []).length}/${match.maxPlayers || "?"}`}</div>
-            <div style={{ marginTop: 8 }}>
-              <button
-                className="btn"
-                onClick={handleJoin}
-                disabled={loadingJoin || (match.maxPlayers && (match.playersJoined || []).length >= (match.maxPlayers))}
-              >
-                {loadingJoin ? "Joining..." : (joined ? "Joined" : "Join")}
-              </button>
-            </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="match-meta">Entry: {match.entryFee}</div>
+          <div style={{ fontWeight: 800, marginTop: 6 }}>
+            {match.playersJoined?.length || 0}/{match.maxPlayers}
           </div>
+
+          <button
+            className="btn"
+            disabled={loadingJoin || joined}
+            onClick={handleJoin}
+            style={{ marginTop: 10 }}
+          >
+            {joined ? "Joined" : loadingJoin ? "Joining..." : "Join"}
+          </button>
         </div>
       </div>
 
-      <img className="match-details-image" src={match.imageUrl || "/match-default.jpg"} alt="match" />
+      <img
+        className="match-details-image"
+        src={match.imageUrl || "/match-default.jpg"}
+        alt=""
+      />
 
       <div className="match-details-time">
-        Starts: {match.startTime ? (match.startTime.seconds ? match.startTime.toDate().toLocaleString() : new Date(match.startTime).toLocaleString()) : "TBD"}
+        Starts:{" "}
+        {match.startTime?.seconds
+          ? match.startTime.toDate().toLocaleString()
+          : "TBD"}
       </div>
 
+      {/* ROOM DETAILS */}
       <div className="room-details">
-        <h4>Room details</h4>
-        {!canReveal ? (
-          <p>Room ID and Password will be given {match.revealDelayMinutes ? `${match.revealDelayMinutes} minute(s)` : "a few minutes"} before match.</p>
-        ) : (
+        <h4>Room Details</h4>
+
+        {/* ❌ Not joined → cannot see details */}
+        {!joined && (
+          <p style={{ color: "#f77" }}>
+            Join the match to unlock room details.
+          </p>
+        )}
+
+        {/* 🟡 Joined but reveal not ready */}
+        {joined && !revealReady && (
+          <p>
+            Room ID & Password will be revealed{" "}
+            {match.revealDelayMinutes || 5} minutes before match start.
+          </p>
+        )}
+
+        {/* 🟢 Joined + reveal time reached */}
+        {joined && revealReady && (
           <>
-            <p><strong>Room ID:</strong> {match.roomID || "TBD"}</p>
-            <p><strong>Password:</strong> {match.roomPassword || ""}</p>
+            <p><strong>ID:</strong> {match.roomID || "Not set"}</p>
+            <p><strong>Password:</strong> {match.roomPassword || "Not set"}</p>
           </>
         )}
-        <p><strong>Map:</strong> {displayMap} {match.autoRotate ? "(auto-rotate)" : ""}</p>
-        <p><strong>Mode:</strong> {match.mode || match.teamType || "Solo"}</p>
+
+        <p><strong>Map:</strong> {displayMap} {match.autoRotate ? "(auto)" : ""}</p>
+        <p><strong>Mode:</strong> {match.mode}</p>
       </div>
 
+      {/* RULES */}
       <div className="match-rules">
         <h4>Rules</h4>
         <p style={{ whiteSpace: "pre-wrap" }}>
-{`Tournament Format
+{`Point System:
+1 Kill = ${
+  match.type === "custom"
+    ? (match.killReward || "Custom reward")
+    : 75
+} Coins
 
-Modes: Solo, Duo, Squad
-
-Map Pool: Bermuda, Purgatory, Kalahari (rotating)
-
-Point System:
-
-No placement points.
-
-Kills Only: 1 Kill = ${match.type === "custom" ? (match.killReward ?? "custom") : 75} Coins
-
-Total coins determine final ranking.
-
----
-
-Player Requirements
-
-Players may participate solo, duo, or in squads.
-
-In-game usernames must be clean, non-offensive, and must not imitate official staff.
-
----
-
-Match Rules
-
-All players must join the lobby within the given time.
-
-No teaming, stream-sniping, or exploiting bugs.
-
-No scripts, hacks, cheats, macros, or modded APKs.
-
----
-
-Device & Network Rules
-
-Allowed devices: Mobile phones only (unless stated otherwise).
-
-No tablets or emulators unless approved.
-
-Network issues are the player’s own responsibility.
-
----
-
-Character / Loadout Rules
-
-All characters, skills, pets, and weapons allowed.
-
-No throwable limits.
-
-Grenade launcher ammo allowed.
-
----
-
-Disconnection Policy
-
-No rematches for individual disconnections.
-
-If more than 50% of players disconnect due to server issues, match will be replayed.
-
----
-
-Cheating & Penalties
-
-Any cheating results in instant disqualification.
-
-Strong evidence (screen recording/screenshot/POV) required for reports.
-
----
-
-Reporting Issues
-
-Players must report issues within 10 minutes after match completion.
-
-Proof required.
-
----
-
-Referee/Admin Decisions
-
-All decisions made by officials are final.
-
----
-
-Prize Distribution
-
-Prize pool will be announced prior to the event.
-
-Players must provide correct payout information.
-
----
-
-Code of Conduct
-
-No toxicity, harassment, racism, or abusive language.
-
-Violations may lead to warnings or removal.
-
----
-
-Streaming Rules
-
-Delay: 5–10 minutes recommended.
-
-Streamers must not reveal enemy positions intentionally.
-
-Lobby passwords must not be shared.
-
----
-
-Lobby Rules
-
-Late players may be skipped for that round.
-
-Wrong team placement will not trigger remakes once the plane takes off.
-
----
-
-Organizer Rights
-
-The organizer reserves full rights to modify rules when required.
-
-All participants automatically accept the rules upon joining.`}
+No teaming, hacking, exploiting, macros.
+Organizer decisions are final.`}
         </p>
       </div>
     </section>
