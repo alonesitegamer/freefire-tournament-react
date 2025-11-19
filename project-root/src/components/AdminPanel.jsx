@@ -1,15 +1,16 @@
 // src/components/AdminPanel.jsx
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   collection,
-  getDocs,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   serverTimestamp,
-  deleteDoc,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, storage } from "../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import "./AdminPanel.css";
 
 const DEFAULT_MAP_POOL = ["Bermuda", "Purgatory", "Kalahari"];
 
@@ -18,9 +19,9 @@ export default function AdminPanel({
   approveRequest = () => {},
   rejectRequest = () => {},
   matches = [],
-  createMatch,
-  editMatch,
-  deleteMatch,
+  createMatch = () => {},
+  editMatch = () => {},
+  deleteMatch = () => {},
 }) {
   const [localMatches, setLocalMatches] = useState(matches || []);
   const [showCreate, setShowCreate] = useState(false);
@@ -31,13 +32,13 @@ export default function AdminPanel({
     title: "",
     type: "tournament",
     mode: "Solo",
-    mapPool: DEFAULT_MAP_POOL,
+    mapPool: DEFAULT_MAP_POOL.slice(),
     autoRotate: true,
-    map: "Bermuda",
+    map: DEFAULT_MAP_POOL[0],
     maxPlayers: 4,
     entryFee: 0,
-    killReward: 75,
     reward: 0,
+    killReward: 75,
     startTime: "",
     revealDelayMinutes: 5,
     roomID: "",
@@ -45,23 +46,92 @@ export default function AdminPanel({
     imageUrl: "",
   });
 
-  // Keep match list synced
-  useEffect(() => setLocalMatches(matches || []), [matches]);
+  // Refresh matches from props
+  useEffect(() => setLocalMatches(matches), [matches]);
 
-  // Open blank form
+  // -----------------------------
+  // FILE UPLOAD COMPONENT
+  // -----------------------------
+  function FileUploader({ onUpload, previewUrl }) {
+    const [dragging, setDragging] = useState(false);
+    const [preview, setPreview] = useState(previewUrl || "");
+    const [uploading, setUploading] = useState(false);
+
+    async function handleFile(file) {
+      if (!file) return;
+      setUploading(true);
+
+      try {
+        const fileRef = ref(storage, `matchFiles/${Date.now()}-${file.name}`);
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
+
+        setPreview(url);
+        onUpload(url);
+      } catch (e) {
+        alert("Upload failed: " + e.message);
+      }
+      setUploading(false);
+    }
+
+    function onDrop(e) {
+      e.preventDefault();
+      setDragging(false);
+      handleFile(e.dataTransfer.files[0]);
+    }
+
+    return (
+      <div
+        className={`glass-upload ${dragging ? "dragging" : ""}`}
+        onDragOver={(e) => {e.preventDefault(); setDragging(true);}}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        {preview ? (
+          <>
+            {preview.includes(".mp4") || preview.includes(".mov") ? (
+              <video src={preview} className="upload-preview" controls />
+            ) : (
+              <img src={preview} className="upload-preview" />
+            )}
+          </>
+        ) : (
+          <div className="upload-placeholder">
+            <div className="upload-icon">📁</div>
+            <p>Drag & drop image/video</p>
+          </div>
+        )}
+
+        <label className="upload-btn">
+          Select File
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={(e) => handleFile(e.target.files[0])}
+          />
+        </label>
+
+        {uploading && <div className="upload-loading">Uploading...</div>}
+      </div>
+    );
+  }
+
+  // -----------------------------
+  // OPEN CREATE MATCH
+  // -----------------------------
   function openCreate() {
     setEditing(null);
     setForm({
       title: "",
       type: "tournament",
       mode: "Solo",
-      mapPool: DEFAULT_MAP_POOL,
+      mapPool: DEFAULT_MAP_POOL.slice(),
       autoRotate: true,
-      map: "Bermuda",
+      map: DEFAULT_MAP_POOL[0],
       maxPlayers: 4,
       entryFee: 0,
-      killReward: 75,
       reward: 0,
+      killReward: 75,
       startTime: "",
       revealDelayMinutes: 5,
       roomID: "",
@@ -71,20 +141,22 @@ export default function AdminPanel({
     setShowCreate(true);
   }
 
-  // Edit match
+  // -----------------------------
+  // OPEN EDIT MATCH
+  // -----------------------------
   function openEdit(m) {
     setEditing(m);
     setForm({
       title: m.title || "",
       type: m.type || "tournament",
       mode: m.mode || "Solo",
-      mapPool: m.mapPool || DEFAULT_MAP_POOL,
-      autoRotate: !!m.autoRotate,
-      map: m.map || "Bermuda",
+      mapPool: m.mapPool || DEFAULT_MAP_POOL.slice(),
+      autoRotate: m.autoRotate ?? true,
+      map: m.map || DEFAULT_MAP_POOL[0],
       maxPlayers: m.maxPlayers || 4,
       entryFee: m.entryFee || 0,
-      killReward: m.killReward ?? 75,
       reward: m.reward || 0,
+      killReward: m.killReward ?? 75,
       startTime: m.startTime
         ? (m.startTime.seconds
             ? m.startTime.toDate().toISOString().slice(0, 16)
@@ -98,117 +170,111 @@ export default function AdminPanel({
     setShowCreate(true);
   }
 
-  // Save match
+  // -----------------------------
+  // SAVE MATCH
+  // -----------------------------
   async function handleSave() {
     setSaving(true);
 
     try {
-      // -----------------------------
-      // VALIDATION FIXES
-      // -----------------------------
-
-      if (!form.title.trim()) {
-        alert("Title cannot be empty.");
-        setSaving(false);
-        return;
-      }
-
-      const maxPlayers = Number(form.maxPlayers);
-      if (isNaN(maxPlayers) || maxPlayers < 2 || maxPlayers > 48) {
-        alert("Max players must be between 2 and 48.");
-        setSaving(false);
-        return;
-      }
-
-      let start = null;
-      if (form.startTime) {
-        start = new Date(form.startTime);
-        if (isNaN(start.getTime())) {
-          alert("Invalid start time format.");
-          setSaving(false);
-          return;
-        }
-      }
-
       const payload = {
-        title: form.title.trim(),
+        title: form.title,
         type: form.type,
         mode: form.mode,
         mapPool: form.mapPool,
         autoRotate: form.autoRotate,
         map: form.map,
-        maxPlayers,
-        entryFee: Number(form.entryFee) || 0,
-        killReward:
-          form.type === "tournament"
-            ? 75
-            : Number(form.killReward) || 0,
-        reward: Number(form.reward) || 0,
-        roomID: form.roomID || "",
-        roomPassword: form.roomPassword || "",
+        maxPlayers: Number(form.maxPlayers),
+        entryFee: Number(form.entryFee),
+        reward: Number(form.reward),
+        killReward: Number(form.killReward),
+        roomID: form.roomID,
+        roomPassword: form.roomPassword,
         imageUrl: form.imageUrl || "",
-        createdAt: serverTimestamp(),
         status: "upcoming",
         playersJoined: [],
+        createdAt: serverTimestamp(),
       };
 
-      if (start) {
+      // start time & revealAt
+      if (form.startTime) {
+        const start = new Date(form.startTime);
         payload.startTime = start;
-        const revealAt = new Date(
+
+        payload.revealAt = new Date(
           start.getTime() -
-            (Number(form.revealDelayMinutes) || 5) * 60000
+            Number(form.revealDelayMinutes || 5) * 60 * 1000
         );
-        payload.revealAt = revealAt;
-        payload.revealDelayMinutes =
-          Number(form.revealDelayMinutes) || 5;
+        payload.revealDelayMinutes = Number(form.revealDelayMinutes || 5);
       }
 
-      // -----------------------------
-      // CREATE or UPDATE
-      // -----------------------------
       if (editing) {
-        await updateDoc(doc(db, "matches", editing.id), {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        });
-        alert("Match updated.");
+        await updateDoc(doc(db, "matches", editing.id), payload);
+        await editMatch(editing.id, payload);
       } else {
-        await addDoc(collection(db, "matches"), payload);
-        alert("Match created.");
+        await createMatch(payload);
       }
 
       setShowCreate(false);
-    } catch (err) {
-      console.error("Save error:", err);
-      alert("Failed to save match.");
+      alert("Match saved successfully!");
+    } catch (e) {
+      alert("Failed to save: " + e.message);
     }
 
     setSaving(false);
   }
 
-  async function remove(m) {
-    if (!window.confirm("Delete match?")) return;
-    try {
-      await deleteDoc(doc(db, "matches", m.id));
-      alert("Deleted.");
-    } catch (e) {
-      alert("Failed to delete.");
-    }
+  // -----------------------------
+  // DELETE MATCH
+  // -----------------------------
+  async function handleDelete(m) {
+    if (!window.confirm("Delete this match?")) return;
+    await deleteMatch(m.id);
   }
 
   // -----------------------------
-  // UI
+  // MAIN UI
   // -----------------------------
+
   return (
-    <section className="panel">
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+    <section className="panel admin-panel">
+      <div className="admin-header">
         <h3>Admin Panel</h3>
         <button className="btn small" onClick={openCreate}>
           Create Match
         </button>
       </div>
 
-      {/* Matches List */}
+      <h4>Top-up Requests</h4>
+      {requests.topup.length === 0 ? (
+        <p className="muted-small">No topups.</p>
+      ) : (
+        requests.topup.map((r) => (
+          <div key={r.id} className="admin-row">
+            <span>{r.email} | ₹{r.amount}</span>
+            <div>
+              <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
+              <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
+            </div>
+          </div>
+        ))
+      )}
+
+      <h4>Withdraw Requests</h4>
+      {requests.withdraw.length === 0 ? (
+        <p className="muted-small">No withdrawals.</p>
+      ) : (
+        requests.withdraw.map((r) => (
+          <div key={r.id} className="admin-row">
+            <span>{r.email} | ₹{r.amount}</span>
+            <div>
+              <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
+              <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
+            </div>
+          </div>
+        ))
+      )}
+
       <h4>Matches</h4>
       {localMatches.length === 0 ? (
         <p className="muted-small">No matches.</p>
@@ -221,40 +287,33 @@ export default function AdminPanel({
                 {m.type} • {m.mode} • {m.maxPlayers} players
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn small" onClick={() => openEdit(m)}>
-                Edit
-              </button>
-              <button className="btn small ghost" onClick={() => remove(m)}>
-                Delete
-              </button>
+            <div className="admin-match-actions">
+              <button className="btn small" onClick={() => openEdit(m)}>Edit</button>
+              <button className="btn small ghost" onClick={() => handleDelete(m)}>Delete</button>
             </div>
           </div>
         ))
       )}
 
-      {/* Create/Edit Modal */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 700 }}
-          >
+          <div className="modal-content admin-modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? "Edit Match" : "Create Match"}</h3>
 
-            {/* Title */}
-            <label>Match Title</label>
+            <label>Match Banner</label>
+            <FileUploader
+              onUpload={(url) => setForm({ ...form, imageUrl: url })}
+              previewUrl={form.imageUrl}
+            />
+
+            <label>Title</label>
             <input
               className="modern-input"
               value={form.title}
-              onChange={(e) =>
-                setForm({ ...form, title: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
 
-            {/* Type */}
-            <label>Match Type</label>
+            <label>Type</label>
             <select
               className="modern-input"
               value={form.type}
@@ -264,7 +323,6 @@ export default function AdminPanel({
               <option value="custom">Custom (1v1)</option>
             </select>
 
-            {/* Mode */}
             <label>Mode</label>
             <select
               className="modern-input"
@@ -276,8 +334,7 @@ export default function AdminPanel({
               <option>Squad</option>
             </select>
 
-            {/* Map Pool */}
-            <label>Map Pool (comma separated)</label>
+            <label>Map Pool</label>
             <input
               className="modern-input"
               value={form.mapPool.join(",")}
@@ -286,144 +343,84 @@ export default function AdminPanel({
                   ...form,
                   mapPool: e.target.value
                     .split(",")
-                    .map((x) => x.trim())
+                    .map((s) => s.trim())
                     .filter(Boolean),
                 })
               }
             />
 
-            {/* Auto-rotate & manual */}
-            <label>
-              <input
-                type="checkbox"
-                checked={form.autoRotate}
-                onChange={(e) =>
-                  setForm({ ...form, autoRotate: e.target.checked })
-                }
-              />{" "}
-              Auto-rotate maps
-            </label>
-
-            <label>Manual Map</label>
-            <input
-              className="modern-input"
-              value={form.map}
-              onChange={(e) => setForm({ ...form, map: e.target.value })}
-            />
-
-            {/* Max players */}
             <label>Max Players (2–48)</label>
             <input
               type="number"
+              min="2"
+              max="48"
               className="modern-input"
-              min={2}
-              max={48}
               value={form.maxPlayers}
               onChange={(e) =>
                 setForm({
                   ...form,
-                  maxPlayers: Math.min(
-                    48,
-                    Math.max(2, Number(e.target.value))
-                  ),
+                  maxPlayers: Math.min(48, Math.max(2, Number(e.target.value))),
                 })
               }
             />
 
-            {/* Entry fee */}
             <label>Entry Fee</label>
             <input
               type="number"
               className="modern-input"
               value={form.entryFee}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  entryFee: Number(e.target.value) || 0,
-                })
-              }
+              onChange={(e) => setForm({ ...form, entryFee: Number(e.target.value) })}
             />
 
-            {/* Kill reward */}
             <label>Kill Reward</label>
             <input
               type="number"
               className="modern-input"
               value={form.killReward}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  killReward: Number(e.target.value) || 0,
-                })
-              }
-              disabled={form.type === "tournament"}
+              onChange={(e) => setForm({ ...form, killReward: Number(e.target.value) })}
             />
 
-            {/* Start Time */}
             <label>Start Time</label>
             <input
               type="datetime-local"
               className="modern-input"
               value={form.startTime}
-              onChange={(e) =>
-                setForm({ ...form, startTime: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, startTime: e.target.value })}
             />
 
-            {/* Reveal delay */}
             <label>Reveal Delay (minutes)</label>
             <input
               type="number"
-              min={1}
-              max={30}
               className="modern-input"
               value={form.revealDelayMinutes}
               onChange={(e) =>
                 setForm({
                   ...form,
-                  revealDelayMinutes: Number(e.target.value) || 5,
+                  revealDelayMinutes: Number(e.target.value || 5),
                 })
               }
             />
 
-            {/* Room ID */}
             <label>Room ID</label>
             <input
               className="modern-input"
               value={form.roomID}
-              onChange={(e) =>
-                setForm({ ...form, roomID: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, roomID: e.target.value })}
             />
 
-            {/* Room Password */}
             <label>Room Password</label>
             <input
               className="modern-input"
               value={form.roomPassword}
-              onChange={(e) =>
-                setForm({ ...form, roomPassword: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, roomPassword: e.target.value })}
             />
 
-            {/* Image URL */}
-            <label>Match Image URL</label>
-            <input
-              className="modern-input"
-              value={form.imageUrl}
-              onChange={(e) =>
-                setForm({ ...form, imageUrl: e.target.value })
-              }
-              placeholder="https://..."
-            />
-
-            {/* Buttons */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <div className="admin-modal-actions">
               <button className="btn small ghost" onClick={() => setShowCreate(false)}>
                 Cancel
               </button>
-              <button className="btn small" disabled={saving} onClick={handleSave}>
-                {saving ? "Saving..." : editing ? "Save Match" : "Create Match"}
+              <button className="btn small" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : editing ? "Save" : "Create"}
               </button>
             </div>
           </div>
