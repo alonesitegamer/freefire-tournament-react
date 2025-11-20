@@ -2,34 +2,53 @@
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 
+// -------------------------------
+//  FIREBASE ADMIN INITIALIZATION
+// -------------------------------
 if (!admin.apps.length) {
-  // Expect a JSON-stringified service account in env var FIREBASE_SERVICE_ACCOUNT
   const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+
   if (!sa) {
-    console.error("Missing FIREBASE_SERVICE_ACCOUNT env var");
+    console.error("❌ Missing FIREBASE_SERVICE_ACCOUNT env var");
   } else {
-    admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(sa)),
-    });
+    try {
+      admin.initializeApp({
+        credential: admin.credential.cert(JSON.parse(sa)),
+      });
+      console.log("✔ Firebase Admin initialized");
+    } catch (err) {
+      console.error("❌ Failed to initialize Firebase Admin:", err);
+    }
   }
 }
+
 const db = admin.firestore();
 
+// -------------------------------
+//  API ROUTE HANDLER
+// -------------------------------
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
 
   const { email } = req.body;
-  if (!email || typeof email !== "string") return res.status(400).json({ error: "Missing email" });
 
-  // simple 6-digit OTP
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ error: "Missing or invalid email" });
+  }
+
+  // Generate a 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // expiry: 10 minutes from now
-  const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
+  // Expire in 10 minutes
+  const expiresAt = admin.firestore.Timestamp.fromDate(
+    new Date(Date.now() + 10 * 60 * 1000)
+  );
 
   try {
-    // store OTP in Firestore (doc id = encoded email to be safe)
+    // Encode email to safe Firestore doc ID
     const docId = encodeURIComponent(email.toLowerCase());
+
     await db.collection("otpRequests").doc(docId).set({
       email: email.toLowerCase(),
       code: otp,
@@ -37,7 +56,9 @@ export default async function handler(req, res) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // send email
+    // -------------------------------
+    //  SEND EMAIL
+    // -------------------------------
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -49,23 +70,23 @@ export default async function handler(req, res) {
     await transporter.sendMail({
       from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
       to: email,
-      subject: "Your verification OTP — Imperial Esports",
+      subject: "Your Verification OTP — Imperial Esports",
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 18px; background:#000; color:#fff">
-          <h2 style="color:#ffb347; margin:0 0 8px">Imperial Esports — Your OTP</h2>
-          <p style="margin:0 0 8px">Use the 6-digit code below to verify your account. It expires in 10 minutes.</p>
-          <div style="font-size:36px; font-weight:700; letter-spacing:6px; margin:10px 0; color:#fff">${otp}</div>
-          <small style="color:#ddd">If you did not request this, ignore this message.</small>
+        <div style="font-family: Arial; padding: 18px; background:#000; color:white;">
+          <h2 style="color:#ffb347;">Your OTP Code</h2>
+          <p style="font-size: 16px;">Use the OTP below to verify your account.</p>
+          <h1 style="font-size: 42px; letter-spacing: 6px; margin: 12px 0;">${otp}</h1>
+          <p style="color:#ccc;">OTP expires in 10 minutes.</p>
+          <p style="margin-top: 10px; font-size: 12px; color:#777;">If you didn’t request this, ignore this mail.</p>
         </div>
       `,
     });
 
-    // For dev convenience log the OTP to Vercel logs (do NOT enable in prod)
-    console.log(`[send-otp] OTP to ${email}: ${otp}`);
+    console.log(`✔ OTP sent to ${email}: ${otp}`);
 
     return res.status(200).json({ success: true, message: "OTP sent" });
   } catch (err) {
-    console.error("send-otp error", err);
+    console.error("❌ send-otp error:", err);
     return res.status(500).json({ error: "Failed to send OTP" });
   }
 }
