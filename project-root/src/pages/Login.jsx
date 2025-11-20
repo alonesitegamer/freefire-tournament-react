@@ -5,14 +5,13 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithPopup,
-  fetchSignInMethodsForEmail,
 } from "firebase/auth";
 
 import { auth, db, provider } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
-import "../styles/Login.css"; // ensure file exists
+import "../styles/Login.css"; // ensure this file exists
 
 export default function Login() {
   const navigate = useNavigate();
@@ -26,8 +25,8 @@ export default function Login() {
   const [err, setErr] = useState("");
 
   // OTP modal state
-  const [otpPhase, setOtpPhase] = useState(false); // whether OTP modal open
-  const [otpDigits, setOtpDigits] = useState(Array(6).fill("")); // array of 6 digits
+  const [otpPhase, setOtpPhase] = useState(false);
+  const [otpValueArr, setOtpValueArr] = useState(["", "", "", "", "", ""]);
   const otpInputsRef = useRef([]);
   const [otpSending, setOtpSending] = useState(false);
   const [otpError, setOtpError] = useState("");
@@ -36,6 +35,9 @@ export default function Login() {
 
   // password visibility
   const [showPassword, setShowPassword] = useState(false);
+
+  // global overlay spinner
+  const [globalLoading, setGlobalLoading] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -84,6 +86,35 @@ export default function Login() {
   async function sendOtpRequest(targetEmail) {
     setOtpSending(true);
     setOtpError("");
+    // pre-check: existing user and disposable detection
+    try {
+      const checkRes = await fetch("/api/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail }),
+      });
+      const checkJson = await checkRes.json();
+      if (!checkRes.ok) {
+        // check endpoint returned an error message we should show
+        setOtpError(checkJson?.error || "Failed to validate email.");
+        setOtpSending(false);
+        return false;
+      }
+      if (checkJson.existing) {
+        setOtpError("An account already exists with this email. Please sign in.");
+        setOtpSending(false);
+        return false;
+      }
+      if (checkJson.disposable) {
+        setOtpError("Disposable / temporary email addresses are not allowed.");
+        setOtpSending(false);
+        return false;
+      }
+    } catch (e) {
+      console.error("check-email error", e);
+      // allow fallback to send OTP (but we'll show error)
+    }
+
     try {
       const res = await fetch("/api/send-otp", {
         method: "POST",
@@ -92,7 +123,6 @@ export default function Login() {
       });
       const json = await res.json();
       if (!res.ok) {
-        // special messages from API are displayed
         setOtpError(json?.error || "Failed to send OTP");
         setOtpSending(false);
         return false;
@@ -100,14 +130,10 @@ export default function Login() {
       // success
       startResendTimer(30);
       setOtpSending(false);
-      // focus first OTP input
-      setTimeout(() => {
-        otpInputsRef.current[0]?.focus();
-      }, 80);
       return true;
     } catch (err) {
       console.error("sendOtpRequest error", err);
-      setOtpError("send-otp failed");
+      setOtpError("Failed to send OTP");
       setOtpSending(false);
       return false;
     }
@@ -131,99 +157,58 @@ export default function Login() {
     }
   }
 
-  // Disposable email simple blacklist
-  function isDisposableEmail(address) {
-    if (!address) return false;
-    const disposables = [
-      "mailinator.com",
-      "10minutemail.com",
-      "tempmail",
-      "guerrillamail",
-      "trashmail",
-      "yopmail",
-      "spamgourmet",
-      "dispostable",
-      "maildrop",
-      "temp-mail.org",
-    ];
-    const domain = address.split("@")[1]?.toLowerCase() || "";
-    return disposables.some((d) => domain.includes(d));
-  }
-
   // ---- Auth handlers ----
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErr("");
-    setLoading(true);
+    setGlobalLoading(true);
 
     if (isRegister) {
       // Start OTP flow: don't create auth user yet.
       if (!email || !password) {
         setErr("Please enter email & password.");
-        setLoading(false);
+        setGlobalLoading(false);
         return;
-      }
-
-      // block disposable emails
-      if (isDisposableEmail(email)) {
-        setErr("Unverified email addresses aren't allowed.");
-        setLoading(false);
-        return;
-      }
-
-      // check if email already has an account
-      try {
-        const methods = await fetchSignInMethodsForEmail(auth, email);
-        if (methods && methods.length > 0) {
-          setErr("You already have an account with this email. Please sign in or reset password.");
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.warn("fetchSignInMethodsForEmail failed", err);
-        // proceed (we'll still try OTP)
       }
 
       // send OTP
       const ok = await sendOtpRequest(email);
       if (!ok) {
-        setErr((prev) => prev || otpError || "send-otp failed");
-        setLoading(false);
+        setErr(otpError || "Failed to send OTP");
+        setGlobalLoading(false);
         return;
       }
 
       // open OTP modal
       setOtpPhase(true);
-      setOtpDigits(Array(6).fill(""));
-      setOtpError("");
-      setLoading(false);
+      setGlobalLoading(false);
       return;
     }
 
     // sign in flow
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      setLoading(false);
+      setGlobalLoading(false);
       navigate("/"); // or whatever route
     } catch (error) {
       console.error("Login error:", error);
       setErr(customAuthError(error));
-      setLoading(false);
+      setGlobalLoading(false);
     }
   };
 
   async function handleGoogle() {
     setErr("");
-    setLoading(true);
+    setGlobalLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
       await saveInitialUser(res.user, referral);
-      setLoading(false);
+      setGlobalLoading(false);
       navigate("/");
     } catch (error) {
       console.error("Google Sign-In error:", error);
       setErr(customAuthError(error));
-      setLoading(false);
+      setGlobalLoading(false);
     }
   }
 
@@ -234,10 +219,10 @@ export default function Login() {
       return;
     }
     setErr("");
-    setLoading(true);
+    setGlobalLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      setLoading(false);
+      setGlobalLoading(false);
       setErr("Password reset email sent! Check your inbox.");
       setTimeout(() => {
         setIsResetMode(false);
@@ -246,12 +231,11 @@ export default function Login() {
     } catch (error) {
       console.error("Password Reset error:", error);
       setErr(customAuthError(error));
-      setLoading(false);
+      setGlobalLoading(false);
     }
   }
 
   function customAuthError(err) {
-    // map firebase messages to friendly messages
     if (!err) return "An error occurred.";
     const code = err.code || "";
     if (code.includes("auth/invalid-email")) return "Please enter a valid email address.";
@@ -264,18 +248,20 @@ export default function Login() {
 
   // Called when user confirms OTP in modal
   async function handleConfirmOtpAndCreate() {
-    const code = otpDigits.join("").trim();
-    if (!code || code.length !== 6) {
+    const code = otpValueArr.join("").trim();
+    if (!code || code.length < 6) {
       setOtpError("Enter the 6-digit OTP.");
       return;
     }
     setOtpError("");
     setOtpSending(true);
+    setGlobalLoading(true);
 
     const verify = await verifyOtpRequest(email, code);
     if (!verify.ok) {
       setOtpError(verify.error || "Invalid OTP");
       setOtpSending(false);
+      setGlobalLoading(false);
       return;
     }
 
@@ -285,9 +271,10 @@ export default function Login() {
       const user = userCredential.user;
       await saveInitialUser(user, referral);
       setOtpPhase(false);
-      setOtpDigits(Array(6).fill(""));
+      setOtpValueArr(["", "", "", "", "", ""]);
       setOtpSending(false);
-      setErr("Registration successful! You can now sign in.");
+      setGlobalLoading(false);
+      setErr("Registration successful! You are signed in.");
       setIsRegister(false);
       setEmail("");
       setPassword("");
@@ -296,6 +283,7 @@ export default function Login() {
       console.error("Registration error after OTP:", error);
       setOtpError(customAuthError(error));
       setOtpSending(false);
+      setGlobalLoading(false);
     }
   }
 
@@ -303,54 +291,42 @@ export default function Login() {
     if (resendCountdown > 0) return;
     setOtpError("");
     setOtpSending(true);
+    setGlobalLoading(true);
     const ok = await sendOtpRequest(email);
-    if (!ok) setOtpError("send-otp failed");
+    if (!ok) setOtpError("Failed to resend OTP");
     setOtpSending(false);
+    setGlobalLoading(false);
   }
 
   function closeOtpModal() {
     setOtpPhase(false);
-    setOtpDigits(Array(6).fill(""));
+    setOtpValueArr(["", "", "", "", "", ""]);
     setOtpError("");
   }
 
-  // OTP input handlers (6 boxes)
+  // OTP input helpers
   function handleOtpChange(index, value) {
-    if (!/^[0-9]*$/.test(value)) return;
-    const v = value.slice(-1);
-    const arr = [...otpDigits];
-    arr[index] = v;
-    setOtpDigits(arr);
-    if (v && index < 5) {
+    if (!/^\d*$/.test(value)) return; // only numbers
+    const arr = [...otpValueArr];
+    arr[index] = value.slice(-1); // last char
+    setOtpValueArr(arr);
+    if (value && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
     }
   }
-
-  function handleOtpKeyDown(e, index) {
-    if (e.key === "Backspace") {
-      if (otpDigits[index]) {
-        const arr = [...otpDigits];
-        arr[index] = "";
-        setOtpDigits(arr);
-      } else if (index > 0) {
-        otpInputsRef.current[index - 1]?.focus();
-      }
-    } else if (e.key === "ArrowLeft" && index > 0) {
+  function handleOtpKeyDown(index, e) {
+    if (e.key === "Backspace" && !otpValueArr[index] && index > 0) {
       otpInputsRef.current[index - 1]?.focus();
-    } else if (e.key === "ArrowRight" && index < 5) {
+      const arr = [...otpValueArr];
+      arr[index - 1] = "";
+      setOtpValueArr(arr);
+    }
+    if (e.key === "ArrowLeft" && index > 0) {
+      otpInputsRef.current[index - 1]?.focus();
+    }
+    if (e.key === "ArrowRight" && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
     }
-  }
-
-  // paste support
-  function handleOtpPaste(e) {
-    const text = e.clipboardData.getData("text").trim();
-    if (!/^\d{6}$/.test(text)) return;
-    const arr = text.split("");
-    setOtpDigits(arr);
-    setTimeout(() => {
-      otpInputsRef.current[5]?.focus();
-    }, 10);
   }
 
   return (
@@ -382,7 +358,7 @@ export default function Login() {
                 </button>
               </div>
             </form>
-            <p className="text-muted" style={{ marginTop: 12 }}>
+            <p className="text-muted">
               Remembered it?{" "}
               <span className="link" onClick={() => { setIsResetMode(false); setErr(""); }}>
                 Back to Sign In
@@ -403,7 +379,7 @@ export default function Login() {
                 disabled={otpPhase}
               />
 
-              <div className={`password-wrap ${loading ? "pw-loading" : ""}`} style={{ position: "relative" }}>
+              <div className={`password-wrap ${loading ? "pw-loading" : ""}`}>
                 <input
                   placeholder="Password (6+ characters)"
                   type={showPassword ? "text" : "password"}
@@ -412,15 +388,15 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <div className="pw-loader" aria-hidden />
                 <button
                   type="button"
-                  className="eye-btn"
+                  className={`eye-btn ${showPassword ? "active" : ""}`}
                   onClick={() => setShowPassword((s) => !s)}
                   title={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? "👀" : "🙈"}
                 </button>
+                <div className="pw-loader" aria-hidden />
               </div>
 
               {isRegister && (
@@ -434,26 +410,23 @@ export default function Login() {
               )}
 
               {!isRegister && (
-                <div className="alt-actions">
-                  <div className="muted" />
-                  <div className="forgot-password">
-                    <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>
-                      Forgot Password?
-                    </span>
-                  </div>
+                <div className="forgot-password" style={{ textAlign: "right" }}>
+                  <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>
+                    Forgot Password?
+                  </span>
                 </div>
               )}
 
               {err && <div className="error">{err}</div>}
 
-              <div className="form-actions">
-                <button className="btn" type="submit" disabled={loading}>
-                  {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
+              <div style={{ marginTop: 8 }}>
+                <button className="btn" type="submit" disabled={globalLoading}>
+                  {globalLoading ? "Processing..." : (isRegister ? "Register" : "Sign In")}
                 </button>
               </div>
             </form>
 
-            <p className="muted" style={{ marginTop: 12 }}>
+            <p className="text-muted" style={{ marginTop: 10 }}>
               {isRegister ? "Already have an account? " : "Don't have an account? "}
               <span className="link" onClick={() => { setIsRegister((s) => !s); setErr(""); }}>
                 {isRegister ? "Sign In" : "Register"}
@@ -461,7 +434,7 @@ export default function Login() {
             </p>
 
             <div className="sep">OR</div>
-            <button className="btn google" onClick={handleGoogle} disabled={loading}>Sign in with Google</button>
+            <button className="btn google" onClick={handleGoogle} disabled={globalLoading}>Sign in with Google</button>
           </>
         )}
       </div>
@@ -483,58 +456,59 @@ export default function Login() {
             <h3>Create Account</h3>
             <p className="muted">We've sent a 6-digit OTP to <strong>{email}</strong></p>
 
-            <div
-              className="verify-block"
-              onPaste={handleOtpPaste}
-              style={{ display: "flex", justifyContent: "center", marginTop: 10 }}
-            >
-              <div className="otp-form" style={{ gap: 10 }}>
-                {otpDigits.map((d, i) => (
+            <div className="verify-block">
+              <div className="otp-form">
+                {Array.from({ length: 6 }).map((_, i) => (
                   <input
                     key={i}
                     ref={(el) => (otpInputsRef.current[i] = el)}
-                    className="otp-input"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={d}
+                    value={otpValueArr[i]}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(e, i)}
-                    onFocus={(e) => e.target.select()}
-                    aria-label={`OTP digit ${i + 1}`}
+                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                    maxLength={1}
+                    className="otp-field field"
+                    inputMode="numeric"
+                    pattern="\d*"
+                    autoFocus={i === 0}
+                    style={{ textAlign: "center", fontSize: 20 }}
                   />
                 ))}
               </div>
-            </div>
 
-            {otpError && <div className="error" style={{ marginTop: 10 }}>{otpError}</div>}
+              {otpError && <div className="error" style={{ marginTop: 8 }}>{otpError}</div>}
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <button className="btn ghost" onClick={() => { closeOtpModal(); }}>
+                  Change Email
+                </button>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "center" }}>
-              <button className="btn ghost" onClick={() => { closeOtpModal(); }}>
-                Change Email
-              </button>
+                <button
+                  className="btn"
+                  onClick={handleConfirmOtpAndCreate}
+                  disabled={otpSending}
+                >
+                  {otpSending ? "Processing..." : "Confirm & Create"}
+                </button>
 
-              <button
-                className="btn"
-                onClick={handleConfirmOtpAndCreate}
-                disabled={otpSending}
-              >
-                {otpSending ? "Processing..." : "Confirm & Create"}
-              </button>
-
-              <button
-                className="btn small ghost"
-                onClick={handleResendOtp}
-                disabled={resendCountdown > 0 || otpSending}
-              >
-                {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend OTP"}
-              </button>
-            </div>
-
-            <div style={{ marginTop: 12, color: "var(--muted)", textAlign: "center" }}>
-              OTP logged to console for development (server logs).
+                <button
+                  className="btn small ghost"
+                  onClick={handleResendOtp}
+                  disabled={resendCountdown > 0 || otpSending}
+                >
+                  {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend OTP"}
+                </button>
+              </div>
+              <div style={{ marginTop: 12, color: "var(--muted)" }}>
+                OTP logged to console for development.
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Global centered spinner overlay */}
+      {globalLoading && (
+        <div className="global-loading-overlay">
+          <div className="global-spinner" />
         </div>
       )}
     </div>
