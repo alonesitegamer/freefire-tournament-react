@@ -11,7 +11,7 @@ import { auth, db, provider } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
-import "./styles/Login.css"; // make sure this file exists / already added
+import "../styles/Login.css"; // make sure this file exists / already added
 
 export default function Login() {
   const navigate = useNavigate();
