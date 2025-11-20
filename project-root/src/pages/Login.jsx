@@ -5,13 +5,14 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithPopup,
+  fetchSignInMethodsForEmail,
 } from "firebase/auth";
 
 import { auth, db, provider } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
-import "../styles/Login.css"; // make sure this file exists / already added
+import "../styles/Login.css"; // ensure file exists
 
 export default function Login() {
   const navigate = useNavigate();
@@ -26,7 +27,8 @@ export default function Login() {
 
   // OTP modal state
   const [otpPhase, setOtpPhase] = useState(false); // whether OTP modal open
-  const [otpValue, setOtpValue] = useState("");
+  const [otpDigits, setOtpDigits] = useState(Array(6).fill("")); // array of 6 digits
+  const otpInputsRef = useRef([]);
   const [otpSending, setOtpSending] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
@@ -90,6 +92,7 @@ export default function Login() {
       });
       const json = await res.json();
       if (!res.ok) {
+        // special messages from API are displayed
         setOtpError(json?.error || "Failed to send OTP");
         setOtpSending(false);
         return false;
@@ -97,6 +100,10 @@ export default function Login() {
       // success
       startResendTimer(30);
       setOtpSending(false);
+      // focus first OTP input
+      setTimeout(() => {
+        otpInputsRef.current[0]?.focus();
+      }, 80);
       return true;
     } catch (err) {
       console.error("sendOtpRequest error", err);
@@ -124,6 +131,25 @@ export default function Login() {
     }
   }
 
+  // Disposable email simple blacklist
+  function isDisposableEmail(address) {
+    if (!address) return false;
+    const disposables = [
+      "mailinator.com",
+      "10minutemail.com",
+      "tempmail",
+      "guerrillamail",
+      "trashmail",
+      "yopmail",
+      "spamgourmet",
+      "dispostable",
+      "maildrop",
+      "temp-mail.org",
+    ];
+    const domain = address.split("@")[1]?.toLowerCase() || "";
+    return disposables.some((d) => domain.includes(d));
+  }
+
   // ---- Auth handlers ----
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -138,16 +164,38 @@ export default function Login() {
         return;
       }
 
+      // block disposable emails
+      if (isDisposableEmail(email)) {
+        setErr("Unverified email addresses aren't allowed.");
+        setLoading(false);
+        return;
+      }
+
+      // check if email already has an account
+      try {
+        const methods = await fetchSignInMethodsForEmail(auth, email);
+        if (methods && methods.length > 0) {
+          setErr("You already have an account with this email. Please sign in or reset password.");
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("fetchSignInMethodsForEmail failed", err);
+        // proceed (we'll still try OTP)
+      }
+
       // send OTP
       const ok = await sendOtpRequest(email);
       if (!ok) {
-        setErr("send-otp failed");
+        setErr((prev) => prev || otpError || "send-otp failed");
         setLoading(false);
         return;
       }
 
       // open OTP modal
       setOtpPhase(true);
+      setOtpDigits(Array(6).fill(""));
+      setOtpError("");
       setLoading(false);
       return;
     }
@@ -216,14 +264,15 @@ export default function Login() {
 
   // Called when user confirms OTP in modal
   async function handleConfirmOtpAndCreate() {
-    if (!otpValue || otpValue.trim().length === 0) {
-      setOtpError("Enter the OTP.");
+    const code = otpDigits.join("").trim();
+    if (!code || code.length !== 6) {
+      setOtpError("Enter the 6-digit OTP.");
       return;
     }
     setOtpError("");
     setOtpSending(true);
 
-    const verify = await verifyOtpRequest(email, otpValue.trim());
+    const verify = await verifyOtpRequest(email, code);
     if (!verify.ok) {
       setOtpError(verify.error || "Invalid OTP");
       setOtpSending(false);
@@ -235,9 +284,8 @@ export default function Login() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       await saveInitialUser(user, referral);
-      // optional: sendEmailVerification(user) if you still want firebase email verification.
       setOtpPhase(false);
-      setOtpValue("");
+      setOtpDigits(Array(6).fill(""));
       setOtpSending(false);
       setErr("Registration successful! You can now sign in.");
       setIsRegister(false);
@@ -260,26 +308,64 @@ export default function Login() {
     setOtpSending(false);
   }
 
-  // resend link visible while in otpPhase
   function closeOtpModal() {
     setOtpPhase(false);
-    setOtpValue("");
+    setOtpDigits(Array(6).fill(""));
     setOtpError("");
   }
 
+  // OTP input handlers (6 boxes)
+  function handleOtpChange(index, value) {
+    if (!/^[0-9]*$/.test(value)) return;
+    const v = value.slice(-1);
+    const arr = [...otpDigits];
+    arr[index] = v;
+    setOtpDigits(arr);
+    if (v && index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyDown(e, index) {
+    if (e.key === "Backspace") {
+      if (otpDigits[index]) {
+        const arr = [...otpDigits];
+        arr[index] = "";
+        setOtpDigits(arr);
+      } else if (index > 0) {
+        otpInputsRef.current[index - 1]?.focus();
+      }
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      otpInputsRef.current[index - 1]?.focus();
+    } else if (e.key === "ArrowRight" && index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  }
+
+  // paste support
+  function handleOtpPaste(e) {
+    const text = e.clipboardData.getData("text").trim();
+    if (!/^\d{6}$/.test(text)) return;
+    const arr = text.split("");
+    setOtpDigits(arr);
+    setTimeout(() => {
+      otpInputsRef.current[5]?.focus();
+    }, 10);
+  }
+
   return (
-    <div className="auth-root">
+    <div className="auth-root login-screen">
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
       <div className="auth-overlay" />
-      <div className="auth-card">
+      <div className="auth-card login-card">
         <img src="/icon.jpg" className="logo-small" alt="logo" onError={(e)=>e.currentTarget.src="https://via.placeholder.com/100?text=Logo"} />
 
         {isResetMode ? (
           <>
-            <h2>Reset Password</h2>
-            <p className="text-muted">Enter your email and we'll send a reset link.</p>
+            <h2 className="login-title">Reset Password</h2>
+            <p className="muted">Enter your email and we'll send a reset link.</p>
             <form onSubmit={handlePasswordReset} className="form-col">
               <input
                 placeholder="Email"
@@ -290,11 +376,13 @@ export default function Login() {
                 required
               />
               {err && <div className={err.includes("sent") ? "error success" : "error"}>{err}</div>}
-              <button className="btn" type="submit" disabled={loading}>
-                {loading ? "Sending..." : "Send Reset Link"}
-              </button>
+              <div className="form-actions">
+                <button className="btn" type="submit" disabled={loading}>
+                  {loading ? "Sending..." : "Send Reset Link"}
+                </button>
+              </div>
             </form>
-            <p className="text-muted">
+            <p className="text-muted" style={{ marginTop: 12 }}>
               Remembered it?{" "}
               <span className="link" onClick={() => { setIsResetMode(false); setErr(""); }}>
                 Back to Sign In
@@ -303,7 +391,7 @@ export default function Login() {
           </>
         ) : (
           <>
-            <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
+            <h2 className="login-title">{isRegister ? "Create Account" : "Sign In"}</h2>
             <form onSubmit={handleAuthSubmit} className="form-col">
               <input
                 placeholder="Email"
@@ -315,7 +403,7 @@ export default function Login() {
                 disabled={otpPhase}
               />
 
-              <div className="password-row">
+              <div className={`password-wrap ${loading ? "pw-loading" : ""}`} style={{ position: "relative" }}>
                 <input
                   placeholder="Password (6+ characters)"
                   type={showPassword ? "text" : "password"}
@@ -324,9 +412,10 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
+                <div className="pw-loader" aria-hidden />
                 <button
                   type="button"
-                  className="eye-toggle"
+                  className="eye-btn"
                   onClick={() => setShowPassword((s) => !s)}
                   title={showPassword ? "Hide password" : "Show password"}
                 >
@@ -345,21 +434,26 @@ export default function Login() {
               )}
 
               {!isRegister && (
-                <div className="forgot-password">
-                  <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>
-                    Forgot Password?
-                  </span>
+                <div className="alt-actions">
+                  <div className="muted" />
+                  <div className="forgot-password">
+                    <span className="link" onClick={() => { setIsResetMode(true); setErr(""); }}>
+                      Forgot Password?
+                    </span>
+                  </div>
                 </div>
               )}
 
               {err && <div className="error">{err}</div>}
 
-              <button className="btn" type="submit" disabled={loading}>
-                {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
-              </button>
+              <div className="form-actions">
+                <button className="btn" type="submit" disabled={loading}>
+                  {loading ? "Loading..." : (isRegister ? "Register" : "Sign In")}
+                </button>
+              </div>
             </form>
 
-            <p className="text-muted">
+            <p className="muted" style={{ marginTop: 12 }}>
               {isRegister ? "Already have an account? " : "Don't have an account? "}
               <span className="link" onClick={() => { setIsRegister((s) => !s); setErr(""); }}>
                 {isRegister ? "Sign In" : "Register"}
@@ -389,15 +483,33 @@ export default function Login() {
             <h3>Create Account</h3>
             <p className="muted">We've sent a 6-digit OTP to <strong>{email}</strong></p>
 
-            <input
-              placeholder="Enter OTP"
-              className="field"
-              value={otpValue}
-              onChange={(e) => setOtpValue(e.target.value)}
-            />
+            <div
+              className="verify-block"
+              onPaste={handleOtpPaste}
+              style={{ display: "flex", justifyContent: "center", marginTop: 10 }}
+            >
+              <div className="otp-form" style={{ gap: 10 }}>
+                {otpDigits.map((d, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => (otpInputsRef.current[i] = el)}
+                    className="otp-input"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={d}
+                    onChange={(e) => handleOtpChange(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(e, i)}
+                    onFocus={(e) => e.target.select()}
+                    aria-label={`OTP digit ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
 
-            {otpError && <div className="error">{otpError}</div>}
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            {otpError && <div className="error" style={{ marginTop: 10 }}>{otpError}</div>}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "center" }}>
               <button className="btn ghost" onClick={() => { closeOtpModal(); }}>
                 Change Email
               </button>
@@ -419,8 +531,8 @@ export default function Login() {
               </button>
             </div>
 
-            <div style={{ marginTop: 12, color: "var(--muted)" }}>
-              OTP logged to console for development.
+            <div style={{ marginTop: 12, color: "var(--muted)", textAlign: "center" }}>
+              OTP logged to console for development (server logs).
             </div>
           </div>
         </div>
