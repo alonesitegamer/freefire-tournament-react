@@ -6,75 +6,54 @@ import {
   sendEmailVerification,
   signInWithPopup,
   sendPasswordResetEmail,
+  signOut as firebaseSignOut,
 } from "firebase/auth";
 import { auth, db, provider } from "../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import "./styles/Login.css"; // your styles (you said you added them)
 
-import "../styles/Login.css"; // your neon/gaming css (you said you've added this)
+function friendlyFirebaseError(err) {
+  const code = err?.code || "";
+  if (code.includes("invalid-email")) return "Please enter a valid email address.";
+  if (code.includes("email-already-in-use")) return "This email is already registered. Try signing in.";
+  if (code.includes("weak-password")) return "Password is too weak. Use at least 6 characters.";
+  if (code.includes("wrong-password")) return "Incorrect password. Try again or reset password.";
+  if (code.includes("user-not-found")) return "No account found with that email.";
+  // fallback
+  return err?.message || "An unexpected error occurred.";
+}
 
-// -------------------- utility --------------------
-const friendlyFirebaseError = (err) => {
-  if (!err || !err.code) return err?.message || "Unknown error";
-  switch (err.code) {
-    case "auth/invalid-email":
-      return "Please enter a valid email address.";
-    case "auth/email-already-in-use":
-      return "This email is already registered. Try signing in or reset password.";
-    case "auth/weak-password":
-      return "Password should be at least 6 characters.";
-    case "auth/wrong-password":
-      return "Incorrect password.";
-    case "auth/user-not-found":
-      return "No account found with this email.";
-    case "auth/too-many-requests":
-      return "Too many attempts. Please try again later.";
-    default:
-      return err.message || err.code;
-  }
-};
-
-// -------------------- component --------------------
 export default function Login() {
-  const [mode, setMode] = useState("login"); // 'login' | 'register' | 'reset'
+  // --- auth form mode + fields
+  const [isRegister, setIsRegister] = useState(true); // default create account per your screenshots
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [referral, setReferral] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // OTP states for registration
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpValue, setOtpValue] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState(null);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpResendTimer, setOtpResendTimer] = useState(0);
+  // --- OTP flow state
+  const [otpStage, setOtpStage] = useState(false); // when true we show OTP confirm modal
+  const [otpInput, setOtpInput] = useState("");
+  const [serverOtpSent, setServerOtpSent] = useState(null); // used for dev fallback
+  const [resendTimer, setResendTimer] = useState(0);
+  const resendRef = useRef(null);
 
-  // UI states
-  const [pwdVisible, setPwdVisible] = useState(false);
-  const [pwdTyping, setPwdTyping] = useState(false);
+  // --- UI states: password show/hide + spinner in password field
+  const [showPw, setShowPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
 
-  const navigate = useNavigate();
-  const otpRef = useRef(null);
-
-  useEffect(() => {
-    let t;
-    if (otpResendTimer > 0) {
-      t = setTimeout(() => setOtpResendTimer((s) => s - 1), 1000);
-    }
-    return () => clearTimeout(t);
-  }, [otpResendTimer]);
-
-  // -------------------- helper: save firestore user --------------------
-  async function saveInitialUser(user, referralCode = "") {
+  // --- general helpers
+  async function saveInitialUser(userObj, referralCode = "") {
     try {
-      const ref = doc(db, "users", user.uid);
+      const ref = doc(db, "users", userObj.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        const newReferralCode = user.uid.substring(0, 8).toUpperCase();
+        const newReferralCode = userObj.uid.substring(0, 8).toUpperCase();
         await setDoc(ref, {
-          email: user.email,
-          displayName: user.displayName || "",
+          email: userObj.email,
+          displayName: userObj.displayName || "",
           username: "",
           coins: 0,
           lastDaily: null,
@@ -89,320 +68,389 @@ export default function Login() {
     }
   }
 
-  // -------------------- OTP helpers --------------------
-  const generateOtp = () => {
+  // -----------------------
+  // OTP utilities
+  // -----------------------
+  function generateOtp() {
     // 6-digit numeric OTP
-    return String(Math.floor(100000 + Math.random() * 900000));
-  };
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 
-  async function sendOtpToEmail(emailToSend, otp) {
-    // Try your server endpoint first
+  async function sendOtpToEmail(targetEmail) {
+    setErr("");
+    setPwLoading(true);
+    const otp = generateOtp();
+
+    // start resend cooldown
+    startResendCooldown(30);
+
     try {
       const res = await fetch("/api/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailToSend, otp }),
+        body: JSON.stringify({ email: targetEmail, otp }),
       });
-      if (!res.ok) throw new Error("server-failed");
-      return { ok: true, msg: "sent" };
-    } catch (err) {
-      // graceful fallback: log OTP to console (dev only)
-      console.warn("send-otp failed, falling back to console log. Implement /api/send-otp for real email sending.", err);
-      console.info(`DEV OTP for ${emailToSend}: ${otp}`);
-      return { ok: false, msg: "dev-logged" };
+
+      if (!res.ok) {
+        // fallback / dev: if API fails (CORS / server), do dev fallback and continue
+        const txt = await res.text().catch(() => null);
+        console.warn("send-otp failed:", res.status, txt);
+        // Dev fallback: keep OTP locally so user can continue while dev fixes endpoint
+        console.warn(`DEV-Fallback OTP for ${targetEmail}: ${otp}`);
+        setServerOtpSent(otp);
+        setOtpStage(true);
+        setPwLoading(false);
+        return { ok: false, devFallback: true };
+      }
+
+      const json = await res.json();
+      if (json.success) {
+        setServerOtpSent(otp); // still store briefly for optional dev-check; in prod you can clear this
+        setOtpStage(true);
+        setPwLoading(false);
+        return { ok: true };
+      } else {
+        console.warn("send-otp returned not-ok", json);
+        // fallback
+        console.warn(`DEV-Fallback OTP for ${targetEmail}: ${otp}`);
+        setServerOtpSent(otp);
+        setOtpStage(true);
+        setPwLoading(false);
+        return { ok: false, devFallback: true };
+      }
+    } catch (e) {
+      console.error("send-otp error", e);
+      // dev fallback
+      console.warn(`DEV-Fallback OTP for ${targetEmail}: ${otp}`);
+      setServerOtpSent(otp);
+      setOtpStage(true);
+      setPwLoading(false);
+      return { ok: false, devFallback: true };
     }
   }
 
-  function startResendCooldown() {
-    setOtpResendTimer(45); // 45s cooldown
+  function startResendCooldown(seconds = 30) {
+    setResendTimer(seconds);
+    if (resendRef.current) clearInterval(resendRef.current);
+    resendRef.current = setInterval(() => {
+      setResendTimer((s) => {
+        if (s <= 1) {
+          clearInterval(resendRef.current);
+          resendRef.current = null;
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
   }
 
-  // -------------------- registration flow with OTP --------------------
-  async function beginRegistration(e) {
-    e.preventDefault();
+  async function handleResendOtp() {
+    if (!email) return setErr("Please enter an email first.");
+    if (resendTimer > 0) return;
+    await sendOtpToEmail(email);
+  }
+
+  // -----------------------
+  // Register flow with OTP
+  // -----------------------
+  const handleAuthSubmit = async (e) => {
+    e?.preventDefault?.();
     setErr("");
     if (!email) return setErr("Please enter email.");
-    if (!password || password.length < 6) return setErr("Password must be 6+ characters.");
+    if (!password || password.length < 6) return setErr("Password must have at least 6 characters.");
     setLoading(true);
-    try {
-      const otp = generateOtp();
-      setGeneratedOtp(otp);
-      setOtpLoading(true);
-      const r = await sendOtpToEmail(email, otp);
-      setOtpLoading(false);
-      setOtpSent(true);
-      startResendCooldown();
-      // Focus OTP input
-      setTimeout(() => otpRef.current?.focus?.(), 200);
-      if (r.ok) {
-        setErr("OTP sent — check your email.");
-      } else {
-        setErr("OTP logged to console for development.");
-      }
-    } catch (err) {
-      console.error("beginRegistration error", err);
-      setErr("Failed to send OTP. Try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  async function confirmOtpAndCreate(e) {
-    e.preventDefault();
-    setErr("");
-    if (!otpValue) return setErr("Enter the OTP sent to your email.");
-    if (!generatedOtp) return setErr("No OTP generated. Please resend and try again.");
-    setLoading(true);
-    try {
-      if (otpValue !== generatedOtp) {
-        setErr("Invalid OTP. Please check and try again.");
+    if (isRegister) {
+      // 1) send OTP to email
+      const send = await sendOtpToEmail(email);
+      if (!send) {
+        // if send failed but dev fallback allowed, we still show OTP stage
+        setLoading(false);
         return;
       }
-
-      // OTP OK -> create user
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await saveInitialUser(cred.user, referral);
+      setLoading(false);
+      return;
+    } else {
+      // sign in flow
       try {
-        // send firebase email verification also (optional)
-        await sendEmailVerification(cred.user);
-      } catch (e) {
-        console.warn("sendEmailVerification failed", e);
+        await signInWithEmailAndPassword(auth, email, password);
+        setLoading(false);
+      } catch (error) {
+        setErr(friendlyFirebaseError(error));
+        setLoading(false);
       }
+    }
+  };
 
-      setErr("Registration successful! You're signed in. We also emailed a verification link.");
-      // reset OTP states
-      setGeneratedOtp(null);
-      setOtpValue("");
-      setOtpSent(false);
+  // Confirm OTP -> create account and force email verification
+  const confirmOtpAndCreate = async () => {
+    setErr("");
+    if (!otpInput || otpInput.length < 4) return setErr("Enter the OTP sent to your email.");
+    // simple match with serverOtpSent ONLY for dev fallback; in prod the server handled it
+    // but since our api just sends the otp, we must trust the user typed the same otp
+    // (you can implement server-side OTP verification & persistence for stricter flow)
+    if (serverOtpSent && otpInput !== serverOtpSent) {
+      // If serverOtpSent is present (dev fallback), enforce match
+      setErr("Incorrect OTP. Check your email and try again.");
+      return;
+    }
 
-      // navigate to dashboard (or wherever)
-      setTimeout(() => navigate("/dashboard"), 900);
+    setLoading(true);
+    try {
+      // create user
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCred.user;
+
+      // save user doc
+      await saveInitialUser(user, referral);
+
+      // send firebase verification email
+      await sendEmailVerification(user);
+
+      // Immediately sign-out so user can't access app before clicking verification link
+      await firebaseSignOut(auth);
+
+      setLoading(false);
+      setOtpStage(false);
+      setServerOtpSent(null);
+      setOtpInput("");
+      setErr("Account created — verification email sent. Please click the link to verify your account before signing in.");
     } catch (error) {
-      console.error("confirmOtpAndCreate", error);
+      console.error("create user error", error);
       setErr(friendlyFirebaseError(error));
+      setLoading(false);
+    }
+  };
+
+  // Resend verification email for signed-in user (only displays if signed in)
+  async function handleResendVerificationEmail() {
+    setErr("");
+    setLoading(true);
+    try {
+      const current = auth.currentUser;
+      if (!current) {
+        setErr("Not signed in — sign in first to resend verification email.");
+        setLoading(false);
+        return;
+      }
+      await sendEmailVerification(current);
+      setErr("Verification email resent. Check your inbox.");
+    } catch (e) {
+      setErr("Failed to resend verification email.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function resendOtp() {
-    if (otpResendTimer > 0) return;
-    setErr("");
-    setOtpLoading(true);
-    const otp = generateOtp();
-    setGeneratedOtp(otp);
-    const r = await sendOtpToEmail(email, otp);
-    setOtpLoading(false);
-    startResendCooldown();
-    if (r.ok) setErr("OTP resent — check your email.");
-    else setErr("OTP logged to console for dev.");
-    setOtpSent(true);
-    setOtpValue("");
-    setTimeout(() => otpRef.current?.focus?.(), 200);
-  }
-
-  // -------------------- login --------------------
-  async function handleLoginSubmit(e) {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      // optionally check email verified:
-      // if (!cred.user.emailVerified) { setErr("Please verify your email first."); await auth.signOut(); return; }
-      setLoading(false);
-      navigate("/dashboard");
-    } catch (error) {
-      setErr(friendlyFirebaseError(error));
-      setLoading(false);
-    }
-  }
-
-  // -------------------- password reset --------------------
-  async function handlePasswordReset(e) {
-    e.preventDefault();
-    setErr("");
-    if (!email) return setErr("Enter your email to reset password.");
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setErr("Password reset sent — check your inbox.");
-    } catch (error) {
-      setErr(friendlyFirebaseError(error));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // -------------------- Google sign in --------------------
-  async function handleGoogle() {
+  // Google sign-in (same as before)
+  const handleGoogle = async () => {
     setErr("");
     setLoading(true);
     try {
       const res = await signInWithPopup(auth, provider);
       await saveInitialUser(res.user, referral);
-      navigate("/dashboard");
+      setLoading(false);
     } catch (error) {
       console.error("Google Sign-In error:", error);
       setErr(friendlyFirebaseError(error));
-    } finally {
       setLoading(false);
     }
-  }
+  };
 
-  // -------------------- resend verification email for existing user --------------------
-  async function resendVerificationEmail() {
-    setErr("");
+  // password reset
+  const handlePasswordReset = async (e) => {
+    e?.preventDefault?.();
+    if (!email) {
+      setErr("Please enter your email address to reset your password.");
+      return;
+    }
     setLoading(true);
+    setErr("");
     try {
-      const user = auth.currentUser;
-      if (!user) return setErr("You must be signed in to resend verification email.");
-      await sendEmailVerification(user);
-      setErr("Verification email sent. Check your inbox.");
+      await sendPasswordResetEmail(auth, email);
+      setErr("Password reset email sent! Check your inbox.");
     } catch (error) {
       setErr(friendlyFirebaseError(error));
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  // -------------------- UI helpers --------------------
-  function togglePwd() {
-    setPwdVisible((s) => !s);
-  }
-
-  // small password typing indicator (animated)
+  // cleanup timers on unmount
   useEffect(() => {
-    if (!password) return setPwdTyping(false);
-    setPwdTyping(true);
-    const id = setTimeout(() => setPwdTyping(false), 800);
-    return () => clearTimeout(id);
-  }, [password]);
+    return () => {
+      if (resendRef.current) clearInterval(resendRef.current);
+    };
+  }, []);
 
-  // -------------------- Render --------------------
+  // password input animated spinner tiny component
+  const PasswordSpinner = ({ show }) => (
+    <div className={`pw-spinner ${show ? "visible" : ""}`} aria-hidden>
+      <svg width="18" height="18" viewBox="0 0 50 50">
+        <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="4" strokeDasharray="31.4 31.4">
+          <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+    </div>
+  );
+
   return (
-    <div className="auth-root neon-auth">
+    <div className="auth-root">
       <video className="bg-video" autoPlay loop muted playsInline>
         <source src="/bg.mp4" type="video/mp4" />
       </video>
       <div className="auth-overlay" />
-      <div className="auth-card neon-card">
-        <img src="/icon.jpg" className="logo-small" alt="logo" onError={(e)=>e.currentTarget.src="/icon.jpg"} />
 
-        {mode === "reset" ? (
+      <div className="auth-card">
+        <img src="/icon.jpg" className="logo-small" alt="logo" onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/100?text=Logo")} />
+
+        {/* Main form */}
+        {!otpStage ? (
           <>
-            <h2>Reset Password</h2>
-            <p className="text-muted">Enter your email and we'll send you a reset link.</p>
-            <form onSubmit={handlePasswordReset} className="form-col">
-              <input placeholder="Email" type="email" className="field" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-              {err && <div className={`error ${err.includes("sent") ? "success" : ""}`}>{err}</div>}
-              <button className="btn neon-btn" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Reset Link"}</button>
-            </form>
-            <p className="text-muted">
-              Back to{" "}
-              <span className="link" onClick={()=>{ setMode("login"); setErr(""); }}>Sign In</span>
-            </p>
-          </>
-        ) : (
-          <>
-            <h2>{mode === "login" ? "Sign In" : "Create Account"}</h2>
+            <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
 
-            {/* ---------- registration OTP step ---------- */}
-            {mode === "register" && otpSent ? (
-              <form onSubmit={confirmOtpAndCreate} className="form-col">
-                <div className="muted">We've sent a 6-digit OTP to</div>
-                <div className="otp-email">{email}</div>
+            <form onSubmit={handleAuthSubmit} className="form-col" autoComplete="off">
+              <input
+                placeholder="Email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
 
+              <div className="password-wrap" style={{ position: "relative" }}>
                 <input
-                  ref={otpRef}
-                  placeholder="Enter OTP"
-                  type="text"
-                  className="field otp-field"
-                  value={otpValue}
-                  onChange={(e) => setOtpValue(e.target.value.replace(/\D/g,''))}
-                  maxLength={6}
+                  placeholder="Password (6+ characters)"
+                  type={showPw ? "text" : "password"}
+                  className="field pw-field"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
+                  style={{ background: "transparent" }}
                 />
+                {/* animated spinner inside password */}
+                <PasswordSpinner show={pwLoading || loading} />
 
-                <div className="otp-actions">
-                  <button type="button" className="btn small ghost" onClick={() => { setOtpSent(false); setGeneratedOtp(null); }}>
-                    Change Email
-                  </button>
-
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="btn small" onClick={resendOtp} disabled={otpResendTimer > 0 || otpLoading}>
-                      {otpLoading ? "Resending..." : (otpResendTimer > 0 ? `Resend in ${otpResendTimer}s` : "Resend OTP")}
-                    </button>
-                    <button className="btn small" disabled={loading}>{loading ? "Creating..." : "Confirm & Create"}</button>
-                  </div>
-                </div>
-
-                {err && <div className="error">{err}</div>}
-              </form>
-            ) : (
-              /* ---------- main sign-in/register form ---------- */
-              <form onSubmit={mode === "login" ? handleLoginSubmit : beginRegistration} className="form-col">
-                <input placeholder="Email" type="email" className="field" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-                
-                <div className="password-row">
-                  <input
-                    placeholder="Password (6+ characters)"
-                    type={pwdVisible ? "text" : "password"}
-                    className={`field password-field ${pwdTyping ? "typing" : ""}`}
-                    value={password}
-                    onChange={(e)=>setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    title={pwdVisible ? "Hide password" : "Show password"}
-                    className="eye-btn"
-                    onClick={togglePwd}
-                    aria-label="Toggle password visibility"
-                  >
-                    <span className="eye-emoji">{pwdVisible ? "🙈" : "👀"}</span>
-                  </button>
-
-                  {/* tiny password activity dot / loader */}
-                  <div className={`pwd-loader ${pwdTyping ? "active" : ""}`} aria-hidden />
-                </div>
-
-                {mode === "register" && (
-                  <input placeholder="Referral Code (optional)" type="text" className="field" value={referral} onChange={(e)=>setReferral(e.target.value)} />
-                )}
-
-                {err && <div className="error">{err}</div>}
-
-                <button className="btn neon-btn" type="submit" disabled={loading}>
-                  {loading ? (mode === "login" ? "Signing in..." : "Sending OTP...") : (mode === "login" ? "Sign In" : "Register")}
+                {/* eye toggle button (transparent background) */}
+                <button
+                  type="button"
+                  title={showPw ? "Hide password" : "Show password"}
+                  className="pw-eye-btn"
+                  onClick={() => setShowPw((s) => !s)}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    fontSize: 20,
+                    cursor: "pointer",
+                    padding: 6,
+                    lineHeight: 1,
+                  }}
+                >
+                  {showPw ? "🙈" : "👀"}
                 </button>
-              </form>
-            )}
+              </div>
 
-            {/* footer controls */}
+              {isRegister && (
+                <input
+                  placeholder="Referral Code (optional)"
+                  type="text"
+                  className="field"
+                  value={referral}
+                  onChange={(e) => setReferral(e.target.value)}
+                />
+              )}
+
+              {err && <div className={err.toLowerCase().includes("sent") ? "error success" : "error"}>{err}</div>}
+
+              <button className="btn" type="submit" disabled={loading}>
+                {loading ? "Processing..." : (isRegister ? "Register" : "Sign In")}
+              </button>
+            </form>
+
             <p className="text-muted">
-              {mode === "register" ? "Already have an account? " : "Don't have an account? "}
+              {isRegister ? "Already have an account? " : "Don't have an account? "}
               <span
                 className="link"
-                onClick={() => { setMode(mode === "register" ? "login" : "register"); setErr(""); setOtpSent(false); setGeneratedOtp(null); }}
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setErr("");
+                }}
               >
-                {mode === "register" ? "Sign In" : "Register"}
+                {isRegister ? "Sign In" : "Register"}
               </span>
             </p>
 
             <div className="sep">OR</div>
 
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button className="btn google" onClick={handleGoogle} disabled={loading}>
-                Sign in with Google
+            <button className="btn google" onClick={handleGoogle} disabled={loading}>
+              Sign in with Google
+            </button>
+
+            <div style={{ marginTop: 8 }}>
+              <button className="btn ghost small" onClick={() => { setErr(""); setIsRegister(false); }}>
+                Resend Verification Email
+              </button>
+            </div>
+          </>
+        ) : (
+          /* OTP Stage */
+          <div className="otp-stage">
+            <h3>Create Account</h3>
+            <p className="text-muted">We've sent a 6-digit OTP to <strong>{email}</strong></p>
+
+            <input
+              placeholder="Enter OTP"
+              type="text"
+              className="field"
+              value={otpInput}
+              onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              maxLength={6}
+            />
+
+            <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", justifyContent: "center" }}>
+              <button
+                className="btn ghost small"
+                onClick={() => {
+                  // change email: go back
+                  setOtpStage(false);
+                  setServerOtpSent(null);
+                  setOtpInput("");
+                }}
+              >
+                Change Email
+              </button>
+
+              <button
+                className="btn small"
+                onClick={() => confirmOtpAndCreate()}
+                disabled={loading}
+              >
+                {loading ? "Creating..." : "Confirm & Create"}
               </button>
             </div>
 
-            {/* show resend verification link if user is signed but not verified */}
-            <div style={{ marginTop: 10, textAlign: "center" }}>
-              <button className="btn small ghost" onClick={resendVerificationEmail}>Resend Verification Email</button>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center", alignItems: "center" }}>
+              <button className="btn ghost small" onClick={handleResendOtp} disabled={resendTimer > 0}>
+                {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
+              </button>
             </div>
-          </>
+
+            {/* dev fallback note */}
+            {serverOtpSent && (
+              <div className="error" style={{ marginTop: 12 }}>
+                OTP logged to console for development.
+              </div>
+            )}
+
+            <div style={{ marginTop: 14, textAlign: "center" }}>
+              <Link to="/login" className="link small">Already have an account? Sign In</Link>
+            </div>
+          </div>
         )}
       </div>
 
@@ -412,6 +460,8 @@ export default function Login() {
         <Link to="/terms-of-service">Terms of Service</Link>
         <span>•</span>
         <Link to="/about">About Us</Link>
+        <span>•</span>
+        <Link to="/contact">Contact</Link>
       </div>
     </div>
   );
