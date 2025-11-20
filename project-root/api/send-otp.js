@@ -1,156 +1,144 @@
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 
-// -----------------------
-// Initialize Firebase Admin
-// -----------------------
+// ---------------------------
+// 1. FIREBASE ADMIN INIT
+// ---------------------------
 if (!admin.apps.length) {
-  try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-
-    console.log("Firebase Admin initialized");
-  } catch (err) {
-    console.error("❌ Failed to initialize Firebase Admin:", err);
+  if (!serviceAccountJson) {
+    console.error("❌ Missing FIREBASE_SERVICE_ACCOUNT env var");
+  } else {
+    try {
+      admin.initializeApp({
+        credential: admin.credential.cert(JSON.parse(serviceAccountJson)),
+      });
+      console.log("✅ Firebase Admin Initialized");
+    } catch (err) {
+      console.error("❌ Failed to initialize Firebase Admin:", err);
+    }
   }
 }
 
 const db = admin.firestore();
 
+// ---------------------------
+// 2. TEMP MAIL DETECTOR
+// ---------------------------
+const tempDomains = [
+  "tempmail.com", "10minutemail.com", "guerrillamail.com",
+  "mailinator.com", "yopmail.com", "bablace.com", "canvect.com"
+];
+
+// ---------------------------
+// 3. API HANDLER
+// ---------------------------
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
-  }
 
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Missing email" });
 
-  const cleanEmail = email.toLowerCase().trim();
+  if (!email || typeof email !== "string")
+    return res.status(400).json({ error: "Missing email" });
 
-  // ----------------------------------------
-  // 1️⃣ BLOCK TEMPORARY / DISPOSABLE EMAILS
-  // ----------------------------------------
-  const tempDomains = [
-    "10minutemail.com", "tempmail.com", "guerrillamail.com", "yopmail.com",
-    "mailinator.com", "bablace.com", "canvect.com", "getnada.com",
-    "dispostable.com", "throwawaymail.com", "trashmail.com", "sharklasers.com",
-    "inboxbear.com", "fakeinbox.com"
-  ];
+  const lowerEmail = email.toLowerCase();
+  const domain = lowerEmail.split("@")[1];
 
-  const emailDomain = cleanEmail.split("@")[1];
-
-  if (tempDomains.includes(emailDomain)) {
+  // ---------------------------
+  // TEMP MAIL CHECK
+  // ---------------------------
+  if (tempDomains.includes(domain)) {
     return res.status(403).json({
       success: false,
       reason: "temp-email-blocked",
-      message: "Temporary / disposable email addresses are not allowed."
+      message: "Unverified email addresses aren’t allowed."
     });
   }
 
-  // ----------------------------------------
-  // 2️⃣ CHECK IF USER ALREADY EXISTS
-  // ----------------------------------------
   try {
-    const existingUser = await admin.auth().getUserByEmail(cleanEmail);
+    // ---------------------------
+    // CHECK IF USER ALREADY EXISTS
+    // ---------------------------
+    const existingUser = await admin.auth().getUserByEmail(lowerEmail).catch(() => null);
+
     if (existingUser) {
       return res.status(409).json({
         success: false,
         reason: "email-exists",
-        message: "This email is already registered. Please login instead."
+        message: "You already have an account."
       });
     }
-  } catch (e) {
-    // If NOT FOUND → continue
-    if (e.code !== "auth/user-not-found") {
-      console.error("Firebase auth check error:", e);
-    }
-  }
 
-  // ----------------------------------------
-  // 3️⃣ Generate OTP
-  // ----------------------------------------
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = admin.firestore.Timestamp.fromDate(
-    new Date(Date.now() + 10 * 60 * 1000)
-  );
+    // ---------------------------
+    // GENERATE & STORE OTP
+    // ---------------------------
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + 10 * 60 * 1000)
+    );
 
-  try {
-    // store otp
-    await db.collection("otpRequests").doc(encodeURIComponent(cleanEmail)).set({
-      email: cleanEmail,
+    const docId = encodeURIComponent(lowerEmail);
+
+    await db.collection("otpRequests").doc(docId).set({
+      email: lowerEmail,
       code: otp,
       expiresAt,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // ----------------------------------------
-    // 4️⃣ Send Stylish OTP Email
-    // ----------------------------------------
+    // ---------------------------
+    // SEND OTP EMAIL
+    // ---------------------------
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.OTP_EMAIL,
-        pass: process.env.OTP_PASS,
+        pass: process.env.OTP_PASS
       },
     });
 
-    const htmlTemplate = `
-      <div style="font-family: Arial, sans-serif; background:#0a0a0a; padding:24px; color:#fff;">
-        <div style="max-width:480px; margin:auto; background:#111; border-radius:10px; padding:20px; border:1px solid #222;">
-          <h2 style="text-align:center; color:#ffb347; margin-bottom:10px;">Imperial Esports Verification</h2>
-
-          <p style="font-size:15px; opacity:0.85;">
-            Your One-Time Password (OTP) is:
-          </p>
-
-          <div style="text-align:center; margin:18px 0;">
-            <div style="
-              display:inline-block;
-              padding:16px 30px;
-              background:#ffb347;
-              color:#000;
-              font-size:32px;
-              border-radius:12px;
-              letter-spacing:8px;
-              font-weight:700;">
-              ${otp}
-            </div>
-          </div>
-
-          <p style="font-size:14px; opacity:0.8;">
-            This OTP will expire in <b>10 minutes</b>.
-          </p>
-
-          <p style="font-size:13px; opacity:0.6; margin-top:20px;">
-            If you didn’t request this, you can safely ignore this message.
-          </p>
-
-          <div style="text-align:center; margin-top:20px;">
-            <small style="opacity:0.4;">© Imperial Esports</small>
-          </div>
-        </div>
-      </div>
-    `;
-
     await transporter.sendMail({
       from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
-      to: cleanEmail,
-      subject: "Your OTP Code – Imperial Esports",
-      html: htmlTemplate,
+      to: lowerEmail,
+      subject: "Your Imperial Esports Verification Code",
+      html: `
+      <div style="font-family:Arial; padding:20px; background:#0d0d0d; color:white; border-radius:10px;">
+        <h2 style="color:#ffb347; margin-bottom:8px;">Your OTP Code</h2>
+        <p style="font-size:16px; opacity:0.8;">Use this code to verify your Imperial Esports account:</p>
+
+        <div style="
+            font-size:40px;
+            font-weight:bold;
+            letter-spacing:6px;
+            margin:15px 0;
+            padding:15px;
+            background:#1b1b1b;
+            border-radius:8px;
+            text-align:center;
+            color:#fff;">
+            ${otp}
+        </div>
+
+        <p style="opacity:0.7;">This OTP expires in <b>10 minutes</b>.</p>
+        <p style="opacity:0.5; font-size:12px;">If you didn’t request this, simply ignore this email.</p>
+      </div>
+      `,
     });
 
-    console.log(`[OTP SENT] ${cleanEmail} → ${otp}`);
+    console.log(`[send-otp] OTP sent to: ${lowerEmail} (${otp})`);
 
-    return res.status(200).json({ success: true, message: "OTP sent." });
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent"
+    });
+
   } catch (err) {
     console.error("❌ send-otp error", err);
     return res.status(500).json({
       success: false,
-      error: "otp-failed",
-      message: "Failed to send OTP. Try again."
+      message: "Failed to send OTP"
     });
   }
 }
