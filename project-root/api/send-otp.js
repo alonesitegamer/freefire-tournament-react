@@ -2,63 +2,65 @@
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 
-// -------------------------------
-//  FIREBASE ADMIN INITIALIZATION
-// -------------------------------
+// ------- INIT FIREBASE ADMIN (fixed, safe for Vercel edge) -------
 if (!admin.apps.length) {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-  if (!sa) {
-    console.error("❌ Missing FIREBASE_SERVICE_ACCOUNT env var");
-  } else {
-    try {
-      admin.initializeApp({
-        credential: admin.credential.cert(JSON.parse(sa)),
-      });
-      console.log("✔ Firebase Admin initialized");
-    } catch (err) {
-      console.error("❌ Failed to initialize Firebase Admin:", err);
-    }
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+
+    console.log("Firebase Admin initialized");
+  } catch (err) {
+    console.error("❌ Firebase Admin Init Error:", err);
   }
 }
 
 const db = admin.firestore();
 
-// -------------------------------
-//  API ROUTE HANDLER
-// -------------------------------
+// ----------------- MAIN HANDLER -----------------
 export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   const { email } = req.body;
 
-  if (!email || typeof email !== "string") {
-    return res.status(400).json({ error: "Missing or invalid email" });
-  }
+  if (!email || typeof email !== "string")
+    return res.status(400).json({ error: "Missing email" });
 
-  // Generate a 6-digit OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Expire in 10 minutes
-  const expiresAt = admin.firestore.Timestamp.fromDate(
-    new Date(Date.now() + 10 * 60 * 1000)
-  );
+  const cleanEmail = email.toLowerCase();
 
   try {
-    // Encode email to safe Firestore doc ID
-    const docId = encodeURIComponent(email.toLowerCase());
+    // ------------------ CHECK IF USER ALREADY EXISTS ------------------
+    const userExists = await admin
+      .auth()
+      .getUserByEmail(cleanEmail)
+      .then(() => true)
+      .catch(() => false);
 
-    await db.collection("otpRequests").doc(docId).set({
-      email: email.toLowerCase(),
+    if (userExists) {
+      return res.status(409).json({
+        success: false,
+        reason: "email-already-used",
+      });
+    }
+
+    // ------------------ GENERATE OTP ------------------
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + 10 * 60 * 1000)
+    );
+
+    // ------------------ STORE OTP IN FIRESTORE ------------------
+    await db.collection("otpRequests").doc(encodeURIComponent(cleanEmail)).set({
+      email: cleanEmail,
       code: otp,
       expiresAt,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // -------------------------------
-    //  SEND EMAIL
-    // -------------------------------
+    // ------------------ SEND EMAIL VIA NODEMAILER ------------------
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -67,26 +69,37 @@ export default async function handler(req, res) {
       },
     });
 
+    // ------------------ STYLE B — NEON GLOW EMAIL ------------------
+    const htmlTemplate = `
+      <div style="background:#050505; padding:30px; border-radius:16px; font-family:Arial; max-width:480px; margin:auto; border:1px solid #202020;">
+        <h2 style="color:#00eaff; text-align:center; margin-bottom:10px;">Your OTP Code</h2>
+
+        <p style="color:#ddd; text-align:center; margin:0 0 18px;">
+          Enter this code to verify your Imperial Esports account:
+        </p>
+
+        <div style="background:#0f1d20; border:2px solid #00eaff; padding:16px; border-radius:12px; margin:auto; width:fit-content; box-shadow:0 0 14px #00ebff66;">
+          <span style="font-size:38px; letter-spacing:8px; color:#00eaff;">${otp}</span>
+        </div>
+
+        <p style="color:#aaa; text-align:center; margin-top:20px; font-size:13px;">
+          Code expires in 10 minutes.
+        </p>
+      </div>
+    `;
+
     await transporter.sendMail({
       from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
-      to: email,
+      to: cleanEmail,
       subject: "Your Verification OTP — Imperial Esports",
-      html: `
-        <div style="font-family: Arial; padding: 18px; background:#000; color:white;">
-          <h2 style="color:#ffb347;">Your OTP Code</h2>
-          <p style="font-size: 16px;">Use the OTP below to verify your account.</p>
-          <h1 style="font-size: 42px; letter-spacing: 6px; margin: 12px 0;">${otp}</h1>
-          <p style="color:#ccc;">OTP expires in 10 minutes.</p>
-          <p style="margin-top: 10px; font-size: 12px; color:#777;">If you didn’t request this, ignore this mail.</p>
-        </div>
-      `,
+      html: htmlTemplate,
     });
 
-    console.log(`✔ OTP sent to ${email}: ${otp}`);
+    console.log("[send-otp] OTP sent:", otp);
 
-    return res.status(200).json({ success: true, message: "OTP sent" });
+    return res.json({ success: true, message: "otp-sent" });
   } catch (err) {
-    console.error("❌ send-otp error:", err);
-    return res.status(500).json({ error: "Failed to send OTP" });
+    console.error("send-otp ERROR:", err);
+    return res.status(500).json({ error: "send-otp-failed" });
   }
 }
