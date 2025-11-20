@@ -1,8 +1,9 @@
-// /api/send-otp.js
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 
-// ------- INIT FIREBASE ADMIN (fixed, safe for Vercel edge) -------
+// -----------------------
+// Initialize Firebase Admin
+// -----------------------
 if (!admin.apps.length) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -13,46 +14,71 @@ if (!admin.apps.length) {
 
     console.log("Firebase Admin initialized");
   } catch (err) {
-    console.error("❌ Firebase Admin Init Error:", err);
+    console.error("❌ Failed to initialize Firebase Admin:", err);
   }
 }
 
 const db = admin.firestore();
 
-// ----------------- MAIN HANDLER -----------------
 export default async function handler(req, res) {
-  if (req.method !== "POST")
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Missing email" });
 
-  if (!email || typeof email !== "string")
-    return res.status(400).json({ error: "Missing email" });
+  const cleanEmail = email.toLowerCase().trim();
 
-  const cleanEmail = email.toLowerCase();
+  // ----------------------------------------
+  // 1️⃣ BLOCK TEMPORARY / DISPOSABLE EMAILS
+  // ----------------------------------------
+  const tempDomains = [
+    "10minutemail.com", "tempmail.com", "guerrillamail.com", "yopmail.com",
+    "mailinator.com", "bablace.com", "canvect.com", "getnada.com",
+    "dispostable.com", "throwawaymail.com", "trashmail.com", "sharklasers.com",
+    "inboxbear.com", "fakeinbox.com"
+  ];
 
+  const emailDomain = cleanEmail.split("@")[1];
+
+  if (tempDomains.includes(emailDomain)) {
+    return res.status(403).json({
+      success: false,
+      reason: "temp-email-blocked",
+      message: "Temporary / disposable email addresses are not allowed."
+    });
+  }
+
+  // ----------------------------------------
+  // 2️⃣ CHECK IF USER ALREADY EXISTS
+  // ----------------------------------------
   try {
-    // ------------------ CHECK IF USER ALREADY EXISTS ------------------
-    const userExists = await admin
-      .auth()
-      .getUserByEmail(cleanEmail)
-      .then(() => true)
-      .catch(() => false);
-
-    if (userExists) {
+    const existingUser = await admin.auth().getUserByEmail(cleanEmail);
+    if (existingUser) {
       return res.status(409).json({
         success: false,
-        reason: "email-already-used",
+        reason: "email-exists",
+        message: "This email is already registered. Please login instead."
       });
     }
+  } catch (e) {
+    // If NOT FOUND → continue
+    if (e.code !== "auth/user-not-found") {
+      console.error("Firebase auth check error:", e);
+    }
+  }
 
-    // ------------------ GENERATE OTP ------------------
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 10 * 60 * 1000)
-    );
+  // ----------------------------------------
+  // 3️⃣ Generate OTP
+  // ----------------------------------------
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = admin.firestore.Timestamp.fromDate(
+    new Date(Date.now() + 10 * 60 * 1000)
+  );
 
-    // ------------------ STORE OTP IN FIRESTORE ------------------
+  try {
+    // store otp
     await db.collection("otpRequests").doc(encodeURIComponent(cleanEmail)).set({
       email: cleanEmail,
       code: otp,
@@ -60,7 +86,9 @@ export default async function handler(req, res) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // ------------------ SEND EMAIL VIA NODEMAILER ------------------
+    // ----------------------------------------
+    // 4️⃣ Send Stylish OTP Email
+    // ----------------------------------------
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -69,37 +97,60 @@ export default async function handler(req, res) {
       },
     });
 
-    // ------------------ STYLE B — NEON GLOW EMAIL ------------------
     const htmlTemplate = `
-      <div style="background:#050505; padding:30px; border-radius:16px; font-family:Arial; max-width:480px; margin:auto; border:1px solid #202020;">
-        <h2 style="color:#00eaff; text-align:center; margin-bottom:10px;">Your OTP Code</h2>
+      <div style="font-family: Arial, sans-serif; background:#0a0a0a; padding:24px; color:#fff;">
+        <div style="max-width:480px; margin:auto; background:#111; border-radius:10px; padding:20px; border:1px solid #222;">
+          <h2 style="text-align:center; color:#ffb347; margin-bottom:10px;">Imperial Esports Verification</h2>
 
-        <p style="color:#ddd; text-align:center; margin:0 0 18px;">
-          Enter this code to verify your Imperial Esports account:
-        </p>
+          <p style="font-size:15px; opacity:0.85;">
+            Your One-Time Password (OTP) is:
+          </p>
 
-        <div style="background:#0f1d20; border:2px solid #00eaff; padding:16px; border-radius:12px; margin:auto; width:fit-content; box-shadow:0 0 14px #00ebff66;">
-          <span style="font-size:38px; letter-spacing:8px; color:#00eaff;">${otp}</span>
+          <div style="text-align:center; margin:18px 0;">
+            <div style="
+              display:inline-block;
+              padding:16px 30px;
+              background:#ffb347;
+              color:#000;
+              font-size:32px;
+              border-radius:12px;
+              letter-spacing:8px;
+              font-weight:700;">
+              ${otp}
+            </div>
+          </div>
+
+          <p style="font-size:14px; opacity:0.8;">
+            This OTP will expire in <b>10 minutes</b>.
+          </p>
+
+          <p style="font-size:13px; opacity:0.6; margin-top:20px;">
+            If you didn’t request this, you can safely ignore this message.
+          </p>
+
+          <div style="text-align:center; margin-top:20px;">
+            <small style="opacity:0.4;">© Imperial Esports</small>
+          </div>
         </div>
-
-        <p style="color:#aaa; text-align:center; margin-top:20px; font-size:13px;">
-          Code expires in 10 minutes.
-        </p>
       </div>
     `;
 
     await transporter.sendMail({
       from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
       to: cleanEmail,
-      subject: "Your Verification OTP — Imperial Esports",
+      subject: "Your OTP Code – Imperial Esports",
       html: htmlTemplate,
     });
 
-    console.log("[send-otp] OTP sent:", otp);
+    console.log(`[OTP SENT] ${cleanEmail} → ${otp}`);
 
-    return res.json({ success: true, message: "otp-sent" });
+    return res.status(200).json({ success: true, message: "OTP sent." });
   } catch (err) {
-    console.error("send-otp ERROR:", err);
-    return res.status(500).json({ error: "send-otp-failed" });
+    console.error("❌ send-otp error", err);
+    return res.status(500).json({
+      success: false,
+      error: "otp-failed",
+      message: "Failed to send OTP. Try again."
+    });
   }
 }
