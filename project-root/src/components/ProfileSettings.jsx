@@ -1,231 +1,265 @@
 // src/components/ProfileSettings.jsx
 import React, { useState } from "react";
-import { auth } from "../firebase";
 import {
+  updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
-  updatePassword,
   sendPasswordResetEmail,
 } from "firebase/auth";
+import { auth, db } from "../firebase";
+import { doc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 /**
  * Props:
- * - profile: current user profile object (has .email)
- * - updateProfileField(patch): function to update firestore profile
- * - onBack(): callback to go back
+ * - profile: current profile object (email, username, displayName, uid, etc.)
+ * - updateProfileField: async fn to update fields in your users doc (accepts object)
+ * - onBack: callback to go back to previous screen
  */
-export default function ProfileSettings({ profile, updateProfileField, onBack }) {
+export default function ProfileSettings({ profile = {}, updateProfileField, onBack }) {
   const [username, setUsername] = useState(profile.username || "");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [resetSending, setResetSending] = useState(false);
+  // panel toggles (inline slide-down)
+  const [openPanel, setOpenPanel] = useState(null); // "username" | "password" | "feedback" | null
 
-  const [profileMsg, setProfileMsg] = useState("");
-  const [passwordMsg, setPasswordMsg] = useState("");
+  // Password panel state
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [pwStatus, setPwStatus] = useState(""); // success/error messages
+  const [pwLoading, setPwLoading] = useState(false);
 
-  // Save username & displayName to Firestore via provided function
+  // Feedback panel
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
+  // Username edit specific
   async function saveChanges() {
-    if (savingProfile) return;
-    setProfileMsg("");
-    setSavingProfile(true);
+    if (saving) return;
+    setSaving(true);
     try {
+      // call the parent updater (existing function you passed)
       await updateProfileField({
         username: username.trim(),
         displayName: displayName.trim(),
       });
-      setProfileMsg("Profile updated.");
+      setSaving(false);
+      alert("Profile updated!");
+      // keep panel closed if you want:
+      setOpenPanel(null);
     } catch (err) {
-      console.error("saveChanges error", err);
-      setProfileMsg("Failed to save profile.");
-    } finally {
-      setSavingProfile(false);
-      setTimeout(() => setProfileMsg(""), 3000);
+      console.error("Profile save error:", err);
+      alert("Error saving profile");
+      setSaving(false);
     }
   }
 
-  // 2-step password change: reauthenticate with current password then update
-  async function changePassword() {
-    if (changingPassword) return;
-    setPasswordMsg("");
+  // --- Password update flow (2-step: reauth using current password then update)
+  async function handleChangePassword(e) {
+    e?.preventDefault?.();
+    if (!currentPwd || !newPwd) {
+      setPwStatus("Please enter current and new password.");
+      return;
+    }
+    setPwLoading(true);
+    setPwStatus("");
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordMsg("Please fill all password fields.");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordMsg("New password must be at least 6 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordMsg("New password and confirm password do not match.");
-      return;
-    }
-
-    setChangingPassword(true);
     try {
       const user = auth.currentUser;
-      if (!user || !user.email) throw new Error("User not signed in.");
+      if (!user) throw new Error("Not authenticated");
 
-      // Reauthenticate
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
+      // reauthenticate
+      const cred = EmailAuthProvider.credential(user.email, currentPwd);
+      await reauthenticateWithCredential(user, cred);
 
-      // Update password
-      await updatePassword(user, newPassword);
+      // update password
+      await updatePassword(user, newPwd);
 
-      setPasswordMsg("Password updated successfully.");
-      // clear sensitive fields
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      setPwStatus("Password updated successfully!");
+      setCurrentPwd("");
+      setNewPwd("");
+      setOpenPanel(null);
     } catch (err) {
-      console.error("changePassword error", err);
-      // friendly messages
+      console.error("changePassword error:", err);
+      // firebase common errors
       const code = err?.code || "";
-      if (code.includes("wrong-password") || code.includes("auth/wrong-password")) {
-        setPasswordMsg("Current password is incorrect.");
-      } else if (code.includes("too-many-requests")) {
-        setPasswordMsg("Too many attempts. Try again later.");
-      } else if (code.includes("requires-recent-login")) {
-        setPasswordMsg("Please re-login and try again.");
-      } else {
-        setPasswordMsg(err.message || "Failed to change password.");
-      }
+      if (code === "auth/wrong-password") setPwStatus("Current password is incorrect.");
+      else if (code === "auth/weak-password") setPwStatus("Choose a stronger password (6+ chars).");
+      else if (code === "auth/requires-recent-login" || code === "auth/requires-recent-login") {
+        // if reauth still failing, instruct user to use forgot password flow
+        setPwStatus("Please use Forgot password to reauthenticate (we'll email a reset link).");
+      } else setPwStatus(err.message || "Failed to change password.");
     } finally {
-      setChangingPassword(false);
-      setTimeout(() => setPasswordMsg(""), 6000);
+      setPwLoading(false);
     }
   }
 
-  // Forgot password -> send Firebase password reset email (redirect back to homepage)
-  async function forgotPasswordSendEmail() {
-    if (resetSending) return;
-    setPasswordMsg("");
-    setResetSending(true);
+  // send firebase reset email (forgot password)
+  async function handleSendResetEmail() {
     try {
-      const redirectUrl = "https://freefire-tournament-react.vercel.app/"; // option A
-      const actionCodeSettings = {
-        url: redirectUrl,
-        handleCodeInApp: false,
-      };
-      await sendPasswordResetEmail(auth, profile.email, actionCodeSettings);
-      setPasswordMsg("Password reset email sent. Check your inbox.");
+      if (!profile?.email) return setPwStatus("No email on file.");
+      setPwLoading(true);
+      // you can pass actionCodeSettings if you want custom redirect URL after password reset
+      // e.g. { url: 'https://your-site.com/password-changed', handleCodeInApp: false }
+      await sendPasswordResetEmail(auth, profile.email /*, actionCodeSettings */);
+      setPwStatus("Password reset email sent. Check your inbox.");
     } catch (err) {
-      console.error("forgotPasswordSendEmail error", err);
-      // map common errors
-      const code = err?.code || "";
-      if (code.includes("auth/invalid-email") || code.includes("auth/missing-email")) {
-        setPasswordMsg("Invalid user email.");
-      } else if (code.includes("auth/user-not-found")) {
-        setPasswordMsg("No account found for this email.");
-      } else {
-        setPasswordMsg(err.message || "Failed to send reset email.");
-      }
+      console.error("sendResetEmail error:", err);
+      setPwStatus(err.message || "Failed to send reset email.");
     } finally {
-      setResetSending(false);
-      setTimeout(() => setPasswordMsg(""), 7000);
+      setPwLoading(false);
     }
+  }
+
+  // Feedback submit
+  async function submitFeedback(e) {
+    e?.preventDefault?.();
+    if (!feedbackText || feedbackText.trim().length < 6) {
+      setFeedbackMsg("Write at least a short message.");
+      return;
+    }
+    setFeedbackLoading(true);
+    setFeedbackMsg("");
+    try {
+      await addDoc(collection(db, "feedback"), {
+        userId: auth.currentUser?.uid || null,
+        email: auth.currentUser?.email || profile.email || null,
+        text: feedbackText.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setFeedbackMsg("Thanks — feedback submitted.");
+      setFeedbackText("");
+      // optionally close panel
+      setTimeout(() => setOpenPanel(null), 900);
+    } catch (err) {
+      console.error("feedback save error:", err);
+      setFeedbackMsg("Failed to submit feedback.");
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }
+
+  // helper toggle: open/close same panel (click to open -> close if same)
+  function togglePanel(name) {
+    setPwStatus("");
+    setFeedbackMsg("");
+    setOpenPanel((s) => (s === name ? null : name));
   }
 
   return (
-    <div className="profile-settings-card">
+    <div className="modern-card profile-card" style={{ animation: "fadeIn .2s linear" }}>
       <button className="back-btn" onClick={onBack}>← Back</button>
 
       <h2 className="modern-title">Profile Settings</h2>
-      <p className="modern-subtitle">Update your username, display name, or password.</p>
+      <p className="modern-subtitle">Update username, display name, password or send feedback.</p>
 
-      <div className="modern-card inner">
-        <label className="label">Email (locked)</label>
-        <input className="modern-input" value={profile.email} disabled />
-
-        <label className="label">Username</label>
-        <input
-          className="modern-input"
-          value={username}
-          maxLength={18}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Enter username"
-        />
-
-        <label className="label">Display name</label>
-        <input
-          className="modern-input"
-          value={displayName}
-          maxLength={24}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Enter display name"
-        />
-
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <button className="btn glow" onClick={saveChanges} disabled={savingProfile}>
-            {savingProfile ? "Saving..." : "Save Changes"}
-          </button>
-          <button
-            className="btn ghost"
-            onClick={() => {
-              // reset to original
-              setUsername(profile.username || "");
-              setDisplayName(profile.displayName || "");
-              setProfileMsg("Reset to saved values.");
-              setTimeout(() => setProfileMsg(""), 2000);
-            }}
-            disabled={savingProfile}
-          >
-            Reset
-          </button>
-        </div>
-
-        {profileMsg && <div className="notice" style={{ marginTop: 10 }}>{profileMsg}</div>}
+      {/* EMAIL read-only */}
+      <div className="form-row">
+        <label className="label">Email</label>
+        <input className="modern-input" value={profile.email || ""} disabled />
       </div>
 
-      <hr style={{ margin: "20px 0", opacity: 0.25 }} />
+      {/* USERNAME display / click-to-edit */}
+      <div className="setting-row">
+        <div className="setting-left">
+          <div className="setting-title">Username</div>
+          <div className="setting-sub">{profile.username || "Not set"}</div>
+        </div>
+        <div className="setting-right">
+          <button className="btn ghost" onClick={() => togglePanel("username")}>Edit</button>
+        </div>
+      </div>
 
-      <div className="modern-card inner">
-        <h3 style={{ marginTop: 0 }}>Change Password</h3>
-
-        <label className="label">Current password</label>
-        <input
-          type="password"
-          className="modern-input"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          placeholder="Enter current password"
-        />
-
-        <label className="label">New password</label>
-        <input
-          type="password"
-          className="modern-input"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Enter new password"
-        />
-
-        <label className="label">Confirm new password</label>
-        <input
-          type="password"
-          className="modern-input"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Confirm new password"
-        />
-
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button className="btn glow" onClick={changePassword} disabled={changingPassword}>
-            {changingPassword ? "Updating..." : "Change Password"}
-          </button>
-
-          <button className="btn ghost" onClick={forgotPasswordSendEmail} disabled={resetSending}>
-            {resetSending ? "Sending..." : "Forgot password? Email me a reset link"}
-          </button>
+      {/* Slide-down username panel */}
+      <div className={`slide-panel ${openPanel === "username" ? "open" : ""}`}>
+        <div className="form-row">
+          <label>Username</label>
+          <input className="modern-input" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={18} />
         </div>
 
-        {passwordMsg && <div className="notice" style={{ marginTop: 10 }}>{passwordMsg}</div>}
+        <div className="form-row">
+          <label>Display name</label>
+          <input className="modern-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={24} />
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn glow" onClick={saveChanges} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+          <button className="btn ghost" onClick={() => setOpenPanel(null)}>Cancel</button>
+        </div>
+      </div>
+
+      {/* PASSWORD setting */}
+      <div className="setting-row">
+        <div className="setting-left">
+          <div className="setting-title">Change Password</div>
+          <div className="setting-sub">Two-step: current password required</div>
+        </div>
+        <div className="setting-right">
+          <button className="btn ghost" onClick={() => togglePanel("password")}>Change</button>
+        </div>
+      </div>
+
+      {/* Slide-down password panel */}
+      <div className={`slide-panel ${openPanel === "password" ? "open" : ""}`}>
+        <form onSubmit={handleChangePassword}>
+          <div className="form-row">
+            <label>Current password</label>
+            <input type="password" className="modern-input" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} />
+          </div>
+
+          <div className="form-row">
+            <label>New password</label>
+            <input type="password" className="modern-input" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+          </div>
+
+          {pwStatus && <div className="panel-msg">{pwStatus}</div>}
+
+          <div className="alt-actions">
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn glow" type="submit" disabled={pwLoading}>{pwLoading ? "Updating..." : "Update Password"}</button>
+              <button className="btn ghost" type="button" onClick={() => { setCurrentPwd(""); setNewPwd(""); setOpenPanel(null); }}>Cancel</button>
+            </div>
+
+            <button className="btn small ghost" type="button" onClick={handleSendResetEmail} disabled={pwLoading}>
+              Forgot password?
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Feedback setting */}
+      <div className="setting-row">
+        <div className="setting-left">
+          <div className="setting-title">Feedback</div>
+          <div className="setting-sub">Report bugs or send suggestions</div>
+        </div>
+        <div className="setting-right">
+          <button className="btn ghost" onClick={() => togglePanel("feedback")}>Send</button>
+        </div>
+      </div>
+
+      <div className={`slide-panel ${openPanel === "feedback" ? "open" : ""}`}>
+        <form onSubmit={submitFeedback}>
+          <div className="form-row">
+            <label>Your feedback</label>
+            <textarea className="modern-input" rows={4} value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder="Tell us what's wrong or what you'd like improved..." />
+          </div>
+
+          {feedbackMsg && <div className="panel-msg">{feedbackMsg}</div>}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn glow" type="submit" disabled={feedbackLoading}>{feedbackLoading ? "Sending..." : "Submit"}</button>
+            <button className="btn ghost" type="button" onClick={() => setOpenPanel(null)}>Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <hr style={{ margin: "18px 0", opacity: 0.12 }} />
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="btn ghost" onClick={() => window.location.href = "/privacy-policy"}>Privacy Policy</button>
+        <button className="btn ghost" onClick={() => window.location.href = "/terms-of-service"}>Terms</button>
       </div>
     </div>
   );
