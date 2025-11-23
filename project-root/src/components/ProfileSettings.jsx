@@ -1,214 +1,231 @@
 // src/components/ProfileSettings.jsx
 import React, { useState } from "react";
-import { auth, updatePassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase";
-
+import { auth } from "../firebase";
 import {
-  FaUserEdit,
-  FaLock,
-  FaCommentDots,
-  FaChevronLeft,
-  FaChevronRight,
-} from "react-icons/fa";
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  updatePassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 
+/**
+ * Props:
+ * - profile: current user profile object (has .email)
+ * - updateProfileField(patch): function to update firestore profile
+ * - onBack(): callback to go back
+ */
 export default function ProfileSettings({ profile, updateProfileField, onBack }) {
-  const [screen, setScreen] = useState("menu"); // menu | username | password | feedback
-
   const [username, setUsername] = useState(profile.username || "");
-  const [newPassword, setNewPassword] = useState("");
-  const [feedback, setFeedback] = useState("");
   const [displayName, setDisplayName] = useState(profile.displayName || "");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [saving, setSaving] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
 
-  // -----------------------------
-  // SAVE USERNAME / DISPLAY NAME
-  // -----------------------------
-  async function saveUsername() {
-    if (saving) return;
-    setSaving(true);
+  const [profileMsg, setProfileMsg] = useState("");
+  const [passwordMsg, setPasswordMsg] = useState("");
 
+  // Save username & displayName to Firestore via provided function
+  async function saveChanges() {
+    if (savingProfile) return;
+    setProfileMsg("");
+    setSavingProfile(true);
     try {
       await updateProfileField({
         username: username.trim(),
         displayName: displayName.trim(),
       });
-
-      alert("Profile updated!");
-      setScreen("menu");
+      setProfileMsg("Profile updated.");
     } catch (err) {
-      console.error(err);
-      alert("Error updating profile");
+      console.error("saveChanges error", err);
+      setProfileMsg("Failed to save profile.");
+    } finally {
+      setSavingProfile(false);
+      setTimeout(() => setProfileMsg(""), 3000);
     }
-
-    setSaving(false);
   }
 
-  // -----------------------------
-  // SAVE NEW PASSWORD
-  // -----------------------------
-  async function saveNewPassword() {
-    if (!newPassword) return alert("Enter new password");
+  // 2-step password change: reauthenticate with current password then update
+  async function changePassword() {
+    if (changingPassword) return;
+    setPasswordMsg("");
 
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMsg("Please fill all password fields.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMsg("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg("New password and confirm password do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
     try {
-      await updatePassword(auth.currentUser, newPassword);
-      alert("Password updated!");
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error("User not signed in.");
+
+      // Reauthenticate
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, newPassword);
+
+      setPasswordMsg("Password updated successfully.");
+      // clear sensitive fields
+      setCurrentPassword("");
       setNewPassword("");
-      setScreen("menu");
+      setConfirmPassword("");
     } catch (err) {
-      alert("You need to re-login to change password.");
+      console.error("changePassword error", err);
+      // friendly messages
+      const code = err?.code || "";
+      if (code.includes("wrong-password") || code.includes("auth/wrong-password")) {
+        setPasswordMsg("Current password is incorrect.");
+      } else if (code.includes("too-many-requests")) {
+        setPasswordMsg("Too many attempts. Try again later.");
+      } else if (code.includes("requires-recent-login")) {
+        setPasswordMsg("Please re-login and try again.");
+      } else {
+        setPasswordMsg(err.message || "Failed to change password.");
+      }
+    } finally {
+      setChangingPassword(false);
+      setTimeout(() => setPasswordMsg(""), 6000);
     }
   }
 
-  // -----------------------------
-  // SAVE FEEDBACK
-  // -----------------------------
-  async function submitFeedback() {
-    if (!feedback.trim()) return alert("Write something first");
-    setSaving(true);
-
+  // Forgot password -> send Firebase password reset email (redirect back to homepage)
+  async function forgotPasswordSendEmail() {
+    if (resetSending) return;
+    setPasswordMsg("");
+    setResetSending(true);
     try {
-      const fbRef = doc(db, "feedback", `${auth.currentUser.uid}_${Date.now()}`);
-
-      await setDoc(fbRef, {
-        userId: auth.currentUser.uid,
-        email: auth.currentUser.email,
-        feedback: feedback.trim(),
-        createdAt: serverTimestamp(),
-      });
-
-      alert("Feedback sent!");
-      setFeedback("");
-      setScreen("menu");
+      const redirectUrl = "https://freefire-tournament-react.vercel.app/"; // option A
+      const actionCodeSettings = {
+        url: redirectUrl,
+        handleCodeInApp: false,
+      };
+      await sendPasswordResetEmail(auth, profile.email, actionCodeSettings);
+      setPasswordMsg("Password reset email sent. Check your inbox.");
     } catch (err) {
-      console.error(err);
-      alert("Failed to send feedback");
+      console.error("forgotPasswordSendEmail error", err);
+      // map common errors
+      const code = err?.code || "";
+      if (code.includes("auth/invalid-email") || code.includes("auth/missing-email")) {
+        setPasswordMsg("Invalid user email.");
+      } else if (code.includes("auth/user-not-found")) {
+        setPasswordMsg("No account found for this email.");
+      } else {
+        setPasswordMsg(err.message || "Failed to send reset email.");
+      }
+    } finally {
+      setResetSending(false);
+      setTimeout(() => setPasswordMsg(""), 7000);
     }
-
-    setSaving(false);
-  }
-
-  // -----------------------------
-  // SLIDE ANIMATION CLASS
-  // -----------------------------
-  function slideClass(target) {
-    if (screen === target) return "ps-screen active";
-    if (screen !== target) return "ps-screen";
   }
 
   return (
-    <div className="ps-container">
+    <div className="profile-settings-card">
+      <button className="back-btn" onClick={onBack}>← Back</button>
 
-      {/* BACK to Account */}
-      <button className="ps-back" onClick={onBack}>
-        <FaChevronLeft /> Back
-      </button>
+      <h2 className="modern-title">Profile Settings</h2>
+      <p className="modern-subtitle">Update your username, display name, or password.</p>
 
-      {/* ----------------------------- */}
-      {/* MAIN MENU SCREEN */}
-      {/* ----------------------------- */}
-      <div className={slideClass("menu")}>
-        <h2 className="ps-title">Profile Settings</h2>
+      <div className="modern-card inner">
+        <label className="label">Email (locked)</label>
+        <input className="modern-input" value={profile.email} disabled />
 
-        <div className="ps-option" onClick={() => setScreen("username")}>
-          <FaUserEdit className="ps-icon" />
-          <span>Change Username</span>
-          <FaChevronRight className="ps-arrow" />
-        </div>
-
-        <div className="ps-option" onClick={() => setScreen("password")}>
-          <FaLock className="ps-icon" />
-          <span>Change Password</span>
-          <FaChevronRight className="ps-arrow" />
-        </div>
-
-        <div className="ps-option" onClick={() => setScreen("feedback")}>
-          <FaCommentDots className="ps-icon" />
-          <span>Send Feedback</span>
-          <FaChevronRight className="ps-arrow" />
-        </div>
-
-        <a className="ps-footer-link" href="/privacy-policy">
-          Privacy Policy
-        </a>
-      </div>
-
-      {/* ----------------------------- */}
-      {/* USERNAME SCREEN */}
-      {/* ----------------------------- */}
-      <div className={slideClass("username")}>
-        <button className="ps-sub-back" onClick={() => setScreen("menu")}>
-          <FaChevronLeft /> Back
-        </button>
-
-        <h2 className="ps-title">Change Username</h2>
-
-        <label className="ps-label">Username</label>
+        <label className="label">Username</label>
         <input
-          className="ps-input"
+          className="modern-input"
           value={username}
           maxLength={18}
           onChange={(e) => setUsername(e.target.value)}
+          placeholder="Enter username"
         />
 
-        <label className="ps-label">Display Name</label>
+        <label className="label">Display name</label>
         <input
-          className="ps-input"
+          className="modern-input"
           value={displayName}
           maxLength={24}
           onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Enter display name"
         />
 
-        <button className="ps-btn" onClick={saveUsername}>
-          {saving ? "Saving..." : "Save"}
-        </button>
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <button className="btn glow" onClick={saveChanges} disabled={savingProfile}>
+            {savingProfile ? "Saving..." : "Save Changes"}
+          </button>
+          <button
+            className="btn ghost"
+            onClick={() => {
+              // reset to original
+              setUsername(profile.username || "");
+              setDisplayName(profile.displayName || "");
+              setProfileMsg("Reset to saved values.");
+              setTimeout(() => setProfileMsg(""), 2000);
+            }}
+            disabled={savingProfile}
+          >
+            Reset
+          </button>
+        </div>
+
+        {profileMsg && <div className="notice" style={{ marginTop: 10 }}>{profileMsg}</div>}
       </div>
 
-      {/* ----------------------------- */}
-      {/* PASSWORD SCREEN */}
-      {/* ----------------------------- */}
-      <div className={slideClass("password")}>
-        <button className="ps-sub-back" onClick={() => setScreen("menu")}>
-          <FaChevronLeft /> Back
-        </button>
+      <hr style={{ margin: "20px 0", opacity: 0.25 }} />
 
-        <h2 className="ps-title">Change Password</h2>
+      <div className="modern-card inner">
+        <h3 style={{ marginTop: 0 }}>Change Password</h3>
 
-        <label className="ps-label">New Password</label>
+        <label className="label">Current password</label>
         <input
           type="password"
-          className="ps-input"
+          className="modern-input"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          placeholder="Enter current password"
+        />
+
+        <label className="label">New password</label>
+        <input
+          type="password"
+          className="modern-input"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Enter new password"
         />
 
-        <button className="ps-btn" onClick={saveNewPassword}>
-          Update Password
-        </button>
-      </div>
-
-      {/* ----------------------------- */}
-      {/* FEEDBACK SCREEN */}
-      {/* ----------------------------- */}
-      <div className={slideClass("feedback")}>
-        <button className="ps-sub-back" onClick={() => setScreen("menu")}>
-          <FaChevronLeft /> Back
-        </button>
-
-        <h2 className="ps-title">Send Feedback</h2>
-
-        <textarea
-          className="ps-textarea"
-          rows="5"
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          placeholder="Write your feedback here..."
+        <label className="label">Confirm new password</label>
+        <input
+          type="password"
+          className="modern-input"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Confirm new password"
         />
 
-        <button className="ps-btn" onClick={submitFeedback}>
-          {saving ? "Sending..." : "Send"}
-        </button>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="btn glow" onClick={changePassword} disabled={changingPassword}>
+            {changingPassword ? "Updating..." : "Change Password"}
+          </button>
+
+          <button className="btn ghost" onClick={forgotPasswordSendEmail} disabled={resetSending}>
+            {resetSending ? "Sending..." : "Forgot password? Email me a reset link"}
+          </button>
+        </div>
+
+        {passwordMsg && <div className="notice" style={{ marginTop: 10 }}>{passwordMsg}</div>}
       </div>
     </div>
   );
