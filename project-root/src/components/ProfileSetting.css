@@ -1,180 +1,210 @@
-/* -------------------------------------
-   PROFILE SETTINGS UI
-   Dark glass, smooth slide-in animation
--------------------------------------- */
+/* src/styles/ProfileSettings.css
+   Ultra-premium Profile Settings styles
+   Theme: green (#00e6a8) + orange (#ff5c2e)
+*/
 
-.ps-container {
-  position: relative;
-  width: 100%;
-  padding: 16px;
-  color: #fff;
-  font-family: Inter, system-ui, sans-serif;
-  animation: fadeIn 0.3s ease;
+/* ---------- VARIABLES & BASE ---------- */
+:root{
+  --bg: #050407;
+  --panel: rgba(255,255,255,0.03);
+  --muted: #bfc7d1;
+  --accent: #00e6a8;
+  --accent2: #ff5c2e;
+  --glass: rgba(255,255,255,0.02);
+  --glass-2: rgba(255,255,255,0.04);
+  --card-radius: 14px;
+  --trans: .18s;
+  --shadow: 0 12px 40px rgba(0,0,0,0.6);
+  --glass-border: 1px solid rgba(255,255,255,0.04);
+  --glass-strong: rgba(255,255,255,0.06);
+  --font-stack: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
-/* Back button (to Account page) */
-.ps-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  color: #fff;
-  cursor: pointer;
-  margin-bottom: 14px;
+/* Reset / utilities */
+*{box-sizing:border-box}
+.profile-root{font-family:var(--font-stack);color:#fff;background:transparent}
+.profile-card{
+  width:100%;
+  max-width:880px;
+  margin:32px auto;
+  padding:22px;
+  border-radius:var(--card-radius);
+  background: linear-gradient(180deg, rgba(10,10,10,0.88), rgba(0,0,0,0.65));
+  border: var(--glass-border);
+  box-shadow: var(--shadow);
+  position:relative;
+  overflow:hidden;
+  transition:transform var(--trans), box-shadow var(--trans);
+}
+.profile-card:hover{transform:translateY(-4px)}
+
+/* subtle animated diagonal sheen */
+.profile-card::after{
+  content:"";
+  position:absolute;inset: -40% -40% auto auto;
+  width:220%;height:220%;
+  background: linear-gradient(120deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.015) 45%, rgba(255,255,255,0.00) 60%);
+  transform: rotate(10deg);
+  pointer-events:none;
+  animation: shimmerSlow 9s linear infinite;
+  opacity:0.6;
+}
+@keyframes shimmerSlow{0%{transform:rotate(10deg) translateX(-10%)}50%{transform:rotate(10deg) translateX(10%)}100%{transform:rotate(10deg) translateX(-10%)}}
+
+/* header */
+.profile-header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+.profile-avatar{
+  width:84px;height:84px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,0.04);
+  box-shadow:0 8px 30px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.25) inset;
+}
+.profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.profile-titles{flex:1}
+.profile-title{font-size:18px;font-weight:800;margin:0}
+.profile-sub{font-size:13px;color:var(--muted);margin-top:4px}
+
+/* small action row */
+.profile-actions{display:flex;gap:10px;align-items:center}
+.btn{background:linear-gradient(90deg,var(--accent2),#ff8a66);border-radius:10px;padding:10px 14px;color:#fff;font-weight:700;border:0;cursor:pointer;transition:all var(--trans)}
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
+.btn.small{padding:8px 10px;font-size:13px}
+.btn.disabled{opacity:.5;pointer-events:none}
+
+/* ---------- FORM LAYOUT ---------- */
+.form-grid{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:12px}
+@media (max-width:980px){.form-grid{grid-template-columns:1fr}}
+
+/* modern input (floating label) */
+.form-group{position:relative;margin-bottom:14px}
+.modern-input{
+  width:100%;
+  padding:14px 14px 14px 14px;
+  border-radius:10px;
+  background:var(--glass);
+  border:1px solid rgba(255,255,255,0.03);
+  color:#fff;font-size:14px;outline:none;transition:box-shadow .14s, border-color .14s, transform .12s;
+}
+.modern-input:focus{box-shadow:0 8px 30px rgba(0,0,0,0.6),0 0 14px rgba(0,0,0,0.15) inset;border-color:rgba(0,230,168,0.12)}
+label.floating{
+  position:absolute;left:14px;top:12px;font-size:12px;color:var(--muted);transition:all .16s;pointer-events:none;
+}
+.modern-input:focus + label.floating,
+.modern-input:not(:placeholder-shown) + label.floating{
+  transform:translateY(-22px) scale(.95);
+  opacity:1;color:var(--accent);
+  background:transparent;padding:0 6px;margin-left:4px;
 }
 
-/* Each screen (menu / username / password / feedback) */
-.ps-screen {
-  position: absolute;
-  top: 60px;
-  left: 0;
-  width: 100%;
-  opacity: 0;
-  transform: translateX(100px);
-  transition: all 0.35s ease;
-  pointer-events: none;
+/* hint / muted text */
+.form-note{font-size:13px;color:var(--muted);margin-top:6px}
+
+/* ---------- PASSWORD FIELD / EYE TOGGLE ---------- */
+.password-row{position:relative;display:flex;align-items:center}
+.password-field{width:100%;padding:14px 46px 14px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:var(--glass);color:#fff;font-size:14px;outline:none}
+.password-field::placeholder{color:rgba(255,255,255,0.22)}
+/* eye toggle button - transparent & glow on active */
+.eye-toggle{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  border:0;background:transparent;padding:6px;border-radius:8px;font-size:18px;cursor:pointer;color:#fff;
+  transition:box-shadow .12s, transform .12s, background .12s;
+  display:flex;align-items:center;justify-content:center;
+}
+.eye-toggle:hover{box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+.eye-toggle.active{
+  background: linear-gradient(90deg, rgba(0,230,168,0.06), rgba(255,92,46,0.04));
+  box-shadow:0 6px 28px rgba(0,230,168,0.08), 0 0 18px rgba(255,92,46,0.04) inset;
+  transform:translateY(-50%) scale(1.03);
 }
 
-.ps-screen.active {
-  opacity: 1;
-  transform: translateX(0px);
-  pointer-events: all;
+/* loader overlay (full-screen small) */
+.loader-overlay{
+  position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,0.45);z-index:9999;
+}
+.loader-ring{width:60px;height:60px;border-radius:50%;border:6px solid rgba(255,255,255,0.05);border-top-color:var(--accent2);animation:spin 900ms linear infinite}
+
+/* outer centered loader for register action (overlay shown when .show-register-loader exists) */
+.show-register-loader::before{
+  content:"";position:fixed;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.42),rgba(0,0,0,0.6));z-index:1200;
+}
+.show-register-loader::after{
+  content:"";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1201;
+  width:76px;height:76px;border-radius:12px;background:linear-gradient(180deg, rgba(10,10,10,0.95), rgba(0,0,0,0.8));
+  display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);
+}
+.show-register-loader .loader-ring{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1202}
+
+/* ---------- 2-STEP / VERIFICATION PANEL ---------- */
+.verify-panel{
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,0.03);
+}
+.verify-title{font-weight:800;font-size:15px;margin:0 0 8px 0}
+.verify-desc{color:var(--muted);font-size:13px}
+
+/* OTP box row - individual input boxes */
+.otp-boxes{display:flex;gap:8px;margin-top:12px}
+.otp-box{
+  width:50px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:18px;font-weight:700;color:#fff;
+  text-align:center;outline:none;transition:box-shadow .12s, border-color .12s;
+}
+.otp-box:focus{border-color:var(--accent);box-shadow:0 8px 30px rgba(0,0,0,0.6) inset,0 8px 24px rgba(0,230,168,0.04)}
+.otp-hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+/* compact fallback OTP input (single field) */
+.otp-single{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:var(--glass);color:#fff}
+
+/* resend / small actions */
+.verify-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+.small-muted{font-size:12px;color:var(--muted)}
+
+/* ---------- PASSWORD CHANGE AREA ---------- */
+.pass-change{
+  margin-top:12px;border-radius:10px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03)
+}
+.pass-row{display:flex;gap:8px;align-items:center}
+.pass-note{font-size:13px;color:var(--muted);margin-top:10px}
+
+/* reveal animation for password change section */
+.reveal-pass{max-height:0;overflow:hidden;transition:max-height .26s ease}
+.reveal-pass.open{max-height:420px;padding-top:10px}
+
+/* forgot link style */
+.link-action{color:var(--accent);cursor:pointer;font-weight:700}
+
+/* ---------- COPY / CLIP BUTTON (used in other screens) ---------- */
+.copy-btn{
+  margin-left:8px;padding:6px 8px;border-radius:8px;border:0;background:transparent;color:var(--muted);cursor:pointer;
+  transition:all .12s;
+}
+.copy-btn:hover{color:var(--accent);transform:translateY(-2px)}
+
+/* ---------- MISC ---------- */
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.hr{height:1px;background:rgba(255,255,255,0.03);margin:12px 0;border-radius:2px}
+
+/* responsive */
+@media (max-width:720px){
+  .profile-card{padding:14px;margin:16px}
+  .profile-avatar{width:68px;height:68px}
+  .form-grid{grid-template-columns:1fr}
+  .otp-box{width:44px;height:48px}
 }
 
-/* Title */
-.ps-title {
-  font-size: 22px;
-  font-weight: 800;
-  margin-bottom: 18px;
-  text-align: left;
+/* ---------- subtle accent glows for focus ---------- */
+.modern-input:focus, .password-field:focus, .otp-single:focus{
+  box-shadow:0 8px 28px rgba(0,0,0,0.55), 0 0 16px rgba(0,230,168,0.06) inset;
+  border-color: rgba(0,230,168,0.12);
 }
 
-/* Options Menu */
-.ps-option {
-  display: flex;
-  align-items: center;
-  padding: 14px 16px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 12px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  border: 1px solid rgba(255,255,255,0.04);
-  transition: background .2s ease, transform .14s ease;
+/* ---------- accessibility helpers ---------- */
+.visually-hidden{
+  position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px;
 }
 
-.ps-option:hover {
-  background: rgba(255,255,255,0.06);
-  transform: scale(1.01);
-}
+/* ---------- small animations ---------- */
+@keyframes popIn{0%{transform:scale(.98);opacity:0}100%{transform:scale(1);opacity:1}}
+.profile-card{animation:popIn .18s ease}
 
-.ps-icon {
-  font-size: 20px;
-  margin-right: 12px;
-  opacity: 0.9;
-}
-
-.ps-arrow {
-  margin-left: auto;
-  opacity: 0.6;
-}
-
-/* Sub-back button */
-.ps-sub-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 14px;
-  padding: 8px 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-/* Inputs */
-.ps-label {
-  display: block;
-  margin: 12px 4px 6px;
-  opacity: 0.85;
-  font-size: 14px;
-}
-
-.ps-input {
-  width: 100%;
-  padding: 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  color: #fff;
-  margin-bottom: 10px;
-  font-size: 15px;
-}
-
-.ps-input:focus {
-  outline: none;
-  border-color: #ff764a;
-  box-shadow: 0 0 6px rgba(255,118,74,0.4);
-}
-
-/* Textarea */
-.ps-textarea {
-  width: 100%;
-  padding: 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  color: #fff;
-  font-size: 15px;
-  resize: none;
-  margin-bottom: 14px;
-}
-
-.ps-textarea:focus {
-  outline: none;
-  border-color: #ff764a;
-  box-shadow: 0 0 6px rgba(255,118,74,0.4);
-}
-
-/* Save buttons */
-.ps-btn {
-  width: 100%;
-  padding: 12px;
-  text-align: center;
-  background: linear-gradient(90deg, #ff5c2e, #ff8a66);
-  border-radius: 12px;
-  border: none;
-  color: #fff;
-  font-weight: 700;
-  cursor: pointer;
-  margin-top: 8px;
-  font-size: 15px;
-  transition: transform .15s ease;
-}
-
-.ps-btn:active {
-  transform: scale(0.97);
-}
-
-/* Footer links */
-.ps-footer-link {
-  display: block;
-  text-align: center;
-  margin-top: 18px;
-  opacity: 0.7;
-  font-size: 14px;
-  text-decoration: none;
-  color: var(--accent, #00e6a8);
-}
-
-.ps-footer-link:hover {
-  opacity: 1;
-}
-
-/* Fade in animation */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+/* ---------- END ---------- */
