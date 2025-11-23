@@ -1,210 +1,103 @@
-/* src/styles/ProfileSettings.css
-   Ultra-premium Profile Settings styles
-   Theme: green (#00e6a8) + orange (#ff5c2e)
-*/
+/* src/styles/ProfileSettings.css */
 
-/* ---------- VARIABLES & BASE ---------- */
-:root{
-  --bg: #050407;
-  --panel: rgba(255,255,255,0.03);
-  --muted: #bfc7d1;
-  --accent: #00e6a8;
-  --accent2: #ff5c2e;
-  --glass: rgba(255,255,255,0.02);
-  --glass-2: rgba(255,255,255,0.04);
-  --card-radius: 14px;
-  --trans: .18s;
-  --shadow: 0 12px 40px rgba(0,0,0,0.6);
-  --glass-border: 1px solid rgba(255,255,255,0.04);
-  --glass-strong: rgba(255,255,255,0.06);
-  --font-stack: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+/* Panel card base (fits your glass style) */
+.profile-card {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 18px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(10,10,10,0.9), rgba(0,0,0,0.65));
+  border: 1px solid rgba(255,255,255,0.03);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  color: #fff;
 }
 
-/* Reset / utilities */
-*{box-sizing:border-box}
-.profile-root{font-family:var(--font-stack);color:#fff;background:transparent}
-.profile-card{
-  width:100%;
-  max-width:880px;
-  margin:32px auto;
-  padding:22px;
-  border-radius:var(--card-radius);
-  background: linear-gradient(180deg, rgba(10,10,10,0.88), rgba(0,0,0,0.65));
-  border: var(--glass-border);
-  box-shadow: var(--shadow);
-  position:relative;
-  overflow:hidden;
-  transition:transform var(--trans), box-shadow var(--trans);
+/* Back & headings */
+.back-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: #fff;
+  margin-bottom: 10px;
 }
-.profile-card:hover{transform:translateY(-4px)}
-
-/* subtle animated diagonal sheen */
-.profile-card::after{
-  content:"";
-  position:absolute;inset: -40% -40% auto auto;
-  width:220%;height:220%;
-  background: linear-gradient(120deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.015) 45%, rgba(255,255,255,0.00) 60%);
-  transform: rotate(10deg);
-  pointer-events:none;
-  animation: shimmerSlow 9s linear infinite;
-  opacity:0.6;
+.modern-title {
+  font-size: 22px;
+  margin: 8px 0 4px;
+  font-weight: 800;
 }
-@keyframes shimmerSlow{0%{transform:rotate(10deg) translateX(-10%)}50%{transform:rotate(10deg) translateX(10%)}100%{transform:rotate(10deg) translateX(-10%)}}
-
-/* header */
-.profile-header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
-.profile-avatar{
-  width:84px;height:84px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,0.04);
-  box-shadow:0 8px 30px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.25) inset;
-}
-.profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-.profile-titles{flex:1}
-.profile-title{font-size:18px;font-weight:800;margin:0}
-.profile-sub{font-size:13px;color:var(--muted);margin-top:4px}
-
-/* small action row */
-.profile-actions{display:flex;gap:10px;align-items:center}
-.btn{background:linear-gradient(90deg,var(--accent2),#ff8a66);border-radius:10px;padding:10px 14px;color:#fff;font-weight:700;border:0;cursor:pointer;transition:all var(--trans)}
-.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
-.btn.small{padding:8px 10px;font-size:13px}
-.btn.disabled{opacity:.5;pointer-events:none}
-
-/* ---------- FORM LAYOUT ---------- */
-.form-grid{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:12px}
-@media (max-width:980px){.form-grid{grid-template-columns:1fr}}
-
-/* modern input (floating label) */
-.form-group{position:relative;margin-bottom:14px}
-.modern-input{
-  width:100%;
-  padding:14px 14px 14px 14px;
-  border-radius:10px;
-  background:var(--glass);
-  border:1px solid rgba(255,255,255,0.03);
-  color:#fff;font-size:14px;outline:none;transition:box-shadow .14s, border-color .14s, transform .12s;
-}
-.modern-input:focus{box-shadow:0 8px 30px rgba(0,0,0,0.6),0 0 14px rgba(0,0,0,0.15) inset;border-color:rgba(0,230,168,0.12)}
-label.floating{
-  position:absolute;left:14px;top:12px;font-size:12px;color:var(--muted);transition:all .16s;pointer-events:none;
-}
-.modern-input:focus + label.floating,
-.modern-input:not(:placeholder-shown) + label.floating{
-  transform:translateY(-22px) scale(.95);
-  opacity:1;color:var(--accent);
-  background:transparent;padding:0 6px;margin-left:4px;
+.modern-subtitle {
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 12px;
+  font-size: 0.95rem;
 }
 
-/* hint / muted text */
-.form-note{font-size:13px;color:var(--muted);margin-top:6px}
-
-/* ---------- PASSWORD FIELD / EYE TOGGLE ---------- */
-.password-row{position:relative;display:flex;align-items:center}
-.password-field{width:100%;padding:14px 46px 14px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:var(--glass);color:#fff;font-size:14px;outline:none}
-.password-field::placeholder{color:rgba(255,255,255,0.22)}
-/* eye toggle button - transparent & glow on active */
-.eye-toggle{
-  position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  border:0;background:transparent;padding:6px;border-radius:8px;font-size:18px;cursor:pointer;color:#fff;
-  transition:box-shadow .12s, transform .12s, background .12s;
-  display:flex;align-items:center;justify-content:center;
+/* simple form rows */
+.form-row { margin-bottom: 12px; display:flex; flex-direction:column; gap:6px; }
+.label { color: rgba(255,255,255,0.7); font-size:0.9rem; }
+.modern-input {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.03);
+  padding: 12px;
+  border-radius: 10px;
+  color: #fff;
+  outline: none;
+  font-size: 14px;
 }
-.eye-toggle:hover{box-shadow:0 6px 18px rgba(0,0,0,0.45)}
-.eye-toggle.active{
-  background: linear-gradient(90deg, rgba(0,230,168,0.06), rgba(255,92,46,0.04));
-  box-shadow:0 6px 28px rgba(0,230,168,0.08), 0 0 18px rgba(255,92,46,0.04) inset;
-  transform:translateY(-50%) scale(1.03);
+.modern-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* setting row (title + button) */
+.setting-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-radius:8px; margin:8px 0; }
+.setting-left { display:flex; flex-direction:column; }
+.setting-title { font-weight:700; }
+.setting-sub { color: rgba(255,255,255,0.55); font-size:0.9rem; }
+
+/* small buttons */
+.btn { display:inline-block; padding:10px 14px; border-radius:10px; border:0; background:linear-gradient(90deg,#ff6a4a,#ff8a66); color:#fff; font-weight:700; cursor:pointer; transition:all .15s ease; }
+.btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.04); color: #fff; }
+.btn.small { padding:6px 8px; font-size:13px; }
+.btn.glow { box-shadow: 0 8px 30px rgba(255,100,60,0.14); }
+
+/* slide panel */
+.slide-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 280ms cubic-bezier(.2,.9,.2,1), padding 200ms;
+  padding: 0 0;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.01);
+  border: 1px solid rgba(255,255,255,0.02);
+}
+.slide-panel.open {
+  padding: 12px;
+  max-height: 520px; /* enough for most content */
+  margin-bottom: 12px;
 }
 
-/* loader overlay (full-screen small) */
-.loader-overlay{
-  position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,0.45);z-index:9999;
+/* small inner message box */
+.panel-msg {
+  background: rgba(255,255,255,0.02);
+  padding: 8px 10px;
+  color: #ffd6d6;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
 }
-.loader-ring{width:60px;height:60px;border-radius:50%;border:6px solid rgba(255,255,255,0.05);border-top-color:var(--accent2);animation:spin 900ms linear infinite}
 
-/* outer centered loader for register action (overlay shown when .show-register-loader exists) */
-.show-register-loader::before{
-  content:"";position:fixed;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.42),rgba(0,0,0,0.6));z-index:1200;
+/* alt actions (row of buttons and forgot) */
+.alt-actions {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top: 10px;
 }
-.show-register-loader::after{
-  content:"";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1201;
-  width:76px;height:76px;border-radius:12px;background:linear-gradient(180deg, rgba(10,10,10,0.95), rgba(0,0,0,0.8));
-  display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);
-}
-.show-register-loader .loader-ring{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1202}
-
-/* ---------- 2-STEP / VERIFICATION PANEL ---------- */
-.verify-panel{
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,0.03);
-}
-.verify-title{font-weight:800;font-size:15px;margin:0 0 8px 0}
-.verify-desc{color:var(--muted);font-size:13px}
-
-/* OTP box row - individual input boxes */
-.otp-boxes{display:flex;gap:8px;margin-top:12px}
-.otp-box{
-  width:50px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-  background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:18px;font-weight:700;color:#fff;
-  text-align:center;outline:none;transition:box-shadow .12s, border-color .12s;
-}
-.otp-box:focus{border-color:var(--accent);box-shadow:0 8px 30px rgba(0,0,0,0.6) inset,0 8px 24px rgba(0,230,168,0.04)}
-.otp-hint{font-size:12px;color:var(--muted);margin-top:8px}
-
-/* compact fallback OTP input (single field) */
-.otp-single{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:var(--glass);color:#fff}
-
-/* resend / small actions */
-.verify-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
-.small-muted{font-size:12px;color:var(--muted)}
-
-/* ---------- PASSWORD CHANGE AREA ---------- */
-.pass-change{
-  margin-top:12px;border-radius:10px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03)
-}
-.pass-row{display:flex;gap:8px;align-items:center}
-.pass-note{font-size:13px;color:var(--muted);margin-top:10px}
-
-/* reveal animation for password change section */
-.reveal-pass{max-height:0;overflow:hidden;transition:max-height .26s ease}
-.reveal-pass.open{max-height:420px;padding-top:10px}
-
-/* forgot link style */
-.link-action{color:var(--accent);cursor:pointer;font-weight:700}
-
-/* ---------- COPY / CLIP BUTTON (used in other screens) ---------- */
-.copy-btn{
-  margin-left:8px;padding:6px 8px;border-radius:8px;border:0;background:transparent;color:var(--muted);cursor:pointer;
-  transition:all .12s;
-}
-.copy-btn:hover{color:var(--accent);transform:translateY(-2px)}
-
-/* ---------- MISC ---------- */
-.muted{color:var(--muted)}
-.small{font-size:13px}
-.hr{height:1px;background:rgba(255,255,255,0.03);margin:12px 0;border-radius:2px}
 
 /* responsive */
-@media (max-width:720px){
-  .profile-card{padding:14px;margin:16px}
-  .profile-avatar{width:68px;height:68px}
-  .form-grid{grid-template-columns:1fr}
-  .otp-box{width:44px;height:48px}
+@media (max-width:680px) {
+  .profile-card { padding: 14px; margin: 12px; }
+  .modern-title { font-size: 20px; }
+  .slide-panel.open { max-height: 900px; }
 }
-
-/* ---------- subtle accent glows for focus ---------- */
-.modern-input:focus, .password-field:focus, .otp-single:focus{
-  box-shadow:0 8px 28px rgba(0,0,0,0.55), 0 0 16px rgba(0,230,168,0.06) inset;
-  border-color: rgba(0,230,168,0.12);
-}
-
-/* ---------- accessibility helpers ---------- */
-.visually-hidden{
-  position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px;
-}
-
-/* ---------- small animations ---------- */
-@keyframes popIn{0%{transform:scale(.98);opacity:0}100%{transform:scale(1);opacity:1}}
-.profile-card{animation:popIn .18s ease}
-
-/* ---------- END ---------- */
