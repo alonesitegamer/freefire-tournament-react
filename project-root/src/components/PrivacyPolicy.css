@@ -1,47 +1,108 @@
-/* In src/components/PrivacyPolicy.css */
-
-.privacy-policy-container {
-  max-width: 900px;
-  margin: 20px auto;
-  padding: 20px;
-  background-color: #f9f9f9; /* A light background */
-  color: #333; /* Dark text */
-  border-radius: 8px;
-  line-height: 1.6;
+/* FULL WRAPPER */
+.legal-wrapper {
+  width: 100%;
+  min-height: 100vh;
+  padding: 90px 18px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-/* For dark mode, uncomment this block */
-/*
-.privacy-policy-container {
-  max-width: 900px;
-  margin: 20px auto;
-  padding: 20px;
-  background-color: #2b2b2b;
+/* HEADER / BANNER */
+.legal-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.legal-back-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 14px;
+  backdrop-filter: blur(6px);
+  transition: 0.2s ease;
+}
+
+.legal-back-btn:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+.legal-title {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 6px 0;
+}
+
+.legal-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* MAIN GLASS CARD */
+.legal-card {
+  width: 100%;
+  max-width: 850px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 26px;
+  backdrop-filter: blur(18px);
   color: #eee;
-  border-radius: 8px;
+  box-shadow: 0 0 25px rgba(0,0,0,0.5);
+}
+
+/* TEXT */
+.legal-text {
   line-height: 1.6;
-}
-*/
-
-.privacy-policy-container .privacy-policy-h1 {
-  font-size: 2em;
-  border-bottom: 2px solid #eee;
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  color: #ddd;
 }
 
-.privacy-policy-container .privacy-policy-h2 {
-  font-size: 1.5em;
-  margin-top: 30px;
-  color: #007bff;
+/* LISTS */
+.legal-list {
+  margin-left: 20px;
 }
 
-.privacy-policy-container .privacy-policy-p,
-.privacy-policy-container li {
-  font-size: 1em;
-  margin-bottom: 15px;
+.legal-list > li {
+  margin-bottom: 26px;
 }
 
-.privacy-policy-container ol {
-  padding-left: 20px;
+.legal-list h2 {
+  color: #ff784e;
+  margin-bottom: 6px;
+  font-size: 20px;
 }
 
+/* SUBLIST */
+.legal-sublist {
+  margin-left: 22px;
+  margin-top: 6px;
+  color: #ccc;
+}
+
+/* LINK */
+.legal-card a {
+  color: var(--accent);
+}
+
+/* FOOTER NOTE */
+.legal-footer-note {
+  margin-top: 20px;
+  font-size: 14px;
+  color: #aaa;
+}
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  .legal-card {
+    padding: 20px;
+  }
+  .legal-title {
+    font-size: 22px;
+  }
+}
