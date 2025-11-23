@@ -7,16 +7,20 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Splash from "./components/Splash";
 
+// ✅ Add these
+import PrivacyPolicy from "./components/PrivacyPolicy";
+import TermOfService from "./components/TermOfService";
+import Contact from "./components/Contact";
+
 function Private({ user, children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {
-  const [user, setUser] = useState(auth.currentUser); // ✅ Start with cached user
-  const [loading, setLoading] = useState(!auth.currentUser); // ✅ Only show splash if no cached user
+  const [user, setUser] = useState(auth.currentUser);
+  const [loading, setLoading] = useState(!auth.currentUser);
 
   useEffect(() => {
-    // Listen for user token or sign-in changes
     const unsubscribe = onIdTokenChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
@@ -25,13 +29,13 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // ✅ Fast: Only show Splash when user = null AND loading = true
   if (loading) {
     return <Splash />;
   }
 
   return (
     <Routes>
+      {/* Dashboard (Protected) */}
       <Route
         path="/"
         element={
@@ -40,10 +44,17 @@ export default function App() {
           </Private>
         }
       />
+
+      {/* Login */}
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <Login />}
       />
+
+      {/* 📄 PUBLIC PAGES */}
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermOfService />} />
+      <Route path="/contact" element={<Contact />} />
     </Routes>
   );
 }
