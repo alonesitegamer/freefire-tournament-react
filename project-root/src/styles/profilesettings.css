@@ -168,3 +168,34 @@ textarea.field { resize:vertical; min-height:80px; }
 .strength-meter .bar.active {
   background: var(--accent2);
 }
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.toggle-eye {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.pass-rule {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.pass-rule.bad {
+  color: #ff5f5f;
+}
+
+.pass-rule.ok {
+  color: #41ff8b;
+}
