@@ -197,7 +197,7 @@ function ChangePasswordPage({ onBack }) {
       </button>
     </section>
   );
-}
+} 
 
 /* FORGOT PASSWORD PAGE */
 function ForgotPasswordPage({ email, onBack }) {
