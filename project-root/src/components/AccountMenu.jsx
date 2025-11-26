@@ -1,18 +1,20 @@
 // src/components/AccountMenu.jsx
 import React, { useState } from "react";
 import ProfileSettings from "./ProfileSettings";
-import { signOut } from "firebase/auth";
+import { signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase";
 
 import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-  sendPasswordResetEmail
-} from "firebase/auth";
-
-// Icons
-import { User, Trophy, Link2, LogOut, Settings, MessageSquare, ShieldCheck } from "lucide-react";
+  User,
+  Trophy,
+  Link2,
+  LogOut,
+  Settings,
+  MessageSquare,
+  ShieldCheck,
+  Eye,
+  EyeOff
+} from "lucide-react";
 
 import "../styles/profilesettings.css";
 
@@ -35,9 +37,10 @@ export default function AccountMenu({
   return (
     <div className="account-menu premium-panel">
 
-      {/* MAIN MENU */}
+      {/* MAIN ACCOUNT MENU */}
       {view === "main" && (
         <section className="panel account-profile-card premium">
+          
           <div className="acc-top-row">
             <div className="acc-avatar" onClick={openAvatarModal}>
               <img src={profile.avatar || "/avatars/default.jpg"} alt="avatar" />
@@ -55,29 +58,34 @@ export default function AccountMenu({
           </div>
 
           <div className="account-actions">
-
             <button className="account-option" onClick={() => setView("profile")}>
-              <Settings size={18} /> <span>Profile Settings</span>
+              <Settings size={18} />
+              <span>Profile Settings</span>
             </button>
 
             <button className="account-option" onClick={onRankClick}>
-              <Trophy size={18} /> <span>Rank</span>
+              <Trophy size={18} />
+              <span>Rank</span>
             </button>
 
             <button className="account-option" onClick={() => setView("refer")}>
-              <Link2 size={18} /> <span>Refer a Friend</span>
+              <Link2 size={18} />
+              <span>Refer a Friend</span>
             </button>
 
             <button className="account-option" onClick={() => setView("feedback")}>
-              <MessageSquare size={18} /> <span>Send Feedback</span>
+              <MessageSquare size={18} />
+              <span>Send Feedback</span>
             </button>
 
             <button className="account-option" onClick={() => setView("security")}>
-              <ShieldCheck size={18} /> <span>Security & Password</span>
+              <ShieldCheck size={18} />
+              <span>Security & Password</span>
             </button>
 
             <button className="account-option logout" onClick={doLogout}>
-              <LogOut size={18} /> <span>Logout</span>
+              <LogOut size={18} />
+              <span>Logout</span>
             </button>
           </div>
 
@@ -89,7 +97,7 @@ export default function AccountMenu({
         </section>
       )}
 
-      {/* PROFILE SETTINGS */}
+      {/* PROFILE SETTINGS PAGE */}
       {view === "profile" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
@@ -102,62 +110,85 @@ export default function AccountMenu({
         </section>
       )}
 
-      {/* REFER A FRIEND */}
+      {/* REFER PAGE */}
       {view === "refer" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Refer a Friend</h3>
-          <p>Share this code:</p>
+          <p>Your referral code:</p>
           <div className="referral-code">{profile.referralCode}</div>
         </section>
       )}
 
-      {/* FEEDBACK */}
+      {/* FEEDBACK PAGE */}
       {view === "feedback" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Send Feedback</h3>
-          <FeedbackForm profile={profile} onDone={() => setView("main")} />
+          <FeedbackForm onDone={() => setView("main")} profile={profile} />
         </section>
       )}
 
-      {/* SECURITY */}
+      {/* SECURITY & PASSWORD PAGE */}
       {view === "security" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
+
           <h3>Security</h3>
-          <p className="muted">Change your password or reset it via email.</p>
+          <p className="muted">Change password or reset using email.</p>
 
-          <button className="btn" style={{ width: "100%", marginBottom: 10 }}
-            onClick={() => setView("changePassword")}>
-            Change Password
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+            <button className="btn" onClick={() => setView("changePassword")}>
+              Change Password
+            </button>
 
-          <button className="btn ghost" style={{ width: "100%" }}
-            onClick={() => setView("forgotPassword")}>
-            Forgot Password
-          </button>
+            <button
+              className="btn ghost"
+              onClick={() => {
+                sendPasswordResetEmail(auth, profile.email);
+                alert("Password reset email sent.");
+              }}
+            >
+              Forgot Password (Email)
+            </button>
+          </div>
         </section>
       )}
 
-      {/* CHANGE PASSWORD */}
+      {/* CHANGE PASSWORD PAGE */}
       {view === "changePassword" && (
         <ChangePasswordPage onBack={() => setView("security")} />
       )}
 
-      {/* FORGOT PASSWORD */}
-      {view === "forgotPassword" && (
-        <ForgotPasswordPage email={profile.email} onBack={() => setView("security")} />
-      )}
     </div>
   );
 }
 
-/* CHANGE PASSWORD PAGE */
+/* CHANGE PASSWORD PAGE FULL VERSION */
 function ChangePasswordPage({ onBack }) {
   const [oldPass, setOldPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
+
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const [strength, setStrength] = useState(0);
+
+  function calcStrength(pw) {
+    let s = 0;
+    if (pw.length >= 6) s++;
+    if (/[A-Z]/.test(pw)) s++;
+    if (/[0-9]/.test(pw)) s++;
+    if (/[^A-Za-z0-9]/.test(pw)) s++;
+    return s;
+  }
+
+  function handleNewPass(v) {
+    setNewPass(v);
+    setStrength(calcStrength(v));
+  }
 
   async function submit() {
     if (!oldPass) return alert("Enter old password");
@@ -167,62 +198,76 @@ function ChangePasswordPage({ onBack }) {
     try {
       const user = auth.currentUser;
       const cred = EmailAuthProvider.credential(user.email, oldPass);
+
       await reauthenticateWithCredential(user, cred);
       await updatePassword(user, newPass);
 
-      alert("Password changed successfully!");
+      alert("Password changed!");
       onBack();
     } catch (err) {
-      alert("Old password incorrect or session expired.");
       console.error(err);
+      alert("Old password incorrect or login expired.");
     }
   }
 
   return (
     <section className="panel">
       <button className="back-btn" onClick={onBack}>Back</button>
+
       <h3>Change Password</h3>
 
-      <input className="modern-input" type="password" placeholder="Old password"
-        value={oldPass} onChange={e => setOldPass(e.target.value)} />
+      {/* OLD PASSWORD */}
+      <div className="pw-field">
+        <input
+          className="modern-input"
+          type={showOld ? "text" : "password"}
+          placeholder="Old password"
+          value={oldPass}
+          onChange={(e) => setOldPass(e.target.value)}
+        />
+        <span className="pw-eye" onClick={() => setShowOld(!showOld)}>
+          {showOld ? <EyeOff /> : <Eye />}
+        </span>
+      </div>
 
-      <input className="modern-input" type="password" placeholder="New password"
-        value={newPass} onChange={e => setNewPass(e.target.value)} />
+      {/* NEW PASSWORD */}
+      <div className="pw-field">
+        <input
+          className="modern-input"
+          type={showNew ? "text" : "password"}
+          placeholder="New password"
+          value={newPass}
+          onChange={(e) => handleNewPass(e.target.value)}
+        />
+        <span className="pw-eye" onClick={() => setShowNew(!showNew)}>
+          {showNew ? <EyeOff /> : <Eye />}
+        </span>
+      </div>
 
-      <input className="modern-input" type="password" placeholder="Confirm new password"
-        value={confirmPass} onChange={e => setConfirmPass(e.target.value)} />
+      {/* Strength Meter */}
+      <div className="strength-meter">
+        <div className={`bar ${strength >= 1 ? "active" : ""}`}></div>
+        <div className={`bar ${strength >= 2 ? "active" : ""}`}></div>
+        <div className={`bar ${strength >= 3 ? "active" : ""}`}></div>
+        <div className={`bar ${strength >= 4 ? "active" : ""}`}></div>
+      </div>
 
-      <button className="btn" style={{ marginTop: 10 }} onClick={submit}>
-        Save New Password
-      </button>
-    </section>
-  );
-} 
+      {/* CONFIRM PASSWORD */}
+      <div className="pw-field">
+        <input
+          className="modern-input"
+          type={showConfirm ? "text" : "password"}
+          placeholder="Confirm new password"
+          value={confirmPass}
+          onChange={(e) => setConfirmPass(e.target.value)}
+        />
+        <span className="pw-eye" onClick={() => setShowConfirm(!showConfirm)}>
+          {showConfirm ? <EyeOff /> : <Eye />}
+        </span>
+      </div>
 
-/* FORGOT PASSWORD PAGE */
-function ForgotPasswordPage({ email, onBack }) {
-  async function sendLink() {
-    try {
-      await sendPasswordResetEmail(auth, email);
-      alert("Password reset email sent!");
-      onBack();
-    } catch (err) {
-      alert("Failed to send email");
-      console.error(err);
-    }
-  }
-
-  return (
-    <section className="panel">
-      <button className="back-btn" onClick={onBack}>Back</button>
-
-      <h3>Forgot Password</h3>
-      <p className="muted">A reset link will be sent to:</p>
-
-      <div className="referral-code">{email}</div>
-
-      <button className="btn" onClick={sendLink} style={{ marginTop: 10 }}>
-        Send Reset Email
+      <button className="btn" style={{ marginTop: 14 }} onClick={submit}>
+        Save Password
       </button>
     </section>
   );
@@ -233,13 +278,13 @@ function FeedbackForm({ onDone = () => {}, profile = {} }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { db } = require("../firebase");
+  const { db } = require("../firebase"); 
   const { addDoc, collection, serverTimestamp } = require("firebase/firestore");
 
   async function send() {
     if (!text.trim()) return alert("Write something first.");
-
     setSaving(true);
+
     try {
       await addDoc(collection(db, "feedback"), {
         userId: profile.id || null,
@@ -247,26 +292,30 @@ function FeedbackForm({ onDone = () => {}, profile = {} }) {
         text: text.trim(),
         createdAt: serverTimestamp(),
       });
-      alert("Thanks — feedback sent.");
+
+      alert("Feedback sent!");
       setText("");
       onDone();
-    } catch (err) {
+    } catch (e) {
       alert("Failed to send feedback.");
-      console.error(err);
+      console.error(e);
     }
+
     setSaving(false);
   }
 
   return (
     <div className="feedback-root">
-      <textarea className="field" rows={6}
-        value={text} onChange={e => setText(e.target.value)}
-        placeholder="Tell us what's up..." />
+      <textarea
+        className="field"
+        rows={6}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Tell us what's up..."
+      />
 
-      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
-        <button className="btn ghost" onClick={() => { setText(""); onDone(); }}>
-          Cancel
-        </button>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button className="btn ghost" onClick={onDone}>Cancel</button>
         <button className="btn" disabled={saving} onClick={send}>
           {saving ? "Sending..." : "Send Feedback"}
         </button>
