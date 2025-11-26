@@ -4,8 +4,16 @@ import ProfileSettings from "./ProfileSettings";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 
-// Modern icons
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+  sendPasswordResetEmail
+} from "firebase/auth";
+
+// Icons
 import { User, Trophy, Link2, LogOut, Settings, MessageSquare, ShieldCheck } from "lucide-react";
+
 import "../styles/profilesettings.css";
 
 export default function AccountMenu({
@@ -26,6 +34,8 @@ export default function AccountMenu({
 
   return (
     <div className="account-menu premium-panel">
+
+      {/* MAIN MENU */}
       {view === "main" && (
         <section className="panel account-profile-card premium">
           <div className="acc-top-row">
@@ -45,6 +55,7 @@ export default function AccountMenu({
           </div>
 
           <div className="account-actions">
+
             <button className="account-option" onClick={() => setView("profile")}>
               <Settings size={18} /> <span>Profile Settings</span>
             </button>
@@ -78,6 +89,7 @@ export default function AccountMenu({
         </section>
       )}
 
+      {/* PROFILE SETTINGS */}
       {view === "profile" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
@@ -90,52 +102,143 @@ export default function AccountMenu({
         </section>
       )}
 
+      {/* REFER A FRIEND */}
       {view === "refer" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Refer a Friend</h3>
-          <p>Share this code with your friends — you both earn rewards when they join and redeem.</p>
+          <p>Share this code:</p>
           <div className="referral-code">{profile.referralCode}</div>
         </section>
       )}
 
+      {/* FEEDBACK */}
       {view === "feedback" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Send Feedback</h3>
-          <p className="muted">Got a bug, suggestion, or report? We'll read it.</p>
-          <FeedbackForm onDone={() => setView("main")} profile={profile} />
+          <FeedbackForm profile={profile} onDone={() => setView("main")} />
         </section>
       )}
 
+      {/* SECURITY */}
       {view === "security" && (
         <section className="panel">
           <button className="back-btn" onClick={() => setView("main")}>Back</button>
           <h3>Security</h3>
-          <p className="muted">Change password or reset using email.</p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-            <button className="btn" onClick={() => setView("profile")}>Change Password</button>
-            <button className="btn ghost" onClick={() => { navigator.clipboard.writeText(profile.referralCode); alert("Referral copied"); }}>
-              Copy Referral
-            </button>
-          </div>
+          <p className="muted">Change your password or reset it via email.</p>
+
+          <button className="btn" style={{ width: "100%", marginBottom: 10 }}
+            onClick={() => setView("changePassword")}>
+            Change Password
+          </button>
+
+          <button className="btn ghost" style={{ width: "100%" }}
+            onClick={() => setView("forgotPassword")}>
+            Forgot Password
+          </button>
         </section>
+      )}
+
+      {/* CHANGE PASSWORD */}
+      {view === "changePassword" && (
+        <ChangePasswordPage onBack={() => setView("security")} />
+      )}
+
+      {/* FORGOT PASSWORD */}
+      {view === "forgotPassword" && (
+        <ForgotPasswordPage email={profile.email} onBack={() => setView("security")} />
       )}
     </div>
   );
 }
 
-/* small FeedbackForm inside same file so you only drop one component */
+/* CHANGE PASSWORD PAGE */
+function ChangePasswordPage({ onBack }) {
+  const [oldPass, setOldPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+
+  async function submit() {
+    if (!oldPass) return alert("Enter old password");
+    if (!newPass) return alert("Enter new password");
+    if (newPass !== confirmPass) return alert("Passwords do not match");
+
+    try {
+      const user = auth.currentUser;
+      const cred = EmailAuthProvider.credential(user.email, oldPass);
+      await reauthenticateWithCredential(user, cred);
+      await updatePassword(user, newPass);
+
+      alert("Password changed successfully!");
+      onBack();
+    } catch (err) {
+      alert("Old password incorrect or session expired.");
+      console.error(err);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <button className="back-btn" onClick={onBack}>Back</button>
+      <h3>Change Password</h3>
+
+      <input className="modern-input" type="password" placeholder="Old password"
+        value={oldPass} onChange={e => setOldPass(e.target.value)} />
+
+      <input className="modern-input" type="password" placeholder="New password"
+        value={newPass} onChange={e => setNewPass(e.target.value)} />
+
+      <input className="modern-input" type="password" placeholder="Confirm new password"
+        value={confirmPass} onChange={e => setConfirmPass(e.target.value)} />
+
+      <button className="btn" style={{ marginTop: 10 }} onClick={submit}>
+        Save New Password
+      </button>
+    </section>
+  );
+}
+
+/* FORGOT PASSWORD PAGE */
+function ForgotPasswordPage({ email, onBack }) {
+  async function sendLink() {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert("Password reset email sent!");
+      onBack();
+    } catch (err) {
+      alert("Failed to send email");
+      console.error(err);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <button className="back-btn" onClick={onBack}>Back</button>
+
+      <h3>Forgot Password</h3>
+      <p className="muted">A reset link will be sent to:</p>
+
+      <div className="referral-code">{email}</div>
+
+      <button className="btn" onClick={sendLink} style={{ marginTop: 10 }}>
+        Send Reset Email
+      </button>
+    </section>
+  );
+}
+
+/* FEEDBACK FORM */
 function FeedbackForm({ onDone = () => {}, profile = {} }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
-  // lazy import to avoid circular imports
-  const { db } = require("../firebase"); // eslint-disable-line
 
-  const { addDoc, collection, serverTimestamp } = require("firebase/firestore"); // eslint-disable-line
+  const { db } = require("../firebase");
+  const { addDoc, collection, serverTimestamp } = require("firebase/firestore");
 
   async function send() {
     if (!text.trim()) return alert("Write something first.");
+
     setSaving(true);
     try {
       await addDoc(collection(db, "feedback"), {
@@ -147,20 +250,26 @@ function FeedbackForm({ onDone = () => {}, profile = {} }) {
       alert("Thanks — feedback sent.");
       setText("");
       onDone();
-    } catch (e) {
-      console.error("send feedback", e);
+    } catch (err) {
       alert("Failed to send feedback.");
-    } finally {
-      setSaving(false);
+      console.error(err);
     }
+    setSaving(false);
   }
 
   return (
     <div className="feedback-root">
-      <textarea className="field" rows={6} value={text} onChange={(e)=>setText(e.target.value)} placeholder="Tell us what's up..." />
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-        <button className="btn ghost" onClick={() => { setText(""); onDone(); }}>Cancel</button>
-        <button className="btn" onClick={send} disabled={saving}>{saving ? "Sending..." : "Send Feedback"}</button>
+      <textarea className="field" rows={6}
+        value={text} onChange={e => setText(e.target.value)}
+        placeholder="Tell us what's up..." />
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+        <button className="btn ghost" onClick={() => { setText(""); onDone(); }}>
+          Cancel
+        </button>
+        <button className="btn" disabled={saving} onClick={send}>
+          {saving ? "Sending..." : "Send Feedback"}
+        </button>
       </div>
     </div>
   );
