@@ -1,11 +1,14 @@
+// src/components/Popup.jsx
 import React, { useEffect } from "react";
-import "./Popup.css";
+import "../styles/Popup.css";
 
 export default function Popup({ type = "success", message = "", onClose = () => {} }) {
   useEffect(() => {
-    const timer = setTimeout(onClose, 1800);
-    return () => clearTimeout(timer);
-  }, []);
+    const t = setTimeout(() => {
+      onClose();
+    }, 1800);
+    return () => clearTimeout(t);
+  }, [onClose]);
 
   return (
     <div className="popup-overlay">
