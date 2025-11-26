@@ -18,18 +18,21 @@ export default function ProfileSettings({
 
     setSaving(true);
     try {
-      await updateProfileField({
+      const payload = {
         username: username.trim(),
         displayName: inGameName.trim(),
-      });
+      };
+
+      await updateProfileField(payload);
 
       setProfile(prev => ({
         ...prev,
-        username: username.trim(),
-        displayName: inGameName.trim(),
+        username: payload.username,
+        displayName: payload.displayName,
       }));
 
-      alert("Changes saved successfully!");
+      // friendly UI feedback
+      try { window?.toast?.success?.("Changes saved"); } catch (_) { /* noop */ }
       setEditingUsername(false);
     } catch (err) {
       console.error(err);
@@ -40,7 +43,6 @@ export default function ProfileSettings({
 
   return (
     <div className="profile-settings-root">
-
       <button className="back-btn" onClick={onBack}>← Back</button>
 
       <h2 className="modern-title">Profile Settings</h2>
