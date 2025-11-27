@@ -18,7 +18,7 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-
+import { ..., increment } from "firebase/firestore";
 import HomeButtons from "../components/HomeButtons";
 import MatchList from "../components/MatchList";
 import MatchDetails from "../components/MatchDetails";
