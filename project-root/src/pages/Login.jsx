@@ -8,16 +8,7 @@ import {
 } from "firebase/auth";
 
 import { auth, db, provider } from "../firebase";
-import {
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
 import "../styles/Login.css"; // ensure this file exists
@@ -54,54 +45,30 @@ export default function Login() {
     };
   }, []);
 
-  // ---------------------------
-  // Save initial user doc (runs after auth user created)
-  // - writes default fields
-  // - if referralCode param provided, tries to locate the referrer and
-  //   writes referrerId + hasRedeemedReferral on the new user's doc
-  // ---------------------------
-  async function saveInitialUser(user, referralCode = "") {
+  async function saveInitialUser(user, referralCode = "", extra = {}) {
     try {
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
         const newReferralCode = user.uid.substring(0, 8).toUpperCase();
-
-        // base initial payload
-        const payload = {
+        const base = {
           email: user.email,
           displayName: user.displayName || "",
           username: "",
           coins: 0,
           lastDaily: null,
-          referral: referralCode || null, // the code the user entered when signing up
-          referralCode: newReferralCode,  // this user's own code
+          referral: referralCode || null,
+          referralCode: newReferralCode,
           hasRedeemedReferral: !!referralCode,
           createdAt: serverTimestamp(),
+          // referral-specific fields (safely default)
+          referrerId: extra.referrerId || null,
+          welcomeBonusGiven: !!extra.welcomeBonusGiven,
+          referralBonusGiven: !!extra.referralBonusGiven,
+          adsWatched: extra.adsWatched ?? 0,
+          referrerRewardGiven: !!extra.referrerRewardGiven,
         };
-
-        // If user supplied a referral code, resolve the referrer immediately
-        if (referralCode && typeof referralCode === "string" && referralCode.trim()) {
-          try {
-            const q = query(collection(db, "users"), where("referralCode", "==", referralCode.trim()));
-            const res = await getDocs(q);
-            if (!res.empty) {
-              // take the first matching user as referrer
-              const referrerDoc = res.docs[0];
-              payload.referrerId = referrerDoc.id;
-              payload.hasRedeemedReferral = true;
-            } else {
-              // referral code not found — clear to avoid re-checks later
-              payload.referral = null;
-              payload.hasRedeemedReferral = false;
-            }
-          } catch (e) {
-            console.error("Error resolving referral code:", e);
-            // keep referral value as-is; resolution may happen on dashboard as fallback
-          }
-        }
-
-        await setDoc(ref, payload);
+        await setDoc(ref, base);
       }
     } catch (e) {
       console.error("Firestore user creation failed:", e);
@@ -126,7 +93,7 @@ export default function Login() {
   async function sendOtpRequest(targetEmail) {
     setOtpSending(true);
     setOtpError("");
-    // pre-check: existing user and disposable detection
+    // pre-check: existing user and disposable detection (optional server endpoint)
     try {
       const checkRes = await fetch("/api/check-email", {
         method: "POST",
@@ -135,7 +102,6 @@ export default function Login() {
       });
       const checkJson = await checkRes.json();
       if (!checkRes.ok) {
-        // check endpoint returned an error message we should show
         setOtpError(checkJson?.error || "Failed to validate email.");
         setOtpSending(false);
         return false;
@@ -151,8 +117,8 @@ export default function Login() {
         return false;
       }
     } catch (e) {
-      console.error("check-email error", e);
-      // allow fallback to send OTP (but we'll show error)
+      // if check-email endpoint not available, allow sendOtp (dev fallback)
+      console.warn("check-email failed, continuing:", e);
     }
 
     try {
@@ -307,11 +273,80 @@ export default function Login() {
 
     // OTP ok -> create auth user
     try {
+      // --- look up referrer (if any) BEFORE creating user ---
+      let referrerDoc = null;
+      let referrerId = null;
+      if (referral && referral.trim()) {
+        try {
+          const q = query(collection(db, "users"), where("referralCode", "==", referral.trim()));
+          const qsnap = await getDocs(q);
+          if (!qsnap.empty) {
+            // pick first match
+            referrerDoc = qsnap.docs[0];
+            referrerId = referrerDoc.id;
+
+            // do not allow self-referral (rare but check)
+            // if the user email equals referrer email, ignore
+            if (referrerDoc.data().email === email) {
+              referrerDoc = null;
+              referrerId = null;
+            }
+          }
+        } catch (e) {
+          console.warn("referrer lookup failed:", e);
+        }
+      }
+
+      // Create firebase auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      // SAVE initial user and resolve referrerId (if user entered referral code)
-      await saveInitialUser(user, referral);
 
+      // Decide welcome coins & flags
+      let welcomeCoins = 10;
+      let welcomeBonusGiven = true;
+      let referralBonusGiven = false;
+      let referrerRewardGiven = false;
+
+      if (referrerId) {
+        // New user used a referral -> give them 20 coins (20 = 10 welcome + 10 referral immediate)
+        welcomeCoins = 20;
+        referralBonusGiven = true; // this marks the new user received immediate referral welcome coins
+        // But the referrer reward (10 coins) must be given later after ads watched
+        referrerRewardGiven = false;
+      }
+
+      // Save initial user doc with coins & referral metadata
+      const userRef = doc(db, "users", user.uid);
+      const initialPayload = {
+        email: user.email,
+        displayName: user.displayName || "",
+        username: "",
+        coins: welcomeCoins,
+        lastDaily: null,
+        referral: referral || null,
+        referralCode: user.uid.substring(0, 8).toUpperCase(),
+        hasRedeemedReferral: !!referrerId,
+        createdAt: serverTimestamp(),
+        referrerId: referrerId || null,
+        welcomeBonusGiven: welcomeBonusGiven,
+        referralBonusGiven: referralBonusGiven,
+        adsWatched: 0,
+        referrerRewardGiven: referrerRewardGiven,
+      };
+
+      await setDoc(userRef, initialPayload);
+
+      // If referrer exists and is valid, we DO NOT immediately credit the referrer
+      // — we wait until the new user watches 3 ads (handled in Dashboard.watchAd).
+      // However we can optionally store a "pendingReferralFor" record in referrer's doc for quick lookup (optional).
+      if (referrerId) {
+        try {
+          // add a small pending tracker object in the new user's doc already saved (we already set referrerId)
+          // and optionally mark a counter on referrer (not necessary). Keep it simple.
+        } catch (e) {}
+      }
+
+      // success: close OTP modal and sign in user automatically (they are already created)
       setOtpPhase(false);
       setOtpValueArr(["", "", "", "", "", ""]);
       setOtpSending(false);
@@ -321,6 +356,7 @@ export default function Login() {
       setEmail("");
       setPassword("");
       navigate("/");
+
     } catch (error) {
       console.error("Registration error after OTP:", error);
       setOtpError(customAuthError(error));
@@ -350,19 +386,22 @@ export default function Login() {
   function handleOtpChange(index, value) {
     if (!/^\d*$/.test(value)) return; // only numbers
     const arr = [...otpValueArr];
+    // if user pasted multiple digits, spread them across inputs
+    if (value.length > 1) {
+      const pasted = value.split("").slice(0, 6 - index);
+      for (let i = 0; i < pasted.length; i++) {
+        arr[index + i] = pasted[i];
+      }
+      setOtpValueArr(arr);
+      // focus next empty input
+      const nextIndex = arr.findIndex((v, idx) => idx > index && !v);
+      if (nextIndex >= 0) otpInputsRef.current[nextIndex]?.focus();
+      return;
+    }
     arr[index] = value.slice(-1); // last char
     setOtpValueArr(arr);
     if (value && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
-    }
-    // if pasted full code, spread into all boxes
-    if (value.length > 1) {
-      const digits = value.replace(/\D/g, "").slice(0, 6).split("");
-      if (digits.length === 6) {
-        setOtpValueArr(digits);
-        // focus last
-        otpInputsRef.current[5]?.focus();
-      }
     }
   }
   function handleOtpKeyDown(index, e) {
