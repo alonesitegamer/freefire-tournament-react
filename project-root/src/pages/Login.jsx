@@ -7,6 +7,7 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 
+import { auth, db, provider } from "../firebase";
 import {
   doc,
   setDoc,
@@ -16,15 +17,10 @@ import {
   query,
   where,
   getDocs,
-  updateDoc,
-  increment,
 } from "firebase/firestore";
-
-import { auth, db, provider } from "../firebase";
 import { Link, useNavigate } from "react-router-dom";
 
-import "../styles/Login.css"; // your existing login styles
-import PopupBig from "../components/PopupBig"; // new big popup component (Option B)
+import "../styles/Login.css"; // ensure this file exists
 
 export default function Login() {
   const navigate = useNavigate();
@@ -34,7 +30,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isResetMode, setIsResetMode] = useState(false);
   const [referral, setReferral] = useState("");
-  const [globalLoading, setGlobalLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
   // OTP modal state
@@ -49,8 +45,8 @@ export default function Login() {
   // password visibility
   const [showPassword, setShowPassword] = useState(false);
 
-  // popup state
-  const [popup, setPopup] = useState({ show: false, type: "success", title: "", msg: "" });
+  // global overlay spinner
+  const [globalLoading, setGlobalLoading] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -58,33 +54,61 @@ export default function Login() {
     };
   }, []);
 
-  async function saveInitialUser(userDoc, referralCode = "") {
+  // ---------------------------
+  // Save initial user doc (runs after auth user created)
+  // - writes default fields
+  // - if referralCode param provided, tries to locate the referrer and
+  //   writes referrerId + hasRedeemedReferral on the new user's doc
+  // ---------------------------
+  async function saveInitialUser(user, referralCode = "") {
     try {
-      const ref = doc(db, "users", userDoc.uid);
+      const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        const newReferralCode = userDoc.uid.substring(0, 8).toUpperCase();
-        await setDoc(ref, {
-          email: userDoc.email,
-          displayName: userDoc.displayName || "",
+        const newReferralCode = user.uid.substring(0, 8).toUpperCase();
+
+        // base initial payload
+        const payload = {
+          email: user.email,
+          displayName: user.displayName || "",
           username: "",
           coins: 0,
           lastDaily: null,
-          referral: referralCode || null,
-          referralCode: newReferralCode,
+          referral: referralCode || null, // the code the user entered when signing up
+          referralCode: newReferralCode,  // this user's own code
           hasRedeemedReferral: !!referralCode,
-          referralUsed: null,
-          referralAdWatch: 0,
-          referralRewardGiven: false,
           createdAt: serverTimestamp(),
-        });
+        };
+
+        // If user supplied a referral code, resolve the referrer immediately
+        if (referralCode && typeof referralCode === "string" && referralCode.trim()) {
+          try {
+            const q = query(collection(db, "users"), where("referralCode", "==", referralCode.trim()));
+            const res = await getDocs(q);
+            if (!res.empty) {
+              // take the first matching user as referrer
+              const referrerDoc = res.docs[0];
+              payload.referrerId = referrerDoc.id;
+              payload.hasRedeemedReferral = true;
+            } else {
+              // referral code not found — clear to avoid re-checks later
+              payload.referral = null;
+              payload.hasRedeemedReferral = false;
+            }
+          } catch (e) {
+            console.error("Error resolving referral code:", e);
+            // keep referral value as-is; resolution may happen on dashboard as fallback
+          }
+        }
+
+        await setDoc(ref, payload);
       }
     } catch (e) {
       console.error("Firestore user creation failed:", e);
     }
   }
 
-  // start resend timer helper
+  // ---- OTP helpers ----
   function startResendTimer(seconds = 30) {
     setResendCountdown(seconds);
     if (resendTimerRef.current) clearInterval(resendTimerRef.current);
@@ -99,11 +123,10 @@ export default function Login() {
     }, 1000);
   }
 
-  // send OTP (calls your existing API)
   async function sendOtpRequest(targetEmail) {
     setOtpSending(true);
     setOtpError("");
-    // pre-check: call /api/check-email to block disposables & existing users
+    // pre-check: existing user and disposable detection
     try {
       const checkRes = await fetch("/api/check-email", {
         method: "POST",
@@ -112,6 +135,7 @@ export default function Login() {
       });
       const checkJson = await checkRes.json();
       if (!checkRes.ok) {
+        // check endpoint returned an error message we should show
         setOtpError(checkJson?.error || "Failed to validate email.");
         setOtpSending(false);
         return false;
@@ -127,8 +151,8 @@ export default function Login() {
         return false;
       }
     } catch (e) {
-      // fallback: continue to OTP send but warn in logs
-      console.warn("check-email failed:", e);
+      console.error("check-email error", e);
+      // allow fallback to send OTP (but we'll show error)
     }
 
     try {
@@ -143,6 +167,7 @@ export default function Login() {
         setOtpSending(false);
         return false;
       }
+      // success
       startResendTimer(30);
       setOtpSending(false);
       return true;
@@ -170,67 +195,6 @@ export default function Login() {
       console.error("verifyOtpRequest error", err);
       return { ok: false, error: "Network error" };
     }
-  }
-
-  // helper: show big popup (style B)
-  function showBigPopup({ type = "success", title = "", msg = "" }) {
-    setPopup({ show: true, type, title, msg });
-    setTimeout(() => setPopup({ show: false, type: "success", title: "", msg: "" }), 2500);
-  }
-
-  function customAuthError(err) {
-    if (!err) return "An error occurred.";
-    const code = err.code || "";
-    if (code.includes("auth/invalid-email")) return "Please enter a valid email address.";
-    if (code.includes("auth/user-not-found")) return "No account found for this email.";
-    if (code.includes("auth/wrong-password")) return "Incorrect password.";
-    if (code.includes("auth/email-already-in-use")) return "Email already in use.";
-    if (err.message) return err.message;
-    return String(err);
-  }
-
-  // core referral logic executed after user creation
-  async function applyReferralIfAny(newUserId, usedCode) {
-    if (!usedCode || usedCode.trim() === "") {
-      // give normal welcome +10
-      const uRef = doc(db, "users", newUserId);
-      await updateDoc(uRef, { coins: 10 });
-      return { creditedNew: 10, referrerFound: null };
-    }
-
-    // find referrer by referralCode
-    const q = query(collection(db, "users"), where("referralCode", "==", usedCode.trim()));
-    const snap = await getDocs(q);
-    if (snap.empty) {
-      // invalid code -> fallback to welcome 10
-      const uRef = doc(db, "users", newUserId);
-      await updateDoc(uRef, { coins: 10 });
-      return { creditedNew: 10, referrerFound: null };
-    }
-
-    // take first matched referrer
-    const refDoc = snap.docs[0];
-    const referrerId = refDoc.id;
-
-    // credit new user +20 immediately and set referralUsed
-    const uRef = doc(db, "users", newUserId);
-    await updateDoc(uRef, {
-      coins: 20,
-      referralUsed: referrerId,
-      referralAdWatch: 0,
-      referralRewardGiven: false,
-    });
-
-    // optionally record a simple referral count on referrer (not essential)
-    try {
-      const rRef = doc(db, "users", referrerId);
-      await updateDoc(rRef, { referralsCount: increment(1) });
-    } catch (e) {
-      // ignore if increment fails
-      console.warn("couldn't increment referrer referralsCount", e);
-    }
-
-    return { creditedNew: 20, referrerFound: referrerId };
   }
 
   // ---- Auth handlers ----
@@ -311,6 +275,17 @@ export default function Login() {
     }
   }
 
+  function customAuthError(err) {
+    if (!err) return "An error occurred.";
+    const code = err.code || "";
+    if (code.includes("auth/invalid-email")) return "Please enter a valid email address.";
+    if (code.includes("auth/user-not-found")) return "No account found for this email.";
+    if (code.includes("auth/wrong-password")) return "Incorrect password.";
+    if (code.includes("auth/email-already-in-use")) return "Email already in use.";
+    if (err.message) return err.message;
+    return String(err);
+  }
+
   // Called when user confirms OTP in modal
   async function handleConfirmOtpAndCreate() {
     const code = otpValueArr.join("").trim();
@@ -334,32 +309,14 @@ export default function Login() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      // SAVE initial user and resolve referrerId (if user entered referral code)
       await saveInitialUser(user, referral);
 
-      // apply referral logic (credits new user and marks referralUsed)
-      const res = await applyReferralIfAny(user.uid, referral);
-
-      // show big popup based on referral
-      if (res.referrerFound) {
-        showBigPopup({
-          type: "success",
-          title: "Referral Bonus",
-          msg: `You got +${res.creditedNew} coins! Welcome & thanks for using a referral.`,
-        });
-      } else {
-        showBigPopup({
-          type: "success",
-          title: "Welcome Bonus",
-          msg: `You got +${res.creditedNew} coins! Welcome to Imperial X Esports.`,
-        });
-      }
-
-      // clean up and sign-in state (user is already signed-in by Firebase)
       setOtpPhase(false);
       setOtpValueArr(["", "", "", "", "", ""]);
       setOtpSending(false);
       setGlobalLoading(false);
-
+      setErr("Registration successful! You are signed in.");
       setIsRegister(false);
       setEmail("");
       setPassword("");
@@ -393,21 +350,19 @@ export default function Login() {
   function handleOtpChange(index, value) {
     if (!/^\d*$/.test(value)) return; // only numbers
     const arr = [...otpValueArr];
-    // If user pasted full OTP, fill all boxes
-    if (value.length > 1) {
-      const pasted = value.replace(/\D/g, "").slice(0, 6).split("");
-      const merged = [...otpValueArr];
-      for (let i = 0; i < pasted.length; i++) merged[i] = pasted[i];
-      setOtpValueArr(merged);
-      // focus last populated
-      const idx = Math.min(5, pasted.length - 1);
-      otpInputsRef.current[idx]?.focus();
-      return;
-    }
     arr[index] = value.slice(-1); // last char
     setOtpValueArr(arr);
     if (value && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
+    }
+    // if pasted full code, spread into all boxes
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, "").slice(0, 6).split("");
+      if (digits.length === 6) {
+        setOtpValueArr(digits);
+        // focus last
+        otpInputsRef.current[5]?.focus();
+      }
     }
   }
   function handleOtpKeyDown(index, e) {
@@ -449,8 +404,8 @@ export default function Login() {
               />
               {err && <div className={err.includes("sent") ? "error success" : "error"}>{err}</div>}
               <div className="form-actions">
-                <button className="btn" type="submit" disabled={globalLoading}>
-                  {globalLoading ? "Sending..." : "Send Reset Link"}
+                <button className="btn" type="submit" disabled={loading}>
+                  {loading ? "Sending..." : "Send Reset Link"}
                 </button>
               </div>
             </form>
@@ -475,7 +430,7 @@ export default function Login() {
                 disabled={otpPhase}
               />
 
-              <div className={`password-wrap ${globalLoading ? "pw-loading" : ""}`}>
+              <div className={`password-wrap ${loading ? "pw-loading" : ""}`}>
                 <input
                   placeholder="Password (6+ characters)"
                   type={showPassword ? "text" : "password"}
@@ -530,10 +485,7 @@ export default function Login() {
             </p>
 
             <div className="sep">OR</div>
-            <button className="btn google" onClick={handleGoogle} disabled={globalLoading}>
-              <img src="/google.png" alt="Google" style={{ height: 18, marginRight: 8 }} />
-              Sign in with Google
-            </button>
+            <button className="btn google" onClick={handleGoogle} disabled={globalLoading}>Sign in with Google</button>
           </>
         )}
       </div>
@@ -555,8 +507,8 @@ export default function Login() {
             <h3>Create Account</h3>
             <p className="muted">We've sent a 6-digit OTP to <strong>{email}</strong></p>
 
-            <div className="verify-block" style={{ background: "rgba(255,255,255,0.02)", padding: 14 }}>
-              <div className="otp-form" style={{ gap: 10 }}>
+            <div className="verify-block">
+              <div className="otp-form">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <input
                     key={i}
@@ -564,25 +516,12 @@ export default function Login() {
                     value={otpValueArr[i]}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    maxLength={6}
+                    maxLength={1}
                     className="otp-field field"
                     inputMode="numeric"
                     pattern="\d*"
-                    style={{
-                      textAlign: "center",
-                      fontSize: 20,
-                      width: 48,
-                      height: 56,
-                      borderRadius: 10,
-                      background: "rgba(255,255,255,0.03)",
-                      color: "#fff",
-                    }}
-                    onPaste={(ev) => {
-                      const pasted = (ev.clipboardData || window.clipboardData).getData("text");
-                      handleOtpChange(i, pasted);
-                      ev.preventDefault();
-                    }}
                     autoFocus={i === 0}
+                    style={{ textAlign: "center", fontSize: 20 }}
                   />
                 ))}
               </div>
@@ -616,9 +555,6 @@ export default function Login() {
           </div>
         </div>
       )}
-
-      {/* Big popup (style B) */}
-      <PopupBig open={popup.show} type={popup.type} title={popup.title} message={popup.msg} />
 
       {/* Global centered spinner overlay */}
       {globalLoading && (
