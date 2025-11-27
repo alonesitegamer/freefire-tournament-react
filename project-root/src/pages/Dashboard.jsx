@@ -19,6 +19,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+
 import HomeButtons from "../components/HomeButtons";
 import MatchList from "../components/MatchList";
 import MatchDetails from "../components/MatchDetails";
@@ -141,6 +142,12 @@ export default function Dashboard({ user }) {
             username: data.username ?? "",
             displayName: data.displayName ?? "",
             referralCode: data.referralCode ?? user.uid.substring(0, 8).toUpperCase(),
+            referral: data.referral ?? null, // string code the user entered at signup (if any)
+            hasRedeemedReferral: data.hasRedeemedReferral ?? false, // set at signup
+            referrerId: data.referrerId ?? null, // will be resolved below if needed
+            welcomeBonusGiven: data.welcomeBonusGiven ?? false,
+            referrerRewardGiven: data.referrerRewardGiven ?? false,
+            adsWatchedSinceReferral: data.adsWatchedSinceReferral ?? 0,
             lastDaily: data.lastDaily ?? null,
             avatar: data.avatar ?? "/avatars/default.jpg",
             wins: data.wins ?? 0,
@@ -156,6 +163,47 @@ export default function Dashboard({ user }) {
           }
 
           if (mounted) setProfile({ id: snap.id, ...safe });
+
+          // --- New: Referral resolution + welcome bonus grant (only run once) ---
+          // Resolve referrerId if user supplied a referral code but we don't have referrerId yet
+          if (safe.referral && !safe.referrerId) {
+            try {
+              const q = query(collection(db, "users"), where("referralCode", "==", safe.referral));
+              const res = await getDocs(q);
+              if (!res.empty) {
+                const refDoc = res.docs[0];
+                await updateDoc(ref, { referrerId: refDoc.id });
+                // update local profile too
+                if (mounted) setProfile((p) => ({ ...p, referrerId: refDoc.id }));
+              } else {
+                // referral code not found -> clear it to avoid repeated lookups
+                await updateDoc(ref, { referral: null });
+                if (mounted) setProfile((p) => ({ ...p, referral: null }));
+              }
+            } catch (e) {
+              console.error("resolve referrer error", e);
+            }
+          }
+
+          // Welcome bonus: give it once when the user first visits dashboard
+          if (!safe.welcomeBonusGiven) {
+            try {
+              const welcomeForRedeemed = safe.hasRedeemedReferral ? 20 : 10;
+              // Update firestore atomically
+              await updateDoc(ref, {
+                coins: increment(welcomeForRedeemed),
+                welcomeBonusGiven: true,
+              });
+
+              // update local profile copy
+              if (mounted) setProfile((p) => ({ ...p, coins: (p.coins || 0) + welcomeForRedeemed, welcomeBonusGiven: true }));
+
+              // notify user
+              alert(`Welcome! You received ${welcomeForRedeemed} coins as a welcome bonus.`);
+            } catch (e) {
+              console.error("welcome bonus error", e);
+            }
+          }
         } else {
           const initial = {
             email: user.email,
@@ -165,6 +213,12 @@ export default function Dashboard({ user }) {
             displayName: user.displayName || "",
             username: "",
             referralCode: user.uid.substring(0, 8).toUpperCase(),
+            referral: null,
+            hasRedeemedReferral: false,
+            referrerId: null,
+            welcomeBonusGiven: false,
+            referrerRewardGiven: false,
+            adsWatchedSinceReferral: 0,
             lastDaily: null,
             avatar: "/avatars/default.jpg",
             createdAt: serverTimestamp(),
@@ -227,9 +281,10 @@ export default function Dashboard({ user }) {
 
   async function addCoins(n = 1) {
     if (!profile) return;
-    const newCoins = (profile.coins || 0) + n;
-    await updateDoc(doc(db, "users", user.uid), { coins: newCoins });
-    setProfile((prev) => ({ ...prev, coins: newCoins }));
+    // Using increment ensures atomic update in firestore (avoid race conditions)
+    const ref = doc(db, "users", user.uid);
+    await updateDoc(ref, { coins: increment(n) });
+    setProfile((prev) => ({ ...prev, coins: (prev.coins || 0) + n }));
   }
 
   async function addXP(amount = 0) {
@@ -268,56 +323,50 @@ export default function Dashboard({ user }) {
   }
 
   async function watchAd() {
-  if (adLoading) return;
-  if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
-  setAdLoading(true);
-  try {
-    // simulate ad watch (or call actual ad SDK)
-    await new Promise((r) => setTimeout(r, 1400));
+    if (adLoading) return;
+    if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
+    setAdLoading(true);
+    try {
+      // simulate ad
+      await new Promise((r) => setTimeout(r, 1400));
+      // give small reward
+      await addCoins(2);
+      await addXP(5);
+      setAdWatchToday((c) => c + 1);
 
-    // credit viewer
-    await updateDoc(doc(db, "users", user.uid), {
-      coins: (profile.coins || 0) + 2,
-      xp: (profile.xp || 0) + 5,
-    });
+      // Update firestore counter for referral progress
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { adsWatchedSinceReferral: increment(1) });
 
-    // update local profile quickly
-    setProfile((p) => ({ ...p, coins: (p.coins || 0) + 2, xp: (p.xp || 0) + 5 }));
-    setAdWatchToday((c) => c + 1);
-
-    // If this user was referred, increment referralAdWatch and maybe credit referrer
-    if (profile?.referralUsed) {
-      const myRef = doc(db, "users", user.uid);
-      // increment my referralAdWatch in DB atomically
-      await updateDoc(myRef, { referralAdWatch: increment(1) });
-
-      // fetch fresh value
-      const snap = await getDoc(myRef);
-      const current = snap.exists() ? snap.data() : null;
-      const count = current?.referralAdWatch ?? 0;
-      const rewardGiven = !!current?.referralRewardGiven;
-
-      // if reached 3 and not given yet -> credit referrer
-      if (count >= 3 && !rewardGiven) {
-        const referrerId = current.referralUsed;
-        const rRef = doc(db, "users", referrerId);
-        // add +10 to referrer
-        await updateDoc(rRef, { coins: increment(10) });
-        // mark reward given on the referred user's doc
-        await updateDoc(myRef, { referralRewardGiven: true });
-        // OPTIONAL: notify referrer via Firestore notification collection (not covered here)
-        alert("Referral milestone reached: your referrer has been credited +10 coins!");
+      // fetch updated user doc to check current ads count and referral fields
+      const snap = await getDoc(userRef);
+      const u = snap.exists() ? snap.data() : null;
+      const count = (u?.adsWatchedSinceReferral || 0);
+      // If this user used a referral and hasn't triggered referrer reward yet
+      if (count >= 3 && u?.referrerId && !u?.referrerRewardGiven) {
+        try {
+          // credit the referrer +10 coins atomically
+          const referrerRef = doc(db, "users", u.referrerId);
+          await updateDoc(referrerRef, { coins: increment(10) });
+          // mark as given on the new user's doc
+          await updateDoc(userRef, { referrerRewardGiven: true });
+          // local update
+          setProfile((p) => ({ ...p, referrerRewardGiven: true }));
+          alert("Referrer has been rewarded with 10 coins. Thanks for redeeming!");
+        } catch (e) {
+          console.error("reward referrer error", e);
+        }
       }
-    }
 
-    alert("+2 coins for watching ad.");
-  } catch (err) {
-    console.error("watchAd error", err);
-    alert("Ad failed.");
-  } finally {
-    setAdLoading(false);
+      alert("+2 coins for watching ad.");
+    } catch (err) {
+      console.error("watchAd error", err);
+      alert("Ad failed.");
+    } finally {
+      setAdLoading(false);
+    }
   }
-  }
+
   // admin approve/reject
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
@@ -481,27 +530,6 @@ export default function Dashboard({ user }) {
     await deleteDoc(doc(db, "matches", matchId));
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
     if (selectedMatch?.id === matchId) setSelectedMatch(null);
-  }
-
-  // Admin: Create Match
-  async function createMatch(payload) {
-    const docRef = await addDoc(collection(db, "matches"), {
-      ...payload,
-      createdAt: serverTimestamp(),
-      playersJoined: [],
-      status: payload.status || "upcoming",
-    });
-
-    // fetch back the saved document
-    const snap = await getDoc(docRef);
-
-    // update local match list
-    setMatches((prev) => [
-      { id: snap.id, ...snap.data() },
-      ...prev,
-    ]);
-
-    return docRef.id;
   }
 
   // ---------------------------
