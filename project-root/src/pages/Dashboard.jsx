@@ -323,73 +323,61 @@ export default function Dashboard({ user }) {
     alert("+1 coin credited!");
   }
 async function watchAd() {
-    if (adLoading) return;
-    if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
-    setAdLoading(true);
-    try {
-      // Simulate ad watch (or use real ad SDK)
-      await new Promise((r) => setTimeout(r, 1400));
+  if (adLoading) return;
+  if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
 
-      // Atomic update: increment coins and adsWatched, then possibly reward referrer.
-      const userRef = doc(db, "users", user.uid);
+  setAdLoading(true);
+  try {
+    // simulate ad
+    await new Promise((res) => setTimeout(res, 1500));
 
-      await runTransaction(db, async (tx) => {
-        const userSnap = await tx.get(userRef);
-        if (!userSnap.exists()) throw new Error("User not found");
+    const userRef = doc(db, "users", user.uid);
 
-        const userData = userSnap.data();
-        const currentCoins = userData.coins || 0;
-        const currentAds = userData.adsWatched || 0;
-        const referrerId = userData.referrerId || null;
-        const referrerRewardGiven = !!userData.referrerRewardGiven;
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(userRef);
+      if (!snap.exists()) throw new Error("User doc missing");
 
-        // 1) add coins to watching user (+2)
-        tx.update(userRef, {
-          coins: currentCoins + 2,
-          adsWatched: currentAds + 1,
-        });
+      const data = snap.data();
 
-        // 2) If this increments adsWatched to 3 (>=3) and there's a valid referrer and not paid yet
-        const newAds = currentAds + 1;
-        if (referrerId && newAds >= 3 && !referrerRewardGiven) {
-          // credit referrer +10 coins atomically
-          const refRef = doc(db, "users", referrerId);
-          const refSnap = await tx.get(refRef);
-          if (refSnap.exists()) {
-            const refCoins = refSnap.data().coins || 0;
-            tx.update(refRef, { coins: refCoins + 10 });
+      const currentCoins = data.coins || 0;
+      const currentAds = data.adsWatched || 0;
+      const referrerId = data.referrerId || null;
+      const referrerRewardGiven = data.referrerRewardGiven || false;
 
-            // mark that referrer was paid so we don't double-pay
-            tx.update(userRef, { referrerRewardGiven: true });
-
-            // OPTIONAL: Add a small log entry in a "transactions" collection (not required)
-            // tx.set(doc(collection(db, 'transactions')), {
-            //   type: 'referral_payout',
-            //   to: referrerId,
-            //   fromNewUser: user.uid,
-            //   amount: 10,
-            //   createdAt: serverTimestamp()
-            // });
-          }
-        }
+      // 1) Give user +2 coins
+      tx.update(userRef, {
+        coins: currentCoins + 2,
+        adsWatched: currentAds + 1,
       });
 
-      // Update local UI state
-      setAdWatchToday((c) => c + 1);
-      await addCoins(0); // refresh local coins from profile (optional, or re-fetch profile)
-      await addXP(5);
+      const newAds = currentAds + 1;
 
-      // Friendly messages
-      alert("+2 coins for watching ad.");
+      // 2) If user hit 3 ads — pay referrer ONCE
+      if (referrerId && newAds >= 3 && !referrerRewardGiven) {
+        const refRef = doc(db, "users", referrerId);
+        const refSnap = await tx.get(refRef);
 
-      // If the referrer was paid as part of the transaction we should notify the referrer via client UI next time they visit
-      // Optionally, you could fetch user's doc to check referrerRewardGiven and show a popup to the watcher too.
-    } catch (err) {
-      console.error("watchAd error", err);
-      alert("Ad failed.");
-    } finally {
-      setAdLoading(false);
-    }
+        if (refSnap.exists()) {
+          const refCoins = refSnap.data().coins || 0;
+          tx.update(refRef, { coins: refCoins + 10 });
+          tx.update(userRef, { referrerRewardGiven: true });
+        }
+      }
+    });
+
+    // local updates
+    setAdWatchToday((c) => c + 1);
+    await addCoins(0);
+    await addXP(5);
+
+    alert("+2 coins rewarded!");
+
+  } catch (err) {
+    console.error("watchAd error:", err);
+    alert("Ad failed, try again.");
+  } finally {
+    setAdLoading(false);
+  }
 }
   
 
