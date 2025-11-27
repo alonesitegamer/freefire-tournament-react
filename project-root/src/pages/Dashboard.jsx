@@ -268,23 +268,56 @@ export default function Dashboard({ user }) {
   }
 
   async function watchAd() {
-    if (adLoading) return;
-    if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
-    setAdLoading(true);
-    try {
-      await new Promise((r) => setTimeout(r, 1400));
-      await addCoins(2);
-      await addXP(5);
-      setAdWatchToday((c) => c + 1);
-      alert("+2 coins for watching ad.");
-    } catch (err) {
-      console.error("watchAd error", err);
-      alert("Ad failed.");
-    } finally {
-      setAdLoading(false);
-    }
-  }
+  if (adLoading) return;
+  if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
+  setAdLoading(true);
+  try {
+    // simulate ad watch (or call actual ad SDK)
+    await new Promise((r) => setTimeout(r, 1400));
 
+    // credit viewer
+    await updateDoc(doc(db, "users", user.uid), {
+      coins: (profile.coins || 0) + 2,
+      xp: (profile.xp || 0) + 5,
+    });
+
+    // update local profile quickly
+    setProfile((p) => ({ ...p, coins: (p.coins || 0) + 2, xp: (p.xp || 0) + 5 }));
+    setAdWatchToday((c) => c + 1);
+
+    // If this user was referred, increment referralAdWatch and maybe credit referrer
+    if (profile?.referralUsed) {
+      const myRef = doc(db, "users", user.uid);
+      // increment my referralAdWatch in DB atomically
+      await updateDoc(myRef, { referralAdWatch: increment(1) });
+
+      // fetch fresh value
+      const snap = await getDoc(myRef);
+      const current = snap.exists() ? snap.data() : null;
+      const count = current?.referralAdWatch ?? 0;
+      const rewardGiven = !!current?.referralRewardGiven;
+
+      // if reached 3 and not given yet -> credit referrer
+      if (count >= 3 && !rewardGiven) {
+        const referrerId = current.referralUsed;
+        const rRef = doc(db, "users", referrerId);
+        // add +10 to referrer
+        await updateDoc(rRef, { coins: increment(10) });
+        // mark reward given on the referred user's doc
+        await updateDoc(myRef, { referralRewardGiven: true });
+        // OPTIONAL: notify referrer via Firestore notification collection (not covered here)
+        alert("Referral milestone reached: your referrer has been credited +10 coins!");
+      }
+    }
+
+    alert("+2 coins for watching ad.");
+  } catch (err) {
+    console.error("watchAd error", err);
+    alert("Ad failed.");
+  } finally {
+    setAdLoading(false);
+  }
+  }
   // admin approve/reject
   async function approveRequest(type, req) {
     const ref = doc(db, `${type}Requests`, req.id);
