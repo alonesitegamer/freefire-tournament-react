@@ -17,6 +17,7 @@ import {
   deleteDoc,
   arrayUnion,
   increment,
+  runTransaction,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -321,18 +322,76 @@ export default function Dashboard({ user }) {
     await addXP(10);
     alert("+1 coin credited!");
   }
-
-  async function watchAd() {
+async function watchAd() {
     if (adLoading) return;
     if (adWatchToday >= 3) return alert("You have reached the daily ad limit (3).");
     setAdLoading(true);
     try {
-      // simulate ad
+      // Simulate ad watch (or use real ad SDK)
       await new Promise((r) => setTimeout(r, 1400));
-      // give small reward
-      await addCoins(2);
-      await addXP(5);
+
+      // Atomic update: increment coins and adsWatched, then possibly reward referrer.
+      const userRef = doc(db, "users", user.uid);
+
+      await runTransaction(db, async (tx) => {
+        const userSnap = await tx.get(userRef);
+        if (!userSnap.exists()) throw new Error("User not found");
+
+        const userData = userSnap.data();
+        const currentCoins = userData.coins || 0;
+        const currentAds = userData.adsWatched || 0;
+        const referrerId = userData.referrerId || null;
+        const referrerRewardGiven = !!userData.referrerRewardGiven;
+
+        // 1) add coins to watching user (+2)
+        tx.update(userRef, {
+          coins: currentCoins + 2,
+          adsWatched: currentAds + 1,
+        });
+
+        // 2) If this increments adsWatched to 3 (>=3) and there's a valid referrer and not paid yet
+        const newAds = currentAds + 1;
+        if (referrerId && newAds >= 3 && !referrerRewardGiven) {
+          // credit referrer +10 coins atomically
+          const refRef = doc(db, "users", referrerId);
+          const refSnap = await tx.get(refRef);
+          if (refSnap.exists()) {
+            const refCoins = refSnap.data().coins || 0;
+            tx.update(refRef, { coins: refCoins + 10 });
+
+            // mark that referrer was paid so we don't double-pay
+            tx.update(userRef, { referrerRewardGiven: true });
+
+            // OPTIONAL: Add a small log entry in a "transactions" collection (not required)
+            // tx.set(doc(collection(db, 'transactions')), {
+            //   type: 'referral_payout',
+            //   to: referrerId,
+            //   fromNewUser: user.uid,
+            //   amount: 10,
+            //   createdAt: serverTimestamp()
+            // });
+          }
+        }
+      });
+
+      // Update local UI state
       setAdWatchToday((c) => c + 1);
+      await addCoins(0); // refresh local coins from profile (optional, or re-fetch profile)
+      await addXP(5);
+
+      // Friendly messages
+      alert("+2 coins for watching ad.");
+
+      // If the referrer was paid as part of the transaction we should notify the referrer via client UI next time they visit
+      // Optionally, you could fetch user's doc to check referrerRewardGiven and show a popup to the watcher too.
+    } catch (err) {
+      console.error("watchAd error", err);
+      alert("Ad failed.");
+    } finally {
+      setAdLoading(false);
+    }
+}
+  
 
       // Update firestore counter for referral progress
       const userRef = doc(db, "users", user.uid);
