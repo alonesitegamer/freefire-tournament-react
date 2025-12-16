@@ -8,8 +8,7 @@ import {
   doc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, storage } from "../firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db } from "../firebase";
 import "./AdminPanel.css";
 
 const DEFAULT_MAP_POOL = ["Bermuda", "Purgatory", "Kalahari"];
@@ -48,74 +47,6 @@ export default function AdminPanel({
 
   // Refresh matches from props
   useEffect(() => setLocalMatches(matches), [matches]);
-
-  // -----------------------------
-  // FILE UPLOAD COMPONENT
-  // -----------------------------
-  function FileUploader({ onUpload, previewUrl }) {
-    const [dragging, setDragging] = useState(false);
-    const [preview, setPreview] = useState(previewUrl || "");
-    const [uploading, setUploading] = useState(false);
-
-    async function handleFile(file) {
-      if (!file) return;
-      setUploading(true);
-
-      try {
-        const fileRef = ref(storage, `matchFiles/${Date.now()}-${file.name}`);
-        await uploadBytes(fileRef, file);
-        const url = await getDownloadURL(fileRef);
-
-        setPreview(url);
-        onUpload(url);
-      } catch (e) {
-        alert("Upload failed: " + e.message);
-      }
-      setUploading(false);
-    }
-
-    function onDrop(e) {
-      e.preventDefault();
-      setDragging(false);
-      handleFile(e.dataTransfer.files[0]);
-    }
-
-    return (
-      <div
-        className={`glass-upload ${dragging ? "dragging" : ""}`}
-        onDragOver={(e) => {e.preventDefault(); setDragging(true);}}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        {preview ? (
-          <>
-            {preview.includes(".mp4") || preview.includes(".mov") ? (
-              <video src={preview} className="upload-preview" controls />
-            ) : (
-              <img src={preview} className="upload-preview" />
-            )}
-          </>
-        ) : (
-          <div className="upload-placeholder">
-            <div className="upload-icon">📁</div>
-            <p>Drag & drop image/video</p>
-          </div>
-        )}
-
-        <label className="upload-btn">
-          Select File
-          <input
-            type="file"
-            accept="image/*,video/*"
-            onChange={(e) => handleFile(e.target.files[0])}
-          />
-        </label>
-
-        {uploading && <div className="upload-loading">Uploading...</div>}
-      </div>
-    );
-  }
-
   // -----------------------------
   // OPEN CREATE MATCH
   // -----------------------------
@@ -136,6 +67,7 @@ export default function AdminPanel({
       revealDelayMinutes: 5,
       roomID: "",
       roomPassword: "",
+      imageNames: "",
       imageUrl: "",
     });
     setShowCreate(true);
@@ -165,7 +97,11 @@ export default function AdminPanel({
       revealDelayMinutes: m.revealDelayMinutes || 5,
       roomID: m.roomID || "",
       roomPassword: m.roomPassword || "",
-      imageUrl: m.imageUrl || "",
+      imageNames: (m.imageUrl || [])
+      .map(p => p.replace("/match/", "")
+        .replace(".jpeg", ""))
+           .join(","),
+      imageUrls: m.imageUrls || [],
     });
     setShowCreate(true);
   }
@@ -173,6 +109,14 @@ export default function AdminPanel({
   // -----------------------------
   // SAVE MATCH
   // -----------------------------
+  function resloveMatchImages(names) {
+    if (!names) return [];
+    return names
+    .split(",")
+    .map(n => n.trim())
+    .filter(boolen)
+    .map(n => `/match/${n}.jpeg`);
+  }
   async function handleSave() {
     setSaving(true);
 
@@ -190,7 +134,7 @@ export default function AdminPanel({
         killReward: Number(form.killReward),
         roomID: form.roomID,
         roomPassword: form.roomPassword,
-        imageUrl: form.imageUrl || "",
+        imageUrls: resolveMatchImages(form.imageNames), 
         status: "upcoming",
         playersJoined: [],
         createdAt: serverTimestamp(),
