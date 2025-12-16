@@ -244,11 +244,35 @@ export default function AdminPanel({
           <div className="modal-content admin-modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? "Edit Match" : "Create Match"}</h3>
 
-            <label>Match Banner</label>
-            <FileUploader
-              onUpload={(url) => setForm({ ...form, imageUrl: url })}
-              previewUrl={form.imageUrl}
-            />
+            <label>Match Images (comma seperated)</label>
+            <input
+              className="modern-input"
+              placeholder="FF1,FF2,FF4,FF5,FF6"
+              value={form.imageNames}
+              onChange={(e) =>
+                setForm({ ...form, imageNames: e.target.value })
+              }
+              />
+            {form.imagesNames && (
+          <div class Name="image-preview-row">
+            {resolveMatchImages(form.imageNames).map((src)
+          => (
+             <img
+               key={src}
+               src={src}
+               alt"preview"
+               style={{
+                 width: 120,
+                 height: 70,
+                 objectFit: "cover",
+                 borderRadius: 8,
+                 marginRight: 8,
+                 border: "1px solid rgba(255,255,255,0.1)"
+               }}
+               />
+            )))}
+            </div>
+          )}
 
             <label>Title</label>
             <input
