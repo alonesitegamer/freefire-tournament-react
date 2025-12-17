@@ -580,7 +580,24 @@ async function joinMatch(matchObj) {
     return match;
   }
 
-  // ---------------------------
+      // create player object
+      const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
+
+      // refresh matches locally
+      const snap2 = await getDoc(ref);
+      const updated = { id: snap2.id, ...snap2.data() };
+      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      setSelectedMatch(updated);
+      setActiveTab("matches");
+      alert("Joined match!");
+      return true;
+    } catch (err) {
+      console.error("joinMatch error", err);
+      alert("Failed to join.");
+      return false;
+    }
+  }
+// ---------------------------
 // JOIN integration (FINAL)
 // ---------------------------
 async function joinMatch(matchObj) {
@@ -600,7 +617,7 @@ async function joinMatch(matchObj) {
   }
 
   try {
-    // 🔥 STEP 1 yahan use ho raha
+    // STEP 1: reload & check
     const match = await reloadAndCheckMatch(matchObj);
     if (!match) return false;
 
@@ -610,7 +627,7 @@ async function joinMatch(matchObj) {
       return false;
     }
 
-    // Join safely
+    // ✅ SIRF YE LINE ADD KI HAI
     await updateDoc(doc(db, "matches", matchObj.id), {
       playersJoined: arrayUnion({
         uid: user.uid,
@@ -626,27 +643,6 @@ async function joinMatch(matchObj) {
     return false;
   }
 }
-      // create player object
-      const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
-
-      // push join
-      await updateDoc(ref, { playersJoined: arrayUnion(playerObj) });
-
-      // refresh matches locally
-      const snap2 = await getDoc(ref);
-      const updated = { id: snap2.id, ...snap2.data() };
-      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-      setSelectedMatch(updated);
-      setActiveTab("matches");
-      alert("Joined match!");
-      return true;
-    } catch (err) {
-      console.error("joinMatch error", err);
-      alert("Failed to join.");
-      return false;
-    }
-  }
-
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
     // select and switch to matches view
