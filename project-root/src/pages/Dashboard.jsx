@@ -993,7 +993,7 @@ async function joinMatch(matchObj) {
       )}
     </div>
   );
-}
+
 
 /**
  * Helper: Firestore query limiter wrapper to avoid importing limit each place.
