@@ -479,10 +479,10 @@ export default function Dashboard({ user }) {
     }
   }, []);
 
-  // ---------------------------
-  // JOIN integration: join logic inside Dashboard (used by MatchList Join + preview join)
-  // ---------------------------
-  async function joinMatch(matchObj) {
+ // ---------------------------
+// JOIN integration (FINAL FIXED)
+// ---------------------------
+async function joinMatch(matchObj) {
   if (!profile) {
     alert("Profile missing.");
     return false;
@@ -507,11 +507,22 @@ export default function Dashboard({ user }) {
   }
 
   try {
-    const matchRef = doc(db, "matches", matchObj.id);
+    const ref = doc(db, "matches", matchObj.id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      alert("Match not found.");
+      return false;
+    }
 
-    // 🚨 IMPORTANT FIX:
-    // ❌ DO NOT use serverTimestamp() inside arrayUnion
-    await updateDoc(matchRef, {
+    const match = { id: snap.id, ...snap.data() };
+
+    // Prevent double join
+    if (match.playersJoined?.some((p) => p.uid === user.uid)) {
+      alert("You already joined this match.");
+      return false;
+    }
+
+    await updateDoc(ref, {
       playersJoined: arrayUnion({
         uid: user.uid,
         username: ingame,
