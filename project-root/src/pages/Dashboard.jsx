@@ -483,18 +483,49 @@ export default function Dashboard({ user }) {
   // JOIN integration: join logic inside Dashboard (used by MatchList Join + preview join)
   // ---------------------------
   async function joinMatch(matchObj) {
-    if (!profile) return alert("Profile missing.");
-    // Save username if missing
-    let ingame = profile.username || profile.displayName || "";
+  if (!profile) {
+    alert("Profile missing.");
+    return false;
+  }
+
+  // Ensure in-game username
+  let ingame = profile.username || profile.displayName || "";
+  if (!ingame) {
+    ingame = window.prompt(
+      "Enter your in-game username (this will be saved):",
+      ""
+    );
     if (!ingame) {
-      ingame = window.prompt("Enter your in-game username (this will be saved):", "");
-      if (!ingame) return alert("You must enter an in-game username to join.");
-      try {
-        await updateProfileField({ username: ingame });
-      } catch (e) {
-        console.error("save username", e);
-      }
+      alert("You must enter an in-game username to join.");
+      return false;
     }
+    try {
+      await updateProfileField({ username: ingame });
+    } catch (e) {
+      console.error("save username", e);
+    }
+  }
+
+  try {
+    const matchRef = doc(db, "matches", matchObj.id);
+
+    // 🚨 IMPORTANT FIX:
+    // ❌ DO NOT use serverTimestamp() inside arrayUnion
+    await updateDoc(matchRef, {
+      playersJoined: arrayUnion({
+        uid: user.uid,
+        username: ingame,
+        joinedAt: Date.now(), // ✅ SAFE
+      }),
+    });
+
+    return true;
+  } catch (err) {
+    console.error("joinMatch error:", err);
+    alert(err.message);
+    return false;
+  }
+}
 
     // reload latest match (avoid stale)
     try {
