@@ -478,9 +478,8 @@ export default function Dashboard({ user }) {
       selectAudioRef.current = null;
     }
   }, []);
-
- // ---------------------------
-// JOIN integration (FINAL FIXED)
+// ---------------------------
+// JOIN integration (FULLY FIXED)
 // ---------------------------
 async function joinMatch(matchObj) {
   if (!profile) {
@@ -488,7 +487,9 @@ async function joinMatch(matchObj) {
     return false;
   }
 
+  // ---------------------------
   // Ensure in-game username
+  // ---------------------------
   let ingame = profile.username || profile.displayName || "";
   if (!ingame) {
     ingame = window.prompt(
@@ -499,15 +500,20 @@ async function joinMatch(matchObj) {
       alert("You must enter an in-game username to join.");
       return false;
     }
+
     try {
       await updateProfileField({ username: ingame });
     } catch (e) {
-      console.error("save username", e);
+      console.error("save username error", e);
     }
   }
 
   try {
     const ref = doc(db, "matches", matchObj.id);
+
+    // ---------------------------
+    // Fetch latest match data
+    // ---------------------------
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       alert("Match not found.");
@@ -516,17 +522,31 @@ async function joinMatch(matchObj) {
 
     const match = { id: snap.id, ...snap.data() };
 
+    // ---------------------------
     // Prevent double join
+    // ---------------------------
     if (match.playersJoined?.some((p) => p.uid === user.uid)) {
       alert("You already joined this match.");
       return false;
     }
 
+    // ---------------------------
+    // Prevent over-joining
+    // ---------------------------
+    const joinedCount = match.playersJoined?.length || 0;
+    if (joinedCount >= match.maxPlayers) {
+      alert("Match is already full.");
+      return false;
+    }
+
+    // ---------------------------
+    // JOIN MATCH (SAFE)
+    // ---------------------------
     await updateDoc(ref, {
       playersJoined: arrayUnion({
         uid: user.uid,
         username: ingame,
-        joinedAt: Date.now(), // ✅ SAFE
+        joinedAt: Date.now(), // ✅ SAFE (NO serverTimestamp here)
       }),
     });
 
@@ -537,7 +557,6 @@ async function joinMatch(matchObj) {
     return false;
   }
 }
-
     // reload latest match (avoid stale)
     try {
       const ref = doc(db, "matches", matchObj.id);
