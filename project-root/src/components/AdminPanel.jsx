@@ -1,8 +1,5 @@
-// src/components/AdminPanel.jsx
 import React, { useState, useEffect } from "react";
 import {
-  collection,
-  addDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -22,7 +19,7 @@ export default function AdminPanel({
   editMatch = () => {},
   deleteMatch = () => {},
 }) {
-  const [localMatches, setLocalMatches] = useState(matches || []);
+  const [localMatches, setLocalMatches] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -42,13 +39,33 @@ export default function AdminPanel({
     revealDelayMinutes: 5,
     roomID: "",
     roomPassword: "",
-    imageUrl: "",
+    imageFiles: [],   // File objects (preview only)
+    imageUrls: [],    // Stored paths
   });
 
-  // Refresh matches from props
-  useEffect(() => setLocalMatches(matches), [matches]);
+  useEffect(() => {
+    setLocalMatches(matches || []);
+  }, [matches]);
+
   // -----------------------------
-  // OPEN CREATE MATCH
+  // IMAGE HANDLER (NO UPLOAD)
+  // -----------------------------
+  function handleImageSelect(e) {
+    const files = Array.from(e.target.files || []);
+
+    const urls = files.map(
+      (file) => `/match/${file.name.replace(/\.[^/.]+$/, "")}.jpeg`
+    );
+
+    setForm((prev) => ({
+      ...prev,
+      imageFiles: files,
+      imageUrls: urls,
+    }));
+  }
+
+  // -----------------------------
+  // OPEN CREATE
   // -----------------------------
   function openCreate() {
     setEditing(null);
@@ -67,14 +84,14 @@ export default function AdminPanel({
       revealDelayMinutes: 5,
       roomID: "",
       roomPassword: "",
-      imageNames: "",
-      imageUrl: "",
+      imageFiles: [],
+      imageUrls: [],
     });
     setShowCreate(true);
   }
 
   // -----------------------------
-  // OPEN EDIT MATCH
+  // OPEN EDIT
   // -----------------------------
   function openEdit(m) {
     setEditing(m);
@@ -90,17 +107,14 @@ export default function AdminPanel({
       reward: m.reward || 0,
       killReward: m.killReward ?? 75,
       startTime: m.startTime
-        ? (m.startTime.seconds
-            ? m.startTime.toDate().toISOString().slice(0, 16)
-            : new Date(m.startTime).toISOString().slice(0, 16))
+        ? new Date(m.startTime.seconds ? m.startTime.toDate() : m.startTime)
+            .toISOString()
+            .slice(0, 16)
         : "",
       revealDelayMinutes: m.revealDelayMinutes || 5,
       roomID: m.roomID || "",
       roomPassword: m.roomPassword || "",
-      imageNames: (m.imageUrl || [])
-      .map(p => p.replace("/match/", "")
-        .replace(".jpeg", ""))
-           .join(","),
+      imageFiles: [],
       imageUrls: m.imageUrls || [],
     });
     setShowCreate(true);
@@ -109,14 +123,6 @@ export default function AdminPanel({
   // -----------------------------
   // SAVE MATCH
   // -----------------------------
-  function resloveMatchImages(names) {
-    if (!names) return [];
-    return names
-    .split(",")
-    .map(n => n.trim())
-    .filter(boolen)
-    .map(n => `/match/${n}.jpeg`);
-  }
   async function handleSave() {
     setSaving(true);
 
@@ -134,22 +140,19 @@ export default function AdminPanel({
         killReward: Number(form.killReward),
         roomID: form.roomID,
         roomPassword: form.roomPassword,
-        imageUrls: resolveMatchImages(form.imageNames), 
+        imageUrls: form.imageUrls,
         status: "upcoming",
         playersJoined: [],
         createdAt: serverTimestamp(),
       };
 
-      // start time & revealAt
       if (form.startTime) {
         const start = new Date(form.startTime);
         payload.startTime = start;
-
-        payload.revealAt = new Date(
-          start.getTime() -
-            Number(form.revealDelayMinutes || 5) * 60 * 1000
-        );
         payload.revealDelayMinutes = Number(form.revealDelayMinutes || 5);
+        payload.revealAt = new Date(
+          start.getTime() - payload.revealDelayMinutes * 60000
+        );
       }
 
       if (editing) {
@@ -177,9 +180,8 @@ export default function AdminPanel({
   }
 
   // -----------------------------
-  // MAIN UI
+  // UI
   // -----------------------------
-
   return (
     <section className="panel admin-panel">
       <div className="admin-header">
@@ -188,36 +190,6 @@ export default function AdminPanel({
           Create Match
         </button>
       </div>
-
-      <h4>Top-up Requests</h4>
-      {requests.topup.length === 0 ? (
-        <p className="muted-small">No topups.</p>
-      ) : (
-        requests.topup.map((r) => (
-          <div key={r.id} className="admin-row">
-            <span>{r.email} | ₹{r.amount}</span>
-            <div>
-              <button className="btn small" onClick={() => approveRequest("topup", r)}>Approve</button>
-              <button className="btn small ghost" onClick={() => rejectRequest("topup", r)}>Reject</button>
-            </div>
-          </div>
-        ))
-      )}
-
-      <h4>Withdraw Requests</h4>
-      {requests.withdraw.length === 0 ? (
-        <p className="muted-small">No withdrawals.</p>
-      ) : (
-        requests.withdraw.map((r) => (
-          <div key={r.id} className="admin-row">
-            <span>{r.email} | ₹{r.amount}</span>
-            <div>
-              <button className="btn small" onClick={() => approveRequest("withdraw", r)}>Approve</button>
-              <button className="btn small ghost" onClick={() => rejectRequest("withdraw", r)}>Reject</button>
-            </div>
-          </div>
-        ))
-      )}
 
       <h4>Matches</h4>
       {localMatches.length === 0 ? (
@@ -232,8 +204,15 @@ export default function AdminPanel({
               </div>
             </div>
             <div className="admin-match-actions">
-              <button className="btn small" onClick={() => openEdit(m)}>Edit</button>
-              <button className="btn small ghost" onClick={() => handleDelete(m)}>Delete</button>
+              <button className="btn small" onClick={() => openEdit(m)}>
+                Edit
+              </button>
+              <button
+                className="btn small ghost"
+                onClick={() => handleDelete(m)}
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))
@@ -241,111 +220,53 @@ export default function AdminPanel({
 
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal-content admin-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content admin-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3>{editing ? "Edit Match" : "Create Match"}</h3>
 
-            <label>Match Images (comma seperated)</label>
+            <label>Match Images (FF1, FF2…)</label>
             <input
+              type="file"
+              multiple
+              accept="image/jpeg"
               className="modern-input"
-              placeholder="FF1,FF2,FF4,FF5,FF6"
-              value={form.imageNames}
-              onChange={(e) =>
-                setForm({ ...form, imageNames: e.target.value })
-              }
-              />
-            {form.imagesNames && (
-          <div class Name="image-preview-row">
-            {resolveMatchImages(form.imageNames).map((src)
-          => (
-             <img
-               key={src}
-               src={src}
-               alt"preview"
-               style={{
-                 width: 120,
-                 height: 70,
-                 objectFit: "cover",
-                 borderRadius: 8,
-                 marginRight: 8,
-                 border: "1px solid rgba(255,255,255,0.1)"
-               }}
-               />
-            )))}
-            </div>
-          )}
+              onChange={handleImageSelect}
+            />
+
+            {(form.imageFiles.length > 0 || form.imageUrls.length > 0) && (
+              <div className="image-preview-row">
+                {(form.imageFiles.length > 0
+                  ? form.imageFiles.map((f) =>
+                      URL.createObjectURL(f)
+                    )
+                  : form.imageUrls
+                ).map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt="preview"
+                    style={{
+                      width: 120,
+                      height: 70,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                      marginRight: 8,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
 
             <label>Title</label>
             <input
               className="modern-input"
               value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-
-            <label>Type</label>
-            <select
-              className="modern-input"
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value })}
-            >
-              <option value="tournament">Tournament (BR)</option>
-              <option value="custom">Custom (1v1)</option>
-            </select>
-
-            <label>Mode</label>
-            <select
-              className="modern-input"
-              value={form.mode}
-              onChange={(e) => setForm({ ...form, mode: e.target.value })}
-            >
-              <option>Solo</option>
-              <option>Duo</option>
-              <option>Squad</option>
-            </select>
-
-            <label>Map Pool</label>
-            <input
-              className="modern-input"
-              value={form.mapPool.join(",")}
               onChange={(e) =>
-                setForm({
-                  ...form,
-                  mapPool: e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                })
+                setForm({ ...form, title: e.target.value })
               }
-            />
-
-            <label>Max Players (2–48)</label>
-            <input
-              type="number"
-              min="2"
-              max="48"
-              className="modern-input"
-              value={form.maxPlayers}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  maxPlayers: Math.min(48, Math.max(2, Number(e.target.value))),
-                })
-              }
-            />
-
-            <label>Entry Fee</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.entryFee}
-              onChange={(e) => setForm({ ...form, entryFee: Number(e.target.value) })}
-            />
-
-            <label>Kill Reward</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.killReward}
-              onChange={(e) => setForm({ ...form, killReward: Number(e.target.value) })}
             />
 
             <label>Start Time</label>
@@ -353,41 +274,23 @@ export default function AdminPanel({
               type="datetime-local"
               className="modern-input"
               value={form.startTime}
-              onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-            />
-
-            <label>Reveal Delay (minutes)</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.revealDelayMinutes}
               onChange={(e) =>
-                setForm({
-                  ...form,
-                  revealDelayMinutes: Number(e.target.value || 5),
-                })
+                setForm({ ...form, startTime: e.target.value })
               }
             />
 
-            <label>Room ID</label>
-            <input
-              className="modern-input"
-              value={form.roomID}
-              onChange={(e) => setForm({ ...form, roomID: e.target.value })}
-            />
-
-            <label>Room Password</label>
-            <input
-              className="modern-input"
-              value={form.roomPassword}
-              onChange={(e) => setForm({ ...form, roomPassword: e.target.value })}
-            />
-
             <div className="admin-modal-actions">
-              <button className="btn small ghost" onClick={() => setShowCreate(false)}>
+              <button
+                className="btn small ghost"
+                onClick={() => setShowCreate(false)}
+              >
                 Cancel
               </button>
-              <button className="btn small" onClick={handleSave} disabled={saving}>
+              <button
+                className="btn small"
+                onClick={handleSave}
+                disabled={saving}
+              >
                 {saving ? "Saving..." : editing ? "Save" : "Create"}
               </button>
             </div>
