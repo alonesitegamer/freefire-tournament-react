@@ -584,6 +584,7 @@ async function joinMatch(matchObj) {
       const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
 
       // refresh matches locally
+  async function {
       const snap2 = await getDoc(ref);
       const updated = { id: snap2.id, ...snap2.data() };
       setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -597,6 +598,7 @@ async function joinMatch(matchObj) {
       return false;
     }
   }
+}
 // ---------------------------
 // JOIN integration (FINAL)
 // ---------------------------
