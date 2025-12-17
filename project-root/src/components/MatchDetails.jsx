@@ -113,7 +113,7 @@ export default function MatchDetails({
 
       <img
         className="match-big-banner"
-        src={match.imageUrl || "/bt.jpg"}
+        src={match.imageUrls?.[0] || "/bt.jpg"}
         alt="Match Banner"
       />
 
