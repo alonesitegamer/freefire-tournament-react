@@ -514,16 +514,13 @@ export default function Dashboard({ user }) {
       const updated = { id: snap2.id, ...snap2.data() };
       setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
       setSelectedMatch(updated);
-      setActiveTab("matches");
+      setActiveTab("matches");  
       alert("Joined match!");
-      return true;
-    } catch (err) {
-      console.error("joinMatch error", err);
-      alert("Failed to join.");
-      return false;
-    }
+      return true; 
+
+    } 
   }
-}
+
 // ---------------------------
 // JOIN integration (FINAL)
 // ---------------------------
@@ -996,7 +993,6 @@ async function joinMatch(matchObj) {
       )}
     </div>
   );
-}
 
 /**
  * Helper: Firestore query limiter wrapper to avoid importing limit each place.
