@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import "./AdminPanel.css";
 
 const DEFAULT_MAP_POOL = ["Bermuda", "Purgatory", "Kalahari"];
-
 const AVAILABLE_IMAGES = ["FF1", "FF2", "FF4", "FF5", "FF6"];
 
 export default function AdminPanel({
@@ -25,6 +28,7 @@ export default function AdminPanel({
     mapPool: DEFAULT_MAP_POOL,
     maxPlayers: 4,
     entryFee: 0,
+    reward: 0,
     killReward: 75,
     startTime: "",
     revealDelayMinutes: 5,
@@ -49,6 +53,7 @@ export default function AdminPanel({
       mapPool: DEFAULT_MAP_POOL,
       maxPlayers: 4,
       entryFee: 0,
+      reward: 0,
       killReward: 75,
       startTime: "",
       revealDelayMinutes: 5,
@@ -71,6 +76,7 @@ export default function AdminPanel({
       mapPool: m.mapPool || DEFAULT_MAP_POOL,
       maxPlayers: m.maxPlayers || 4,
       entryFee: m.entryFee || 0,
+      reward: m.reward || 0,
       killReward: m.killReward ?? 75,
       startTime: m.startTime
         ? new Date(
@@ -103,6 +109,7 @@ export default function AdminPanel({
         mapPool: form.mapPool,
         maxPlayers: Number(form.maxPlayers),
         entryFee: Number(form.entryFee),
+        reward: Number(form.reward),
         killReward: Number(form.killReward),
         roomID: form.roomID,
         roomPassword: form.roomPassword,
@@ -191,7 +198,7 @@ export default function AdminPanel({
           >
             <h3>{editing ? "Edit Match" : "Create Match"}</h3>
 
-            {/* IMAGE PICKER GRID */}
+            {/* IMAGE PICKER */}
             <label>Match Images</label>
             <div className="image-picker-grid">
               {AVAILABLE_IMAGES.map((name) => {
@@ -231,13 +238,131 @@ export default function AdminPanel({
               }
             />
 
+            <label>Type</label>
+            <select
+              className="modern-input"
+              value={form.type}
+              onChange={(e) =>
+                setForm({ ...form, type: e.target.value })
+              }
+            >
+              <option value="tournament">Tournament (BR)</option>
+              <option value="custom">Custom</option>
+            </select>
+
+            <label>Mode</label>
+            <select
+              className="modern-input"
+              value={form.mode}
+              onChange={(e) =>
+                setForm({ ...form, mode: e.target.value })
+              }
+            >
+              <option>Solo</option>
+              <option>Duo</option>
+              <option>Squad</option>
+            </select>
+
+            <label>Map Pool</label>
+            <input
+              className="modern-input"
+              value={form.mapPool.join(", ")}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  mapPool: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+
+            <label>Max Players</label>
+            <input
+              type="number"
+              min="2"
+              max="48"
+              className="modern-input"
+              value={form.maxPlayers}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  maxPlayers: Number(e.target.value),
+                })
+              }
+            />
+
+            <label>Entry Fee</label>
+            <input
+              type="number"
+              className="modern-input"
+              value={form.entryFee}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  entryFee: Number(e.target.value),
+                })
+              }
+            />
+
+            <label>Kill Reward</label>
+            <input
+              type="number"
+              className="modern-input"
+              value={form.killReward}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  killReward: Number(e.target.value),
+                })
+              }
+            />
+
             <label>Start Time</label>
             <input
               type="datetime-local"
               className="modern-input"
               value={form.startTime}
               onChange={(e) =>
-                setForm({ ...form, startTime: e.target.value })
+                setForm({
+                  ...form,
+                  startTime: e.target.value,
+                })
+              }
+            />
+
+            <label>Reveal Delay (minutes)</label>
+            <input
+              type="number"
+              className="modern-input"
+              value={form.revealDelayMinutes}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  revealDelayMinutes: Number(e.target.value),
+                })
+              }
+            />
+
+            <label>Room ID</label>
+            <input
+              className="modern-input"
+              value={form.roomID}
+              onChange={(e) =>
+                setForm({ ...form, roomID: e.target.value })
+              }
+            />
+
+            <label>Room Password</label>
+            <input
+              className="modern-input"
+              value={form.roomPassword}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  roomPassword: e.target.value,
+                })
               }
             />
 
