@@ -557,16 +557,75 @@ async function joinMatch(matchObj) {
     return false;
   }
 }
-    // reload latest match (avoid stale)
-    try {
-      const ref = doc(db, "matches", matchObj.id);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return alert("Match not found.");
-      const match = { id: snap.id, ...snap.data() };
+   // -------------------------------
+  // reload latest match & check full
+  //---------------------------------
+  async function reloadAndCheckMatch(matchObj) {
+    const ref = doc(db, "matches", matchObj.id);
+    const snap = await getDoc(ref);
 
-      const playerCount = (match.playersJoined || []).length;
-      if (match.maxPlayers && playerCount >= match.maxPlayers) return alert("Match is full.");
+    if (!snap.exists()) {
+      alert("match not found.");
+      return null;
+    }
+    const match = { id: snap.id, ...snap.data() };
 
+    const playerCount = (match.playersJoined || []).length;
+    if (match.maxPlayers && playerCount >= match.maxPlayers) {
+      alert("match is full.");
+      return null;
+
+    }
+
+    return match;
+  }
+
+  // ---------------------------
+// JOIN integration (FINAL)
+// ---------------------------
+async function joinMatch(matchObj) {
+  if (!profile) {
+    alert("Profile missing.");
+    return false;
+  }
+
+  let ingame = profile.username || profile.displayName || "";
+  if (!ingame) {
+    ingame = window.prompt(
+      "Enter your in-game username (this will be saved):",
+      ""
+    );
+    if (!ingame) return false;
+    await updateProfileField({ username: ingame });
+  }
+
+  try {
+    // 🔥 STEP 1 yahan use ho raha
+    const match = await reloadAndCheckMatch(matchObj);
+    if (!match) return false;
+
+    // Double join check
+    if (match.playersJoined?.some(p => p.uid === user.uid)) {
+      alert("You already joined this match.");
+      return false;
+    }
+
+    // Join safely
+    await updateDoc(doc(db, "matches", matchObj.id), {
+      playersJoined: arrayUnion({
+        uid: user.uid,
+        username: ingame,
+        joinedAt: Date.now(),
+      }),
+    });
+
+    return true;
+  } catch (err) {
+    console.error(err);
+    alert(err.message);
+    return false;
+  }
+}
       // create player object
       const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
 
