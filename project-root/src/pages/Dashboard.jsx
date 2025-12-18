@@ -506,7 +506,7 @@ export default function Dashboard({ user }) {
   }
 
       // create player object
-      const playerObj = { uid: user.uid, username: profile.username || profile.displayName || "", joinedAt: serverTimestamp() };
+      const playerObj = { uid: user.uid, username: (profile && (profile.username || profile.displayName))|| ingame || "Player", joinedAt: serverTimestamp() };
 
       // refresh matches locally
   async function refreshMatch(ref) {
