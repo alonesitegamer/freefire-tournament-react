@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import "./MatchDetails.css";
+import PlayersBoard from "./PlayersBoard";
+import ResultsBoard from "./ResultsBoard";
 
 export default function MatchDetails({
   match: initialMatch,
@@ -132,6 +134,12 @@ export default function MatchDetails({
             </button>
           </div>
         </div>
+      )}
+        {/* Players /Results Board */}
+      {match.status === "completed" ? (
+      <ResultsBoard natch={match} />
+      ) : (
+      <PlayersBoard match={match} />
       )}
 
       {/* ================================
