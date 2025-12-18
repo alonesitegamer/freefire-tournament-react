@@ -486,38 +486,40 @@ export default function Dashboard({ user }) {
   // reload latest match & check full
   //---------------------------------
   async function reloadAndCheckMatch(matchObj) {
-    const ref = doc(db, "matches", matchObj.id);
-    const snap = await getDoc(ref);
+  const ref = doc(db, "matches", matchObj.id);
+  const snap = await getDoc(ref);
 
-    if (!snap.exists()) {
-      alert("match not found.");
-      return null;
-    }
-    const match = { id: snap.id, ...snap.data() };
-
-    const playerCount = (match.playersJoined || []).length;
-    if (match.maxPlayers && playerCount >= match.maxPlayers) {
-      alert("match is full.");
-      return null;
-
-    }
-
-    return match;
+  if (!snap.exists()) {
+    alert("Match not found.");
+    return null;
   }
 
-      // create player object
-      const playerObj = { uid: user.uid, username: (profile && (profile.username || profile.displayName))|| ingame || "Player", joinedAt: serverTimestamp() };
+  const match = { id: snap.id, ...snap.data() };
+
+  const count = match.playersJoined?.length || 0;
+  if (match.maxPlayers && count >= match.maxPlayers) {
+    alert("Match is full.");
+    return null;
+  }
+
+  return match;
+}
+
 
       // refresh matches locally
-  async function refreshMatch(ref) {
-      const snap2 = await getDoc(ref);
-      const updated = { id: snap2.id, ...snap2.data() };
-      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-      setSelectedMatch(updated);
-      setActiveTab("matches");
-      alert("Joined match!");
-      return true;
-    } 
+ async function refreshMatchById(matchId) {
+  const ref = doc(db, "matches", matchId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const updated = { id: snap.id, ...snap.data() };
+
+  setMatches((prev) =>
+    prev.map((m) => (m.id === updated.id ? updated : m))
+  );
+  setSelectedMatch(updated);
+}
+
 
 // ---------------------------
 // JOIN integration (FINAL)
@@ -528,45 +530,50 @@ async function joinMatch(matchObj) {
     return false;
   }
 
-  let ingame = profile.username || profile.displayName || "";
-  if (!ingame) {
-    ingame = window.prompt(
+  // ✅ SAFE ingame resolution
+  let ingame =
+    profile.username ||
+    profile.displayName ||
+    "Player";
+
+  if (!profile.username) {
+    const entered = window.prompt(
       "Enter your in-game username (this will be saved):",
-      ""
+      ingame
     );
-    if (!ingame) return false;
+    if (!entered) return false;
+
+    ingame = entered;
     await updateProfileField({ username: ingame });
   }
 
-  try {
-    // STEP 1: reload & check
-    const match = await reloadAndCheckMatch(matchObj);
-    if (!match) return false;
+  // STEP 1: reload & validate match
+  const match = await reloadAndCheckMatch(matchObj);
+  if (!match) return false;
 
-    // Double join check
-    if (match.playersJoined?.some(p => p.uid === user.uid)) {
-      alert("You already joined this match.");
-      return false;
-    }
-
-    // ✅ SIRF YE LINE ADD KI HAI
-    await updateDoc(doc(db, "matches", matchObj.id), {
-      playersJoined: arrayUnion({
-        uid: user.uid,
-        username: profile.username || profile.displayName || "",
-        joinedAt: Date.now(),
-      }),
-    });
-    //function call
-    await refreshMatch(ref);
-
-    return true;
-  } catch (err) {
-    console.error(err);
-    alert(err.message);
+  // STEP 2: prevent double join
+  if (match.playersJoined?.some((p) => p.uid === user.uid)) {
+    alert("You already joined this match.");
     return false;
   }
+
+  // STEP 3: join
+  const ref = doc(db, "matches", matchObj.id);
+  await updateDoc(ref, {
+    playersJoined: arrayUnion({
+      uid: user.uid,
+      username: ingame,
+      joinedAt: Date.now(),
+    }),
+  });
+
+  // STEP 4: refresh UI
+  await refreshMatchById(matchObj.id);
+
+  alert("Joined match!");
+  return true;
 }
+
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
     // select and switch to matches view
