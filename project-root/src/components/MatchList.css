@@ -61,3 +61,38 @@
 .minimal-join-btn:hover {
   opacity: 0.9;
 }
+
+.players-board,
+.results-board {
+    margin: top 20px; 
+    padding: 14px;
+    background:rgba(0, 0, 0, 0.45);
+    border-radius: 12px;
+}
+.players-list{
+    list-style-type:none;
+    padding: 0;
+    margin:10px 0 0;
+}
+.players-list li {
+    display: flex;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom:1px solid rgba(255,255,255,0.08)
+}
+ .players-list .rank {
+    font-weight: 700;
+    color:#aaa;
+ }
+
+ .results-board table {
+    width:100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+ }
+ .results-board th,
+ .results-board td {
+    padding:8px;
+    text-align: center;
+    border-bottom:1px solid rgba(255,255,255,0.1)
+ }
