@@ -506,7 +506,7 @@ export default function Dashboard({ user }) {
   }
 
       // create player object
-      const playerObj = { uid: user.uid, username: ingame, joinedAt: serverTimestamp() };
+      const playerObj = { uid: user.uid, username: profile.username || profile.displayName || "", joinedAt: serverTimestamp() };
 
       // refresh matches locally
   async function refreshMatch(ref) {
@@ -553,7 +553,7 @@ async function joinMatch(matchObj) {
     await updateDoc(doc(db, "matches", matchObj.id), {
       playersJoined: arrayUnion({
         uid: user.uid,
-        username: ingame,
+        username: profile.username || profile.displayName || "",
         joinedAt: Date.now(),
       }),
     });
