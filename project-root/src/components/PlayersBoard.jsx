@@ -11,10 +11,10 @@ export default function PlayersBoard({ match }) {
       ) : (
         <ul className="players-list">
           {players.map((p, i) => (
-            <li key={p.uid}>
+            <div key={p.uid}>
               <span className="rank">{i + 1}.</span>
               <span className="name">{p.userName || "player"}</span>
-            </li>
+            </div>
           ))}
         </ul>
       )}
