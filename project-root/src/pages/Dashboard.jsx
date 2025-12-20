@@ -532,21 +532,23 @@ async function joinMatch(matchObj) {
 
   // ✅ SAFE ingame resolution
   let ingame =
-    profile.username ||
-    profile.displayName ||
-    "Player";
+    profile.username?.trim() || "";
 
-  if (!profile.username) {
-    const entered = window.prompt(
-      "Enter your in-game username (this will be saved):",
-      ingame
-    );
-    if (!entered) return false;
+  if (!ingame) {
+    ingame = window.prompt(
+      "Enter your in-game username (this will be saved):");
 
-    ingame = entered;
+    
+    if (!ingame) {
+      alert("In-game username required.");
+      return false;
+    }
+
+    //save to profile First
     await updateProfileField({ username: ingame });
   }
 
+  try {
   // STEP 1: reload & validate match
   const match = await reloadAndCheckMatch(matchObj);
   if (!match) return false;
@@ -568,7 +570,7 @@ async function joinMatch(matchObj) {
   });
 
   // STEP 4: refresh UI
-  await refreshMatchById(matchObj.id);
+  await refreshMatch(ref);
 
   alert("Joined match!");
   return true;
