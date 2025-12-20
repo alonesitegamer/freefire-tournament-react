@@ -496,8 +496,8 @@ export default function Dashboard({ user }) {
 
   const match = { id: snap.id, ...snap.data() };
 
-  const count = match.playersJoined?.length || 0;
-  if (match.maxPlayers && count >= match.maxPlayers) {
+  const joinedCount = (match.playersJoined || []).length;
+  if (match.maxPlayers && joinedCount >= match.maxPlayers) {
     alert("Match is full.");
     return null;
   }
@@ -507,17 +507,16 @@ export default function Dashboard({ user }) {
 
 
       // refresh matches locally
- async function refreshMatchById(matchId) {
-  const ref = doc(db, "matches", matchId);
+ async function refreshMatch(ref) {
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
 
   const updated = { id: snap.id, ...snap.data() };
-
-  setMatches((prev) =>
-    prev.map((m) => (m.id === updated.id ? updated : m))
+  setMatches(prev =>
+    prev.map(m => (m.id === updated.id ? updated : m))
   );
   setSelectedMatch(updated);
+  setActiveTab("mathces");
 }
 
 
@@ -530,13 +529,12 @@ async function joinMatch(matchObj) {
     return false;
   }
 
-  // ✅ SAFE ingame resolution
-  let ingame =
-    profile.username?.trim() || "";
+  // In-game username enforce
+  let ingame = profile.username?.trim() || "";
 
   if (!ingame) {
     ingame = window.prompt(
-      "Enter your in-game username (this will be saved):");
+      "Enter your in-game username:");
 
     
     if (!ingame) {
@@ -554,7 +552,7 @@ async function joinMatch(matchObj) {
   if (!match) return false;
 
   // STEP 2: prevent double join
-  if (match.playersJoined?.some((p) => p.uid === user.uid)) {
+  if (match.playersJoined?.some(p => p.uid === user.uid)) {
     alert("You already joined this match.");
     return false;
   }
@@ -565,16 +563,20 @@ async function joinMatch(matchObj) {
     playersJoined: arrayUnion({
       uid: user.uid,
       username: ingame,
-      joinedAt: Date.now(),
+      joinedAt: serverTimestamp(),
+      kills: 0,
+      coinsEarned: 0,
     }),
   });
 
   // STEP 4: refresh UI
   await refreshMatch(ref);
-
-  alert("Joined match!");
   return true;
-}
+} catch (err) {
+    console.error("joinMatch error", err);
+    alert("Failed to join match.");
+    return false;
+  }
 }
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
@@ -632,7 +634,13 @@ async function joinMatch(matchObj) {
   // ---------------------------
   if (loading || !profile) {
     return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+      <div style={{
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#fff" 
+      }}>
         Loading Dashboard...
       </div>
     );
