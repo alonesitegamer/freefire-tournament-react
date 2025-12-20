@@ -563,7 +563,7 @@ async function joinMatch(matchObj) {
     playersJoined: arrayUnion({
       uid: user.uid,
       username: ingame,
-      joinedAt: serverTimestamp(),
+      joinedAt: Date.now(),
       kills: 0,
       coinsEarned: 0,
     }),
