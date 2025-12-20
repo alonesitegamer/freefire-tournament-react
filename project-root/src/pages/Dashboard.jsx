@@ -575,7 +575,7 @@ async function joinMatch(matchObj) {
   alert("Joined match!");
   return true;
 }
-
+}
   // Called when pressing Join from MatchList (outer button)
   function handleJoinFromList(match) {
     // select and switch to matches view
