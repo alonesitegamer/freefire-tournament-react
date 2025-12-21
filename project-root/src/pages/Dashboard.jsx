@@ -17,9 +17,9 @@ import {
   deleteDoc,
   arrayUnion,
   increment,
+  runTransaction,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { runTransaction } from "firebase/firestore";
 
 import HomeButtons from "../components/HomeButtons";
 import MatchList from "../components/MatchList";
