@@ -523,6 +523,8 @@ export default function Dashboard({ user }) {
 // ---------------------------
 // JOIN integration (FINAL)
 // ---------------------------
+import { runTransaction } from "firebase/firestore";
+
 async function joinMatch(matchObj) {
   if (!profile) {
     alert("Profile missing");
@@ -533,62 +535,65 @@ async function joinMatch(matchObj) {
   const userRef = doc(db, "users", user.uid);
 
   try {
-    // 1️⃣ latest match load
-    const snap = await getDoc(matchRef);
-    if (!snap.exists()) {
-      alert("Match not found");
-      return false;
-    }
+    await runTransaction(db, async (transaction) => {
+      // 🔹 READ BOTH DOCS
+      const matchSnap = await transaction.get(matchRef);
+      const userSnap = await transaction.get(userRef);
 
-    const match = snap.data();
+      if (!matchSnap.exists()) {
+        throw new Error("Match not found");
+      }
+      if (!userSnap.exists()) {
+        throw new Error("User not found");
+      }
 
-    // 2️⃣ in-game username enforce
-    let ingame = (profile.username || "").trim();
-    if (!ingame) {
-      ingame = window.prompt("Enter your in-game username:");
-      if (!ingame) return false;
+      const match = matchSnap.data();
+      const userData = userSnap.data();
 
-      await updateDoc(userRef, { username: ingame });
-      setProfile((p) => ({ ...p, username: ingame }));
-    }
+      // 🔹 USERNAME ENFORCE
+      let ingame = (userData.username || "").trim();
+      if (!ingame) {
+        ingame = window.prompt("Enter your in-game username:");
+        if (!ingame) throw new Error("Username required");
 
-    // 3️⃣ already joined check
-    if ((match.playersJoined || []).some(p => p.uid === user.uid)) {
-      alert("Already joined");
-      return false;
-    }
+        transaction.update(userRef, { username: ingame });
+      }
 
-    // 4️⃣ match full check
-    const joined = (match.playersJoined || []).length;
-    if (match.maxPlayers && joined >= match.maxPlayers) {
-      alert("Match is full");
-      return false;
-    }
+      // 🔹 ALREADY JOINED CHECK
+      if ((match.playersJoined || []).some((p) => p.uid === user.uid)) {
+        throw new Error("Already joined");
+      }
 
-    // 5️⃣ entry fee check
-    const entryFee = Number(match.entryFee || 0);
-    const coins = Number(profile.coins || 0);
+      // 🔹 MATCH FULL CHECK
+      const joinedCount = (match.playersJoined || []).length;
+      if (match.maxPlayers && joinedCount >= match.maxPlayers) {
+        throw new Error("Match is full");
+      }
 
-    if (coins < entryFee) {
-      alert("Not enough coins");
-      return false;
-    }
+      // 🔹 ENTRY FEE CHECK
+      const entryFee = Number(match.entryFee || 0);
+      const coins = Number(userData.coins || 0);
 
-    // 6️⃣ deduct coins (SAFE)
-    await updateDoc(userRef, {
-      coins: increment(-entryFee),
+      if (coins < entryFee) {
+        throw new Error("Not enough coins");
+      }
+
+      // 🔹 UPDATE USER (COINS)
+      transaction.update(userRef, {
+        coins: coins - entryFee,
+      });
+
+      // 🔹 UPDATE MATCH (JOIN PLAYER)
+      transaction.update(matchRef, {
+        playersJoined: arrayUnion({
+          uid: user.uid,
+          username: ingame,
+          joinedAt: Date.now(),
+        }),
+      });
     });
 
-    // 7️⃣ join match (SAFE)
-    await updateDoc(matchRef, {
-      playersJoined: arrayUnion({
-        uid: user.uid,
-        username: ingame,
-        joinedAt: Date.now(), // ✅ SAFE
-      }),
-    });
-
-    // 8️⃣ refresh UI
+    // 🔹 REFRESH UI AFTER TRANSACTION
     const snap2 = await getDoc(matchRef);
     const updatedMatch = { id: snap2.id, ...snap2.data() };
 
@@ -597,12 +602,17 @@ async function joinMatch(matchObj) {
     );
     setSelectedMatch(updatedMatch);
 
+    // update local profile coins
+    setProfile((p) => ({
+      ...p,
+      coins: p.coins - Number(updatedMatch.entryFee || 0),
+    }));
+
     alert("Joined match!");
     return true;
-
-  } catch (e) {
-    console.error("joinMatch error:", e);
-    alert("Failed to join match");
+  } catch (err) {
+    console.error("joinMatch error:", err);
+    alert(err.message || "Failed to join match");
     return false;
   }
 }
