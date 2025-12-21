@@ -1,4 +1,5 @@
 import "./MatchDetails.css";
+
 export default function PlayersBoard({ match }) {
   const players = match?.playersJoined || [];
 
@@ -11,10 +12,12 @@ export default function PlayersBoard({ match }) {
       ) : (
         <ul className="players-list">
           {players.map((p, i) => (
-            <div key={p.uid}>
+            <li key={p.uid} className="player-row">
               <span className="rank">{i + 1}.</span>
-              <span className="name">{p.userName || "player"}</span>
-            </div>
+              <span className="name">
+                {p.username || "Player"}
+              </span>
+            </li>
           ))}
         </ul>
       )}
