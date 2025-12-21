@@ -525,74 +525,87 @@ export default function Dashboard({ user }) {
 // ---------------------------
 async function joinMatch(matchObj) {
   if (!profile) {
-    alert("Profile missing.");
+    alert("Profile missing");
     return false;
   }
 
-  // In-game username enforce
-  let ingame = profile.username?.trim() || "";
+  const matchRef = doc(db, "matches", matchObj.id);
+  const userRef = doc(db, "users", user.uid);
 
-  if (!ingame) {
-    ingame = window.prompt(
-      "Enter your in-game username:");
-
-    
-    if (!ingame) {
-      alert("In-game username required.");
+  try {
+    // 1️⃣ latest match load
+    const snap = await getDoc(matchRef);
+    if (!snap.exists()) {
+      alert("Match not found");
       return false;
     }
 
-    //save to profile First
-    await updateProfileField({ username: ingame });
-  }
+    const match = snap.data();
 
-  try {
-  // STEP 1: reload & validate match
-  const match = await reloadAndCheckMatch(matchObj);
-  if (!match) return false;
+    // 2️⃣ in-game username enforce
+    let ingame = (profile.username || "").trim();
+    if (!ingame) {
+      ingame = window.prompt("Enter your in-game username:");
+      if (!ingame) return false;
 
-  // STEP 2: prevent double join
-  if (match.playersJoined?.some(p => p.uid === user.uid)) {
-    alert("You already joined this match.");
-    return false;
-  }
+      await updateDoc(userRef, { username: ingame });
+      setProfile((p) => ({ ...p, username: ingame }));
+    }
 
-  // STEP 3: join
-  const ref = doc(db, "matches", matchObj.id);
-  await updateDoc(ref, {
-    playersJoined: arrayUnion({
-      uid: user.uid,
-      username: ingame,
-      joinedAt: Date.now(),
-      kills: 0,
-      coinsEarned: 0,
-    }),
-  });
+    // 3️⃣ already joined check
+    if ((match.playersJoined || []).some(p => p.uid === user.uid)) {
+      alert("Already joined");
+      return false;
+    }
 
-  // STEP 4: refresh UI
-  await refreshMatch(ref);
-  return true;
-} catch (err) {
-    console.error("joinMatch error", err);
-    alert("Failed to join match.");
+    // 4️⃣ match full check
+    const joined = (match.playersJoined || []).length;
+    if (match.maxPlayers && joined >= match.maxPlayers) {
+      alert("Match is full");
+      return false;
+    }
+
+    // 5️⃣ entry fee check
+    const entryFee = Number(match.entryFee || 0);
+    const coins = Number(profile.coins || 0);
+
+    if (coins < entryFee) {
+      alert("Not enough coins");
+      return false;
+    }
+
+    // 6️⃣ deduct coins (SAFE)
+    await updateDoc(userRef, {
+      coins: increment(-entryFee),
+    });
+
+    // 7️⃣ join match (SAFE)
+    await updateDoc(matchRef, {
+      playersJoined: arrayUnion({
+        uid: user.uid,
+        username: ingame,
+        joinedAt: Date.now(), // ✅ SAFE
+      }),
+    });
+
+    // 8️⃣ refresh UI
+    const snap2 = await getDoc(matchRef);
+    const updatedMatch = { id: snap2.id, ...snap2.data() };
+
+    setMatches((prev) =>
+      prev.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
+    );
+    setSelectedMatch(updatedMatch);
+
+    alert("Joined match!");
+    return true;
+
+  } catch (e) {
+    console.error("joinMatch error:", e);
+    alert("Failed to join match");
     return false;
   }
 }
-  // Called when pressing Join from MatchList (outer button)
-  function handleJoinFromList(match) {
-    // select and switch to matches view
-    setSelectedMatch(match);
-    setActiveTab("matches");
-
-    // small delay to allow UI to render, then attempt join (use non-blocking)
-    setTimeout(() => {
-      joinMatch(match).catch((e) => {
-        // handled in joinMatch, but catch to avoid unhandled promise
-        console.error("join attempt failed", e);
-      });
-    }, 300);
-  }
-
   // Admin helpers: edit / delete match
   async function editMatch(matchId, patch) {
     await updateDoc(doc(db, "matches", matchId), patch);
