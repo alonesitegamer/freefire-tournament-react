@@ -744,7 +744,7 @@ async function joinMatch(matchObj) {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800 }}>
-                  {profile.displayName || profile.username || "Player"}
+                  {profile.username || profile.displayName || "Player"}
                 </div>
                 <div style={{ color: "#bfc7d1", fontSize: 13 }}>
                   Level {curLevel} • {profile.xp || 0} XP
