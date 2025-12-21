@@ -19,6 +19,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import { runTransaction } from "firebase/firestore";
 
 import HomeButtons from "../components/HomeButtons";
 import MatchList from "../components/MatchList";
@@ -29,6 +30,7 @@ import AccountMenu from "../components/AccountMenu";
 import AdminPanel from "../components/AdminPanel";
 import RankPage from "../components/RankPage";
 import LevelUpPopup from "../components/LevelUpPopup";
+
 
 export default function Dashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -523,8 +525,6 @@ export default function Dashboard({ user }) {
 // ---------------------------
 // JOIN integration (FINAL)
 // ---------------------------
-import { runTransaction } from "firebase/firestore";
-
 async function joinMatch(matchObj) {
   if (!profile) {
     alert("Profile missing");
