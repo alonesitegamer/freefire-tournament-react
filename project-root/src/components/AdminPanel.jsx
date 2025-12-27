@@ -3,6 +3,10 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
+  getDoc,
+  deleteDoc,
+  collection,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import "./AdminPanel.css";
