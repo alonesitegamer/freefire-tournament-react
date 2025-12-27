@@ -616,6 +616,15 @@ async function joinMatch(matchObj) {
     return false;
   }
 }
+  function handleJoinFromList(match) {
+    setSelectedMatch(match);
+    setActiveTab("matches");
+
+    // UI k switch hone ka time
+    setTimeout(() => {
+      joinMatch(match).catch(console.error);
+    }, 200);
+  }
   // Admin helpers: edit / delete match
   async function editMatch(matchId, patch) {
     await updateDoc(doc(db, "matches", matchId), patch);
