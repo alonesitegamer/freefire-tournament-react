@@ -626,13 +626,28 @@ async function joinMatch(matchObj) {
     }, 200);
   }
   // Admin helpers: edit / delete match
-  async function editMatch(matchId, patch) {
-    await updateDoc(doc(db, "matches", matchId), patch);
-    const snap = await getDoc(doc(db, "matches", matchId));
-    const updated = { id: snap.id, ...snap.data() };
-    setMatches((prev) => prev.map((m) => (m.id === matchId ? updated : m)));
-    if (selectedMatch?.id === matchId) setSelectedMatch(updated);
-  }
+async function editMatch(matchId, patch) {
+  const ref = doc(db, "matches", matchId);
+
+  // 1️⃣ update firestore
+  await updateDoc(ref, patch);
+
+  // 2️⃣ reload fresh data
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return; // safety
+
+  const updated = { id: snap.id, ...snap.data() };
+
+  // 3️⃣ update matches list
+  setMatches((prev) =>
+    prev.map((m) => (m.id === matchId ? updated : m))
+  );
+
+  // 4️⃣ update selectedMatch ALSO (THIS FIXES JOIN/PLAYERS BUG)
+  setSelectedMatch((prev) =>
+    prev && prev.id === matchId ? updated : prev
+  );
+}
 
   async function removeMatch(matchId) {
     await deleteDoc(doc(db, "matches", matchId));
