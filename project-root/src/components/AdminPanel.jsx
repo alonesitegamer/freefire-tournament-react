@@ -130,10 +130,26 @@ export default function AdminPanel({
       }
 
       if (editing) {
-        await updateDoc(doc(db, "matches", editing.id), payload);
-        editMatch(editing.id, payload);
+        const ref = doc(db, "matches", editing.id);
+
+        // existing data
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          alert("Match not found");
+          return;
+        }
+
+        const existing = snap.data();
+
+        // merge payload + playersJoined
+        await updateDoc(ref, {
+          ...payload,
+          playersJoined: existing.playersJoined || [],
+        });
+        
+        await editMatch(editing.id, payload);
       } else {
-        createMatch(payload);
+        await createMatch(payload);
       }
 
       setShowCreate(false);
