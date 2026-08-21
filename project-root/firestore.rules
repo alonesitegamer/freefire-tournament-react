@@ -6,16 +6,34 @@ service cloud.firestore {
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
     function unchanged(field) { return request.resource.data[field] == resource.data[field]; }
+    function validText(value, max) { return value is string && value.size() <= max; }
 
     match /users/{uid} {
-      allow get, list: if signedIn();
+      // User documents are private. Public ranking should use a dedicated
+      // projection rather than exposing email/referral/economy data.
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+
+      // Kept temporarily compatible with the existing registration flow.
+      // Phase 2's referral onboarding endpoint is the preferred path.
       allow create: if isOwner(uid)
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.coins is int
         && request.resource.data.coins >= 0
-        && request.resource.data.coins <= 20;
+        && request.resource.data.coins <= 20
+        && request.resource.data.xp is int
+        && request.resource.data.xp >= 0
+        && request.resource.data.level is int
+        && request.resource.data.level >= 1
+        && request.resource.data.level <= 18;
+
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'avatar', 'bio'])
+        && validText(request.resource.data.username, 32)
+        && validText(request.resource.data.displayName, 80)
+        && validText(request.resource.data.bio, 500)
+        && request.resource.data.avatar is string
+        && request.resource.data.avatar.matches('^/avatars/[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$')
         && unchanged('email')
         && unchanged('coins')
         && unchanged('xp')
@@ -29,13 +47,21 @@ service cloud.firestore {
         && unchanged('referralBonusGiven')
         && unchanged('referrerRewardGiven')
         && unchanged('adsWatched')
+        && unchanged('adsWatchedSinceReferral')
         && unchanged('lastDaily');
       allow delete: if isAdmin();
     }
 
     match /matches/{matchId} {
+      // Temporary compatibility: match public metadata is still readable by
+      // signed-in clients. Room credentials must be migrated out of this doc
+      // before this read is removed. See scripts/migrate-match-secrets.mjs.
       allow get, list: if signedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /matchSecrets/{matchId} {
+      allow read, write: if false;
     }
 
     match /topupRequests/{requestId} {
@@ -56,7 +82,10 @@ service cloud.firestore {
 
     match /feedback/{feedbackId} {
       allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 2000;
       allow update, delete: if isAdmin();
     }
 
