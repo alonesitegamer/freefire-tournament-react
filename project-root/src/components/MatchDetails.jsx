@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { secureApi } from "../utils/apiClient";
 import "./MatchDetails.css";
 import PlayersBoard from "./PlayersBoard";
@@ -11,6 +9,7 @@ export default function MatchDetails({ match: initialMatch, onBack, user }) {
   const [joined, setJoined] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [joining, setJoining] = useState(false);
+  const [roomLoading, setRoomLoading] = useState(false);
 
   useEffect(() => setMatch(initialMatch), [initialMatch]);
   useEffect(() => setJoined(match?.playersJoined?.some((player) => player.uid === user.uid) || false), [match, user.uid]);
@@ -20,9 +19,10 @@ export default function MatchDetails({ match: initialMatch, onBack, user }) {
   }, []);
 
   async function refreshMatch() {
-    const ref = doc(db, "matches", match.id);
-    const snap = await getDoc(ref);
-    if (snap.exists()) setMatch({ id: snap.id, ...snap.data() });
+    const result = await secureApi(`/api/matches?matchId=${encodeURIComponent(match.id)}`);
+    if (result.match) setMatch(result.match);
+    setJoined(Boolean(result.joined));
+    return result;
   }
 
   async function handleJoin() {
@@ -41,15 +41,29 @@ export default function MatchDetails({ match: initialMatch, onBack, user }) {
     }
   }
 
+  async function revealRoom() {
+    if (!joined || roomLoading || (match.roomID && match.roomPassword)) return;
+    setRoomLoading(true);
+    try {
+      const result = await refreshMatch();
+      if (!result.privateVisible) alert("Room details are not available yet.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to load room details.");
+    } finally {
+      setRoomLoading(false);
+    }
+  }
+
   const revealAt = match.revealAt?.seconds ? match.revealAt.toDate().getTime() : match.revealAt ? new Date(match.revealAt).getTime() : null;
   const canReveal = joined && revealAt && now >= revealAt;
 
   const displayMap = useMemo(() => {
     const pool = match.mapPool?.length ? match.mapPool : ["Bermuda", "Purgatory", "Kalahari"];
     if (!match.autoRotate) return match.map || pool[0];
-    const created = match.createdAt?.seconds ? match.createdAt.toDate().getTime() : Date.now();
+    const created = match.createdAt?.seconds ? match.createdAt.toDate().getTime() : new Date(match.createdAt || Date.now()).getTime();
     const minutes = Math.floor((now - created) / 60000);
-    return pool[minutes % pool.length];
+    return pool[Math.max(0, minutes) % pool.length];
   }, [match, now]);
 
   function copy(text) {
@@ -84,9 +98,12 @@ export default function MatchDetails({ match: initialMatch, onBack, user }) {
         <div className="details-container">
           <h3 className="section-title">Room Details</h3>
           {!canReveal && <p className="muted">Room will be revealed a few minutes before match.</p>}
-          {canReveal && (
+          {canReveal && !match.roomID && (
+            <button className="btn small" onClick={revealRoom} disabled={roomLoading}>{roomLoading ? "Loading room..." : "Reveal Room Details"}</button>
+          )}
+          {canReveal && match.roomID && (
             <>
-              <div className="detail-row"><strong>Room ID:</strong> {match.roomID || "TBD"}<button className="copy-btn" onClick={() => copy(match.roomID)}>Copy</button></div>
+              <div className="detail-row"><strong>Room ID:</strong> {match.roomID}<button className="copy-btn" onClick={() => copy(match.roomID)}>Copy</button></div>
               <div className="detail-row"><strong>Password:</strong> {match.roomPassword || "—"}<button className="copy-btn" onClick={() => copy(match.roomPassword)}>Copy</button></div>
             </>
           )}
