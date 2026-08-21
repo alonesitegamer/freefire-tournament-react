@@ -6,12 +6,8 @@ const MAX = { username: 32, displayName: 80, bio: 500, avatar: 200 };
 
 function clean(value, field) {
   const text = String(value ?? "").trim();
-  if (text.length > MAX[field]) {
-    const error = new Error(`${field} is too long`); error.status = 400; throw error;
-  }
-  if (field === "username" && text && !/^[\w .-]{2,32}$/u.test(text)) {
-    const error = new Error("Username contains invalid characters"); error.status = 400; throw error;
-  }
+  if (text.length > MAX[field]) { const error = new Error(`${field} is too long`); error.status = 400; throw error; }
+  if (field === "username" && text && !/^[\w .-]{2,32}$/u.test(text)) { const error = new Error("Username contains invalid characters"); error.status = 400; throw error; }
   return text;
 }
 
@@ -29,12 +25,13 @@ function serialize(id, data) {
     wins: Number(data.wins || 0),
     played: Number(data.played || 0),
     referralCode: data.referralCode || "",
-    lastDaily: data.lastDaily?.toDate?.()?.toISOString?.() || null,
-    adsWatched: Number(data.adsWatched || 0),
-    adsWatchedSinceReferral: Number(data.adsWatchedSinceReferral || 0),
+    referralCount: Number(data.referralCount || 0),
     hasRedeemedReferral: Boolean(data.hasRedeemedReferral),
     referralRewardGiven: Boolean(data.referralRewardGiven),
     referrerId: data.referrerId || null,
+    lastDaily: data.lastDaily?.toDate?.()?.toISOString?.() || null,
+    adsWatched: Number(data.adsWatched || 0),
+    adsWatchedSinceReferral: Number(data.adsWatchedSinceReferral || 0),
   };
 }
 
