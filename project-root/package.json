@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "check:api": "node --check api/_firebaseAdmin.js && node --check api/_rateLimit.js && node --check api/check-email.js && node --check api/send-otp.js && node --check api/verify-otp.js && node --check api/economy.js && node --check api/referral.js && node --check api/matches.js && node --check api/admin-matches.js && node --check api/admin-queue.js && node --check api/user.js && node --check api/feedback.js",
-    "check:security": "npm run check:api && node --check scripts/set-admin.mjs && node --check scripts/migrate-match-secrets.mjs && node --check scripts/check-client-boundary.mjs",
+    "check:api": "node --check api/_firebaseAdmin.js && node --check api/_rateLimit.js && node --check api/check-email.js && node --check api/send-otp.js && node --check api/verify-otp.js && node --check api/economy.js && node --check api/referral.js && node --check api/matches.js && node --check api/admin-matches.js && node --check api/admin-queue.js && node --check api/admin-results.js && node --check api/user.js && node --check api/feedback.js",
+    "check:security": "npm run check:api && node --check scripts/set-admin.mjs && node --check scripts/migrate-match-secrets.mjs && node --check scripts/migrate-referral-codes.mjs && node --check scripts/check-client-boundary.mjs",
     "check:client-boundary": "node scripts/check-client-boundary.mjs",
     "preview": "vite preview"
   },
