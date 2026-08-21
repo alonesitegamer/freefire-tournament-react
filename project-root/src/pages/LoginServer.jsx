@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-} from "firebase/auth";
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth, provider } from "../firebase";
 import { Link, useNavigate } from "react-router-dom";
 import { secureApi } from "../utils/apiClient";
 import "../styles/Login.css";
+
+async function publicApi(path, body) {
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+  return payload;
+}
 
 export default function LoginServer() {
   const navigate = useNavigate();
@@ -35,31 +37,25 @@ export default function LoginServer() {
     }), 1000);
   }
 
-  async function postOtp(path, body) {
-    const response = await secureApi(path, { method: "POST", body: JSON.stringify(body) });
-    return response;
-  }
-
   async function sendOtp() {
     setError("");
     try {
-      await postOtp("/api/check-email", { email });
-      await postOtp("/api/send-otp", { email });
+      await publicApi("/api/check-email", { email });
+      await publicApi("/api/send-otp", { email });
       beginCountdown();
       setOtpOpen(true);
-    } catch (err) { setError(err.message || "Unable to send OTP"); }
+    } catch (err) { setError(err.message || "Unable to send OTP"); throw err; }
   }
 
   async function verifyOtpAndRegister() {
     if (!/^\d{6}$/.test(otp)) return setError("Enter the 6-digit OTP.");
     setLoading(true); setError("");
     try {
-      await postOtp("/api/verify-otp", { email, code: otp });
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await postOtp("/api/referral", { referralCode: referral.trim() });
+      await publicApi("/api/verify-otp", { email, code: otp });
+      await createUserWithEmailAndPassword(auth, email, password);
+      await secureApi("/api/referral", { method: "POST", body: JSON.stringify({ referralCode: referral.trim() }) });
       setOtpOpen(false); setOtp(""); setIsRegister(false); setEmail(""); setPassword(""); setReferral("");
       navigate("/", { replace: true });
-      void credential;
     } catch (err) { setError(err.message || "Registration failed"); }
     finally { setLoading(false); }
   }
@@ -67,7 +63,7 @@ export default function LoginServer() {
   async function submit(event) {
     event.preventDefault();
     setError("");
-    if (!email || !password) return setError("Please enter email and password.");
+    if (!email || (!isReset && !password)) return setError("Please enter the required fields.");
     setLoading(true);
     try {
       if (isReset) {
@@ -87,7 +83,7 @@ export default function LoginServer() {
     setError(""); setLoading(true);
     try {
       await signInWithPopup(auth, provider);
-      await postOtp("/api/referral", { referralCode: referral.trim() });
+      await secureApi("/api/referral", { method: "POST", body: JSON.stringify({ referralCode: referral.trim() }) });
       navigate("/", { replace: true });
     } catch (err) { setError(err.message || "Google sign-in failed"); }
     finally { setLoading(false); }
@@ -104,15 +100,15 @@ export default function LoginServer() {
         <form onSubmit={submit}>
           <input className="modern-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" required />
           {!isReset && <input className="modern-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete={isRegister ? "new-password" : "current-password"} required />}
-          {isRegister && <input className="modern-input" value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="Referral code (optional)" maxLength={16} />}
+          {isRegister && <input className="modern-input" value={referral} onChange={(e) => setReferral(e.target.value.toUpperCase())} placeholder="Referral code (optional)" maxLength={16} />}
           <button className="btn large glow" type="submit" disabled={loading}>{loading ? "Please wait..." : isReset ? "Send Reset Email" : isRegister ? "Verify Email" : "Sign In"}</button>
         </form>
         {!isReset && <button className="btn large ghost" type="button" onClick={google} disabled={loading}>Continue with Google</button>}
         <div style={{ marginTop: 12 }}>{error && <div className="login-error">{error}</div>}</div>
         <div className="login-links">
-          {!isRegister && !isReset && <button className="link-button" onClick={() => setIsReset(true)}>Forgot password?</button>}
-          <button className="link-button" onClick={() => { setIsRegister(!isRegister); setIsReset(false); setError(""); }}>{isRegister ? "Already have an account? Sign in" : "Create an account"}</button>
-          {isReset && <button className="link-button" onClick={() => { setIsReset(false); setError(""); }}>Back to sign in</button>}
+          {!isRegister && !isReset && <button className="link-button" type="button" onClick={() => setIsReset(true)}>Forgot password?</button>}
+          <button className="link-button" type="button" onClick={() => { setIsRegister(!isRegister); setIsReset(false); setError(""); }}>{isRegister ? "Already have an account? Sign in" : "Create an account"}</button>
+          {isReset && <button className="link-button" type="button" onClick={() => { setIsReset(false); setError(""); }}>Back to sign in</button>}
           <Link to="/privacy-policy">Privacy</Link><Link to="/terms">Terms</Link>
         </div>
       </div>
