@@ -6,25 +6,14 @@ import "./MatchDetails.css";
 import PlayersBoard from "./PlayersBoard";
 import ResultsBoard from "./ResultsBoard";
 
-export default function MatchDetails({
-  match: initialMatch,
-  onBack,
-  user,
-  profile,
-  updateProfileField,
-}) {
+export default function MatchDetails({ match: initialMatch, onBack, user }) {
   const [match, setMatch] = useState(initialMatch);
   const [joined, setJoined] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [joining, setJoining] = useState(false);
 
   useEffect(() => setMatch(initialMatch), [initialMatch]);
-
-  useEffect(() => {
-    const isJoined = match?.playersJoined?.some((player) => player.uid === user.uid) || false;
-    setJoined(isJoined);
-  }, [match, user.uid]);
-
+  useEffect(() => setJoined(match?.playersJoined?.some((player) => player.uid === user.uid) || false), [match, user.uid]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10000);
     return () => clearInterval(timer);
@@ -40,15 +29,8 @@ export default function MatchDetails({
     if (joining || joined) return;
     setJoining(true);
     try {
-      const result = await secureApi("/api/economy", {
-        method: "POST",
-        body: JSON.stringify({ action: "join", matchId: match.id }),
-      });
+      const result = await secureApi("/api/economy", { method: "POST", body: JSON.stringify({ action: "join", matchId: match.id }) });
       await refreshMatch();
-      if (typeof updateProfileField === "function") {
-        // The parent can refresh its profile after the server-side transaction.
-        try { await updateProfileField({}); } catch (_) { /* read-only refresh failed, match is still joined */ }
-      }
       setJoined(true);
       alert(`Joined successfully. ${result.coins} coins remaining.`);
     } catch (error) {
@@ -59,11 +41,7 @@ export default function MatchDetails({
     }
   }
 
-  const revealAt = match.revealAt?.seconds
-    ? match.revealAt.toDate().getTime()
-    : match.revealAt
-      ? new Date(match.revealAt).getTime()
-      : null;
+  const revealAt = match.revealAt?.seconds ? match.revealAt.toDate().getTime() : match.revealAt ? new Date(match.revealAt).getTime() : null;
   const canReveal = joined && revealAt && now >= revealAt;
 
   const displayMap = useMemo(() => {
@@ -82,19 +60,10 @@ export default function MatchDetails({
   return (
     <section className="panel match-details-view premium-style">
       <button className="back-btn" onClick={onBack}>← Back</button>
-
       <div className="match-header-premium">
         <h2>{match.title}</h2>
-        <div className="mini-meta">
-          {match.mode} • Entry {match.entryFee} • {match.playersJoined?.length || 0}/{match.maxPlayers}
-        </div>
-        {!joined ? (
-          <button className="join-premium-btn" onClick={handleJoin} disabled={joining}>
-            {joining ? "Joining..." : "Join Match"}
-          </button>
-        ) : (
-          <button className="join-premium-btn joined" disabled>Joined ✓</button>
-        )}
+        <div className="mini-meta">{match.mode} • Entry {match.entryFee} • {match.playersJoined?.length || 0}/{match.maxPlayers}</div>
+        {!joined ? <button className="join-premium-btn" onClick={handleJoin} disabled={joining}>{joining ? "Joining..." : "Join Match"}</button> : <button className="join-premium-btn joined" disabled>Joined ✓</button>}
       </div>
 
       <img className="match-big-banner" src={match.imageUrls?.[0] || "/bt.jpg"} alt="Match Banner" />
@@ -104,47 +73,27 @@ export default function MatchDetails({
           <div className="locked-content">
             <h3>Join to Unlock Details</h3>
             <p>Room ID, Password & Rules become visible only after joining.</p>
-            <button className="join-small-btn" onClick={handleJoin} disabled={joining}>
-              {joining ? "Joining..." : "Join Now"}
-            </button>
+            <button className="join-small-btn" onClick={handleJoin} disabled={joining}>{joining ? "Joining..." : "Join Now"}</button>
           </div>
         </div>
       )}
 
-      {match.status === "completed" ? (
-        <ResultsBoard match={match} />
-      ) : (
-        <PlayersBoard match={match} />
-      )}
+      {match.status === "completed" ? <ResultsBoard match={match} /> : <PlayersBoard match={match} />}
 
       {joined && (
         <div className="details-container">
           <h3 className="section-title">Room Details</h3>
           {!canReveal && <p className="muted">Room will be revealed a few minutes before match.</p>}
-
           {canReveal && (
             <>
-              <div className="detail-row">
-                <strong>Room ID:</strong> {match.roomID || "TBD"}
-                <button className="copy-btn" onClick={() => copy(match.roomID)}>Copy</button>
-              </div>
-              <div className="detail-row">
-                <strong>Password:</strong> {match.roomPassword || "—"}
-                <button className="copy-btn" onClick={() => copy(match.roomPassword)}>Copy</button>
-              </div>
+              <div className="detail-row"><strong>Room ID:</strong> {match.roomID || "TBD"}<button className="copy-btn" onClick={() => copy(match.roomID)}>Copy</button></div>
+              <div className="detail-row"><strong>Password:</strong> {match.roomPassword || "—"}<button className="copy-btn" onClick={() => copy(match.roomPassword)}>Copy</button></div>
             </>
           )}
-
           <div className="detail-row"><strong>Map:</strong> {displayMap}</div>
           <div className="detail-row"><strong>Mode:</strong> {match.mode}</div>
-
           <h3 className="section-title" style={{ marginTop: 20 }}>Rules</h3>
-          <p className="rules-text">
-            1 Kill = {match.killReward || 75} coins.<br />
-            No teaming, hacking, exploiting or emulator unless stated.<br />
-            Room details are private — do NOT share.<br />
-            Admin decisions are final.
-          </p>
+          <p className="rules-text">1 Kill = {match.killReward || 75} coins.<br />No teaming, hacking, exploiting or emulator unless stated.<br />Room details are private — do NOT share.<br />Admin decisions are final.</p>
         </div>
       )}
     </section>
