@@ -3,10 +3,8 @@ import { getAdmin, handleError, json, method } from "./_firebaseAdmin.js";
 export default async function handler(req, res) {
   try {
     method(req, "GET");
-
-    const required = ["FIREBASE_SERVICE_ACCOUNT", "OTP_EMAIL", "OTP_PASS"];
-    const missing = required.filter((name) => !process.env[name]);
-
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    const missing = ["FIREBASE_SERVICE_ACCOUNT", "OTP_EMAIL", "OTP_PASS"].filter((name) => !process.env[name]);
     let firebase = "unconfigured";
     if (!missing.includes("FIREBASE_SERVICE_ACCOUNT")) {
       try {
@@ -16,7 +14,6 @@ export default async function handler(req, res) {
         firebase = "invalid";
       }
     }
-
     const healthy = missing.length === 0 && firebase === "configured";
     return json(res, healthy ? 200 : 503, {
       status: healthy ? "ok" : "degraded",
