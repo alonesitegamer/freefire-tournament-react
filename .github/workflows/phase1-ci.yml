@@ -22,6 +22,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run check:security
       - run: npm run check:client-boundary
+      - run: npm test
       - run: npm run lint
       - run: npm run build
       - run: npm audit --audit-level=high
