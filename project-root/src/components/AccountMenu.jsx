@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase";
-import { User, Trophy, Link2, LogOut, Settings, MessageSquare, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { User, Trophy, Link2, LogOut, Settings, MessageSquare, ShieldCheck, Eye, EyeOff, Copy, Check } from "lucide-react";
 import { secureApi } from "../utils/apiClient";
 import "../styles/profilesettings.css";
 import Popup from "./Popup";
@@ -18,6 +18,7 @@ export default function AccountMenu({ profile, setProfile = () => {}, updateProf
   const [showConfirm, setShowConfirm] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const showPopup = (type, message) => { setPopup({ show: true, type, message }); setTimeout(() => setPopup({ show: false, type: "", message: "" }), 2200); };
   const isLong = newPass.length >= 6;
@@ -54,6 +55,17 @@ export default function AccountMenu({ profile, setProfile = () => {}, updateProf
     finally { setFeedbackSaving(false); }
   }
 
+  async function copyReferralCode() {
+    if (!profile.referralCode) return;
+    try {
+      await navigator.clipboard.writeText(profile.referralCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch (_) {
+      showPopup("error", "Unable to copy referral code.");
+    }
+  }
+
   return <div className="account-menu premium-panel">
     {popup.show && <Popup type={popup.type} message={popup.message} />}
     {view === "main" && <section className="panel account-profile-card premium glass-card">
@@ -77,7 +89,20 @@ export default function AccountMenu({ profile, setProfile = () => {}, updateProf
       <button className="btn" style={{ width: "100%", marginTop: 12 }} onClick={handlePasswordChange}>Update Password</button><button className="btn ghost" style={{ width: "100%", marginTop: 8 }} onClick={sendResetEmail}>Forgot Password? (Email Reset)</button>
     </section>}
 
-    {view === "refer" && <section className="panel glass-card"><button className="back-btn" onClick={() => setView("main")}>Back</button><h3>Refer a Friend</h3><p>Share your invite code:</p><div className="referral-code">{profile.referralCode}</div></section>}
+    {view === "refer" && <section className="panel glass-card">
+      <button className="back-btn" onClick={() => setView("main")}>Back</button>
+      <h3>Refer a Friend</h3>
+      <p>Share your unique invite code. A successful referral gives both players a bonus.</p>
+      <div className="referral-code" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <span>{profile.referralCode || "Generating..."}</span>
+        <button className="btn small" onClick={copyReferralCode} disabled={!profile.referralCode} title="Copy referral code">
+          {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <div className="muted-small" style={{ marginTop: 12 }}>
+        Successful referrals: {profile.referralCount ?? 0}
+      </div>
+    </section>}
 
     {view === "feedback" && <section className="panel glass-card"><button className="back-btn" onClick={() => setView("main")}>Back</button><h3>Send Feedback</h3><textarea className="field" rows={6} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Describe the issue..." /><button className="btn" onClick={sendFeedback} disabled={feedbackSaving}>{feedbackSaving ? "Sending..." : "Send Feedback"}</button></section>}
 
