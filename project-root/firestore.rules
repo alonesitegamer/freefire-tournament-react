@@ -9,13 +9,9 @@ service cloud.firestore {
     function validText(value, max) { return value is string && value.size() <= max; }
 
     match /users/{uid} {
-      // User documents are private. Public ranking should use a dedicated
-      // projection rather than exposing email/referral/economy data.
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
 
-      // Kept temporarily compatible with the existing registration flow.
-      // Phase 2's referral onboarding endpoint is the preferred path.
       allow create: if isOwner(uid)
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.coins is int
@@ -29,11 +25,11 @@ service cloud.firestore {
 
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'avatar', 'bio'])
-        && validText(request.resource.data.username, 32)
-        && validText(request.resource.data.displayName, 80)
-        && validText(request.resource.data.bio, 500)
-        && request.resource.data.avatar is string
-        && request.resource.data.avatar.matches('^/avatars/[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$')
+        && validText(request.resource.data.get('username', ''), 32)
+        && validText(request.resource.data.get('displayName', ''), 80)
+        && validText(request.resource.data.get('bio', ''), 500)
+        && request.resource.data.get('avatar', '/avatars/default.jpg') is string
+        && request.resource.data.get('avatar', '/avatars/default.jpg').matches('^/avatars/[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$')
         && unchanged('email')
         && unchanged('coins')
         && unchanged('xp')
@@ -53,16 +49,11 @@ service cloud.firestore {
     }
 
     match /matches/{matchId} {
-      // Temporary compatibility: match public metadata is still readable by
-      // signed-in clients. Room credentials must be migrated out of this doc
-      // before this read is removed. See scripts/migrate-match-secrets.mjs.
       allow get, list: if signedIn();
       allow create, update, delete: if isAdmin();
     }
 
-    match /matchSecrets/{matchId} {
-      allow read, write: if false;
-    }
+    match /matchSecrets/{matchId} { allow read, write: if false; }
 
     match /topupRequests/{requestId} {
       allow get, list: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
