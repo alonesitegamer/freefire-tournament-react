@@ -47,31 +47,42 @@ export default async function handler(req, res) {
         const uid = String(item?.uid || "").trim();
         if (!uid || seen.has(uid) || !playerByUid.has(uid)) return { status: 400, error: "Results contain an invalid or duplicate player" };
         seen.add(uid);
-
         const kills = positiveInt(item.kills, "kills", 1000);
         const placement = positiveInt(item.placement, "placement", MAX_RESULTS);
         if (placement < 1) return { status: 400, error: "placement must be at least 1" };
         normalized.push({ uid, username: playerByUid.get(uid).username || "Player", kills, placement });
       }
 
+      if (normalized.filter((item) => item.placement === 1).length !== 1) return { status: 400, error: "Exactly one player must have placement 1" };
+      if (new Set(normalized.map((item) => item.placement)).size !== normalized.length) return { status: 400, error: "Placements must be unique" };
+
       const killReward = positiveInt(match.killReward || 0, "killReward", 100000);
       const winnerReward = positiveInt(match.reward || 0, "reward", 10000000);
-      const paid = new Map();
+      const paid = new Map(normalized.map((item) => [item.uid, item.kills * killReward + (item.placement === 1 ? winnerReward : 0)]));
 
-      for (const item of normalized) {
-        const amount = item.kills * killReward + (item.placement === 1 ? winnerReward : 0);
-        paid.set(item.uid, amount);
+      // Firestore transactions must perform reads before writes.
+      const userRefs = normalized.map((item) => db.collection("users").doc(item.uid));
+      const userSnaps = await Promise.all(userRefs.map((ref) => tx.get(ref)));
+      const usersByUid = new Map();
+      for (let i = 0; i < userSnaps.length; i += 1) {
+        if (!userSnaps[i].exists) return { status: 404, error: "Result player account not found" };
+        usersByUid.set(normalized[i].uid, userSnaps[i].data());
       }
 
+      const publicResults = normalized.map((item) => ({
+        uid: item.uid,
+        username: item.username,
+        kills: item.kills,
+        placement: item.placement,
+        coinsEarned: paid.get(item.uid) || 0,
+      }));
+
       for (const item of normalized) {
-        const userRef = db.collection("users").doc(item.uid);
-        const userSnap = await tx.get(userRef);
-        if (!userSnap.exists) return { status: 404, error: "Result player account not found" };
-        const currentCoins = Number(userSnap.data().coins || 0);
+        const userData = usersByUid.get(item.uid);
         const earned = paid.get(item.uid) || 0;
-        tx.update(userRef, {
-          coins: currentCoins + earned,
-          wins: Number(userSnap.data().wins || 0) + (item.placement === 1 ? 1 : 0),
+        tx.update(userRefs[normalized.indexOf(item)], {
+          coins: Number(userData.coins || 0) + earned,
+          wins: Number(userData.wins || 0) + (item.placement === 1 ? 1 : 0),
         });
         tx.create(db.collection("economyLedger").doc(`match_${matchId}_${item.uid}`), {
           type: "match_payout",
@@ -84,14 +95,6 @@ export default async function handler(req, res) {
           processedBy: user.uid,
         });
       }
-
-      const publicResults = normalized.map((item) => ({
-        uid: item.uid,
-        username: item.username,
-        kills: item.kills,
-        placement: item.placement,
-        coinsEarned: paid.get(item.uid) || 0,
-      }));
 
       tx.create(settlementRef, {
         matchId,
