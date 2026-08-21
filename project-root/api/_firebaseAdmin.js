@@ -67,10 +67,7 @@ export async function requireAdmin(req) {
 }
 
 export async function requireAdminWithAppCheck(req) {
-  const [{ user }, appCheck] = await Promise.all([
-    requireUserWithAppCheck(req),
-    requireAppCheck(req),
-  ]);
+  const [user, appCheck] = await Promise.all([requireUser(req), requireAppCheck(req)]);
   if (user.admin !== true) {
     const error = new Error("Admin access required"); error.status = 403; throw error;
   }
