@@ -20,16 +20,13 @@ function parseServiceAccount() {
 export function getAdmin() {
   if (!initialized) {
     const serviceAccount = parseServiceAccount();
-    if (!serviceAccount) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT is not configured");
-    }
+    if (!serviceAccount) throw new Error("FIREBASE_SERVICE_ACCOUNT is not configured");
 
     if (!admin.apps.length) {
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     }
     initialized = true;
   }
-
   return admin;
 }
 
@@ -41,20 +38,35 @@ export async function requireUser(req) {
     throw error;
   }
 
-  const token = authorization.slice("Bearer ".length).trim();
-  if (!token) {
-    const error = new Error("Authentication required");
-    error.status = 401;
-    throw error;
-  }
-
   try {
-    return await getAdmin().auth().verifyIdToken(token, true);
+    return await getAdmin().auth().verifyIdToken(authorization.slice(7).trim(), true);
   } catch {
     const error = new Error("Invalid or expired authentication token");
     error.status = 401;
     throw error;
   }
+}
+
+export async function requireAppCheck(req) {
+  const token = req.headers["x-firebase-appcheck"];
+  if (!token) {
+    const error = new Error("App Check required");
+    error.status = 401;
+    throw error;
+  }
+
+  try {
+    return await getAdmin().appCheck().verifyToken(token);
+  } catch {
+    const error = new Error("Invalid App Check token");
+    error.status = 401;
+    throw error;
+  }
+}
+
+export async function requireUserWithAppCheck(req) {
+  const [user, appCheck] = await Promise.all([requireUser(req), requireAppCheck(req)]);
+  return { user, appCheck };
 }
 
 export async function requireAdmin(req) {
