@@ -1,90 +1,65 @@
 // src/utils/firestore.js
 import { db } from "../firebase";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  doc,
-  updateDoc,
-  serverTimestamp,
-  query,
-  where,
-  orderBy,
-} from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, query, where, orderBy } from "firebase/firestore";
+import { secureApi } from "./apiClient";
 
-// ✅ Fetch match history for a user
+// Read-only helpers remain client-side. Any mutation that affects economy,
+// match history, or player statistics goes through the authenticated API.
 export async function getMatchHistory(userId) {
-  const q = query(
-    collection(db, "matchHistory"),
-    where("userId", "==", userId),
-    orderBy("createdAt", "desc")
-  );
+  const q = query(collection(db, "matchHistory"), where("userId", "==", userId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
-// ✅ Add a new match to history
 export async function addMatchHistory(userId, matchData) {
-  await addDoc(collection(db, "matchHistory"), {
-    userId,
-    ...matchData,
-    createdAt: serverTimestamp(),
+  if (!userId) throw new Error("User is required");
+  return secureApi("/api/player", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "history",
+      matchId: matchData.matchId,
+      result: matchData.result,
+      kills: matchData.kills || 0,
+      placement: matchData.placement || 0,
+      idempotencyKey: matchData.idempotencyKey || crypto.randomUUID(),
+    }),
   });
 }
 
-// ✅ Fetch withdrawal history
 export async function getWithdrawHistory(userId) {
-  const q = query(
-    collection(db, "withdrawRequests"),
-    where("userId", "==", userId),
-    orderBy("createdAt", "desc")
-  );
+  const q = query(collection(db, "withdrawRequests"), where("userId", "==", userId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
-// ✅ Add withdrawal request
-export async function addWithdrawRequest(userId, amount, upiId) {
-  await addDoc(collection(db, "withdrawRequests"), {
-    userId,
-    amount,
-    upiId,
-    status: "pending",
-    createdAt: serverTimestamp(),
+export async function addWithdrawRequest(_userId, amount, upiId) {
+  return secureApi("/api/economy", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "withdraw",
+      amount,
+      type: "UPI",
+      upiId,
+      idempotencyKey: crypto.randomUUID(),
+    }),
   });
 }
 
-// ✅ Get a user's profile
 export async function getUserProfile(userId) {
   const ref = doc(db, "users", userId);
   const snap = await getDoc(ref);
   return snap.exists() ? snap.data() : null;
 }
 
-// ✅ Update user coin balance
-export async function updateUserCoins(userId, coins) {
-  const ref = doc(db, "users", userId);
-  await updateDoc(ref, { coins });
+export async function updateUserCoins() {
+  throw new Error("Direct coin updates are disabled. Use a server-authoritative economy action.");
 }
 
-// ✅ Increment player stats (NEW FEATURE)
-export async function incrementPlayerStats(userId, { matches = 0, kills = 0, booyah = 0, coins = 0 }) {
-  const ref = doc(db, "users", userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
-
-  const stats = snap.data().stats || {
-    matchesPlayed: 0,
-    totalKills: 0,
-    booyahs: 0,
-    coinsEarned: 0,
-  };
-
-  await updateDoc(ref, {
-    "stats.matchesPlayed": stats.matchesPlayed + matches,
-    "stats.totalKills": stats.totalKills + kills,
-    "stats.booyahs": stats.booyahs + booyah,
-    "stats.coinsEarned": stats.coinsEarned + coins,
+export async function incrementPlayerStats(userId, { matches = 0, kills = 0, booyah = 0, coins = 0, idempotencyKey = crypto.randomUUID() }) {
+  if (!userId) throw new Error("User is required");
+  if (coins !== 0) throw new Error("Direct coin/stat reward mutation is disabled");
+  return secureApi("/api/player", {
+    method: "POST",
+    body: JSON.stringify({ action: "stats", matches, kills, booyah, idempotencyKey }),
   });
 }
