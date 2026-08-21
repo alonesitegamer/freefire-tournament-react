@@ -18,13 +18,22 @@ export default async function handler(req, res) {
 
     const admin = getAdmin();
     const db = admin.firestore();
-    const userRef = db.collection("users").doc(user.uid);
+    let referrerRef = null;
 
+    if (code) {
+      const matches = await db.collection("users").where("referralCode", "==", code).limit(2).get();
+      if (matches.empty) return json(res, 400, { error: "Referral code not found" });
+      if (matches.size > 1) return json(res, 409, { error: "Referral code is ambiguous" });
+      referrerRef = matches.docs[0].ref;
+      if (referrerRef.id === user.uid) return json(res, 400, { error: "Self-referrals are not allowed" });
+    }
+
+    const userRef = db.collection("users").doc(user.uid);
     const result = await db.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef);
-      let current;
+      let current = userSnap.exists ? userSnap.data() : null;
 
-      if (!userSnap.exists) {
+      if (!current) {
         current = {
           email: user.email || "",
           displayName: user.name || "",
@@ -44,52 +53,36 @@ export default async function handler(req, res) {
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
         tx.create(userRef, current);
-      } else {
-        current = userSnap.data();
       }
 
-      if (current.welcomeBonusGiven || current.hasRedeemedReferral) {
-        return { status: 200, alreadyProcessed: true, reward: 0 };
-      }
+      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 200, alreadyProcessed: true, reward: 0 };
+      if (Number(current.coins || 0) !== 0) return { status: 409, error: "Initial reward requires an untouched account" };
 
-      const coins = Number(current.coins || 0);
-      if (coins !== 0) return { status: 409, error: "Initial reward requires an untouched account" };
-
-      let referrerId = null;
-      if (code) {
-        const querySnap = await db.collection("users").where("referralCode", "==", code).limit(2).get();
-        if (querySnap.empty) return { status: 400, error: "Referral code not found" };
-        if (querySnap.size > 1) return { status: 409, error: "Referral code is ambiguous" };
-        referrerId = querySnap.docs[0].id;
-        if (referrerId === user.uid) return { status: 400, error: "Self-referrals are not allowed" };
-      }
-
-      const reward = referrerId ? REFERRED_BONUS : WELCOME_BONUS;
+      const reward = referrerRef ? REFERRED_BONUS : WELCOME_BONUS;
       tx.set(userRef, {
         ...current,
         email: current.email || user.email || "",
         displayName: current.displayName || user.name || "",
         coins: reward,
         welcomeBonusGiven: true,
-        hasRedeemedReferral: Boolean(referrerId),
+        hasRedeemedReferral: Boolean(referrerRef),
         referral: code || current.referral || null,
-        referrerId,
-        referralBonusGiven: Boolean(referrerId),
+        referrerId: referrerRef?.id || null,
+        referralBonusGiven: Boolean(referrerRef),
         adsWatchedSinceReferral: 0,
         referrerRewardGiven: false,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      const eventId = crypto.createHash("sha256").update(`${user.uid}:${referrerId || "none"}:${reward}`).digest("hex");
+      const eventId = crypto.createHash("sha256").update(`${user.uid}:${referrerRef?.id || "none"}:${reward}`).digest("hex");
       tx.create(db.collection("economyLedger").doc(`welcome_${eventId}`), {
-        type: referrerId ? "referral_welcome" : "welcome_bonus",
+        type: referrerRef ? "referral_welcome" : "welcome_bonus",
         uid: user.uid,
-        referrerId,
+        referrerId: referrerRef?.id || null,
         amount: reward,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      return { status: 200, reward, referrerId };
+      return { status: 200, reward, referrerId: referrerRef?.id || null };
     });
 
     return json(res, result.status, result.status >= 400 ? { error: result.error } : result);
