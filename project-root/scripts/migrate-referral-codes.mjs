@@ -1,5 +1,8 @@
 import admin from "firebase-admin";
 
+const LEGACY_CODE = /^[A-Z0-9]{6,16}$/;
+const CANONICAL_CODE = /^[A-Z0-9]{8}$/;
+
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
   console.error("FIREBASE_SERVICE_ACCOUNT is required.");
   process.exit(1);
@@ -11,26 +14,53 @@ admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
 const db = admin.firestore();
 const users = await db.collection("users").get();
-let created = 0;
+let canonicalCreated = 0;
+let aliasCreated = 0;
 let alreadyPresent = 0;
 const collisions = [];
+const skipped = [];
 
 for (const userDoc of users.docs) {
   const data = userDoc.data();
   const code = String(data.referralCode || "").trim().toUpperCase();
-  if (!/^[A-Z0-9]{8}$/.test(code)) continue;
 
-  const ref = db.collection("referralCodes").doc(code);
+  if (!code || !LEGACY_CODE.test(code)) {
+    if (code) skipped.push({ userId: userDoc.id, code, reason: "Unsupported legacy format" });
+    continue;
+  }
+
+  const collectionName = CANONICAL_CODE.test(code) ? "referralCodes" : "referralAliases";
+  const ref = db.collection(collectionName).doc(code);
   const existing = await ref.get();
+
   if (!existing.exists) {
-    await ref.create({ uid: userDoc.id, createdAt: admin.firestore.FieldValue.serverTimestamp(), migrated: true });
-    created += 1;
+    await ref.create({
+      uid: userDoc.id,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      migrated: true,
+      legacy: !CANONICAL_CODE.test(code),
+    });
+    if (CANONICAL_CODE.test(code)) canonicalCreated += 1;
+    else aliasCreated += 1;
   } else if (existing.data()?.uid === userDoc.id) {
     alreadyPresent += 1;
   } else {
-    collisions.push({ code, existingUid: existing.data()?.uid, userId: userDoc.id });
+    collisions.push({
+      code,
+      collection: collectionName,
+      existingUid: existing.data()?.uid,
+      userId: userDoc.id,
+    });
   }
 }
 
-console.log(JSON.stringify({ scanned: users.size, created, alreadyPresent, collisions }, null, 2));
+console.log(JSON.stringify({
+  scanned: users.size,
+  canonicalCreated,
+  aliasCreated,
+  alreadyPresent,
+  skipped,
+  collisions,
+}, null, 2));
+
 if (collisions.length) process.exitCode = 2;
