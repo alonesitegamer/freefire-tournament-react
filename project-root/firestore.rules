@@ -13,9 +13,7 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.coins is int
         && request.resource.data.coins >= 0
-        && request.resource.data.coins <= 20
-        && request.resource.data.xp == 0
-        && request.resource.data.level == 1;
+        && request.resource.data.coins <= 20;
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'avatar', 'bio'])
         && unchanged('email')
@@ -40,8 +38,6 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Financial request documents are server-created. The browser may only
-    // read its own request or an admin's queue.
     match /topupRequests/{requestId} {
       allow get, list: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create, update, delete: if false;
