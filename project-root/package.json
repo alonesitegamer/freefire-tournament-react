@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "check:api": "node --check api/_firebaseAdmin.js && node --check api/_rateLimit.js && node --check api/check-email.js && node --check api/send-otp.js && node --check api/verify-otp.js && node --check api/economy.js && node --check api/referral.js && node --check api/matches.js && node --check api/admin-matches.js",
+    "check:security": "npm run check:api && node --check scripts/set-admin.mjs && node --check scripts/migrate-match-secrets.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
