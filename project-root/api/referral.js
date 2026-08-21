@@ -13,56 +13,86 @@ export default async function handler(req, res) {
     const allowed = await rateLimit({ key: `referral:${user.uid}`, limit: 10, windowSeconds: 3600 });
     if (!allowed) return json(res, 429, { error: "Too many referral attempts" });
 
-    const code = String(req.body?.referralCode || "").trim().toUpperCase();
-    if (code && !REFERRAL_CODE.test(code)) return json(res, 400, { error: "Invalid referral code" });
+    const requestedCode = String(req.body?.referralCode || "").trim().toUpperCase();
+    if (requestedCode && !REFERRAL_CODE.test(requestedCode)) return json(res, 400, { error: "Invalid referral code" });
 
-    const db = getAdmin().firestore();
+    const admin = getAdmin();
+    const db = admin.firestore();
+    let referrerRef = null;
+    let referralAccepted = false;
+    let ignoredReferralReason = null;
+
+    if (requestedCode) {
+      const matches = await db.collection("users").where("referralCode", "==", requestedCode).limit(2).get();
+      if (matches.size === 1 && matches.docs[0].id !== user.uid) {
+        referrerRef = matches.docs[0].ref;
+        referralAccepted = true;
+      } else if (matches.empty) {
+        ignoredReferralReason = "Referral code not found";
+      } else if (matches.size > 1) {
+        ignoredReferralReason = "Referral code is ambiguous";
+      } else {
+        ignoredReferralReason = "Self-referrals are not allowed";
+      }
+    }
+
     const userRef = db.collection("users").doc(user.uid);
-
     const result = await db.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) return { status: 404, error: "Profile not found" };
-      const current = userSnap.data();
-      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 409, error: "Welcome/referral reward already processed" };
+      let current = userSnap.exists ? userSnap.data() : null;
 
-      let referrerId = null;
-      if (code) {
-        const querySnap = await db.collection("users").where("referralCode", "==", code).limit(2).get();
-        if (querySnap.empty) return { status: 400, error: "Referral code not found" };
-        if (querySnap.size > 1) return { status: 409, error: "Referral code is ambiguous" };
-        referrerId = querySnap.docs[0].id;
-        if (referrerId === user.uid) return { status: 400, error: "Self-referrals are not allowed" };
+      if (!current) {
+        current = {
+          email: user.email || "",
+          displayName: user.name || "",
+          username: "",
+          coins: 0,
+          xp: 0,
+          level: 1,
+          referralCode: user.uid.substring(0, 8).toUpperCase(),
+          referral: null,
+          hasRedeemedReferral: false,
+          welcomeBonusGiven: false,
+          referralBonusGiven: false,
+          adsWatched: 0,
+          adsWatchedSinceReferral: 0,
+          referrerRewardGiven: false,
+          lastDaily: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        tx.create(userRef, current);
       }
 
-      const coins = Number(current.coins || 0);
-      if (coins !== 0) return { status: 409, error: "Initial reward can only be claimed on an untouched account" };
+      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 200, alreadyProcessed: true, reward: 0, referralAccepted: Boolean(current.referrerId) };
+      if (Number(current.coins || 0) !== 0) return { status: 409, error: "Initial reward requires an untouched account" };
 
-      const reward = referrerId ? REFERRED_BONUS : WELCOME_BONUS;
-      tx.update(userRef, {
+      const reward = referrerRef ? REFERRED_BONUS : WELCOME_BONUS;
+      tx.set(userRef, {
+        ...current,
+        email: current.email || user.email || "",
+        displayName: current.displayName || user.name || "",
         coins: reward,
         welcomeBonusGiven: true,
-        hasRedeemedReferral: Boolean(referrerId),
-        referral: code || null,
-        referrerId: referrerId || null,
-        referralBonusGiven: Boolean(referrerId),
+        hasRedeemedReferral: Boolean(referrerRef),
+        referral: referrerRef ? requestedCode : null,
+        referrerId: referrerRef?.id || null,
+        referralBonusGiven: Boolean(referrerRef),
         adsWatchedSinceReferral: 0,
         referrerRewardGiven: false,
-      });
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
-      const eventId = crypto.createHash("sha256").update(`${user.uid}:${referrerId || "none"}:${reward}`).digest("hex");
-      tx.set(db.collection("economyLedger").doc(`welcome_${eventId}`), {
-        type: referrerId ? "referral_welcome" : "welcome_bonus",
+      const eventId = crypto.createHash("sha256").update(`${user.uid}:${referrerRef?.id || "none"}:${reward}`).digest("hex");
+      tx.create(db.collection("economyLedger").doc(`welcome_${eventId}`), {
+        type: referrerRef ? "referral_welcome" : "welcome_bonus",
         uid: user.uid,
-        referrerId,
+        referrerId: referrerRef?.id || null,
         amount: reward,
-        createdAt: getAdmin().firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      return { status: 200, reward, referrerId };
+      return { status: 200, reward, referrerId: referrerRef?.id || null, referralAccepted };
     });
 
-    return json(res, result.status, result.status >= 400 ? { error: result.error } : result);
-  } catch (error) {
-    return handleError(res, error);
-  }
+    return json(res, result.status, result.status >= 400 ? { error: result.error } : { ...result, ignoredReferralReason });
+  } catch (error) { return handleError(res, error); }
 }
