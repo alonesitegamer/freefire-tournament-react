@@ -1,153 +1,90 @@
-// /api/send-otp.js
+import crypto from "crypto";
 import nodemailer from "nodemailer";
-import admin from "firebase-admin";
-import fs from "fs";
+import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
+import { rateLimit } from "./_rateLimit.js";
 
-const LOCAL_SA_PATH = "/mnt/data/imperial-esports-da816-firebase-adminsdk-fbsvc-bdfc7db5b4.json";
+const OTP_TTL_MS = 10 * 60 * 1000;
+const MAX_SENDS_PER_IP = 5;
+const MAX_SENDS_PER_EMAIL = 3;
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
+const DISPOSABLE_DOMAINS = new Set([
+  "10minutemail.com", "mailinator.com", "tempmail.com", "guerrillamail.com",
+  "maildrop.cc", "trashmail.com", "tempmail.net", "yopmail.com",
+  "dispostable.com", "getnada.com", "spamgourmet.com", "disposablemail.com",
+  "mail-temporaire.com", "moakt.com",
+]);
 
-  let sa;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      // fix private_key if escaped newlines
-      if (sa.private_key && sa.private_key.includes("\\n")) {
-        sa.private_key = sa.private_key.replace(/\\n/g, "\n");
-      }
-    } catch (e) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", e);
-      sa = null;
-    }
-  }
-
-  if (!sa) {
-    try {
-      if (fs.existsSync(LOCAL_SA_PATH)) {
-        const raw = fs.readFileSync(LOCAL_SA_PATH, "utf8");
-        sa = JSON.parse(raw);
-      }
-    } catch (err) {
-      console.error("Failed to load local service account:", err);
-    }
-  }
-
-  if (!sa) {
-    console.error("Missing Firebase service account configuration.");
-    return null;
-  }
-
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(sa),
-    });
-    return admin;
-  } catch (err) {
-    console.error("Failed to initialize Firebase Admin:", err);
-    return null;
-  }
+function hashOtp(code) {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
 }
 
-function isDisposableEmail(email) {
-  const disposableDomains = [
-    "10minutemail.com","mailinator.com","tempmail.com","guerrillamail.com",
-    "maildrop.cc","trashmail.com","tempmail.net","yopmail.com","dispostable.com",
-    "getnada.com","spamgourmet.com","disposablemail.com","mail-temporaire.com","moakt.com",
-  ];
-  const domain = (email || "").split("@")[1] || "";
-  return disposableDomains.includes(domain.toLowerCase());
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  return String(forwarded || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { email } = req.body;
-  if (!email || typeof email !== "string") {
-    return res.status(400).json({ error: "Missing email" });
-  }
-
-  const adminApp = initAdmin();
-  if (!adminApp) return res.status(500).json({ error: "Server configuration error" });
-
-  const db = admin.firestore();
-
-  // dispose check
-  if (isDisposableEmail(email)) {
-    return res.status(400).json({ error: "Disposable email addresses are not allowed" });
-  }
-
-  // check if user already exists
   try {
-    const user = await admin.auth().getUserByEmail(email);
-    if (user) {
-      return res.status(400).json({ error: "An account already exists with this email" });
-    }
-  } catch (err) {
-    // if error code is "auth/user-not-found", it's expected and OK
-    if (err.code && String(err.code).includes("auth/user-not-found")) {
-      // ok, proceed
-    } else {
-      console.error("getUserByEmail error (non not-found):", err);
-      // continue anyway (to avoid blocking) but log
-    }
-  }
+    method(req, "POST");
 
-  // generate OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
-  const docId = encodeURIComponent(email.toLowerCase());
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json(res, 400, { error: "A valid email is required" });
+    }
 
-  try {
+    const domain = email.split("@")[1];
+    if (DISPOSABLE_DOMAINS.has(domain)) {
+      return json(res, 400, { error: "Disposable email addresses are not allowed" });
+    }
+
+    const ip = getClientIp(req);
+    const [ipAllowed, emailAllowed] = await Promise.all([
+      rateLimit({ key: `otp-send:ip:${crypto.createHash("sha256").update(ip).digest("hex")}`, limit: MAX_SENDS_PER_IP, windowSeconds: 3600 }),
+      rateLimit({ key: `otp-send:email:${crypto.createHash("sha256").update(email).digest("hex")}`, limit: MAX_SENDS_PER_EMAIL, windowSeconds: 3600 }),
+    ]);
+
+    if (!ipAllowed || !emailAllowed) {
+      return json(res, 429, { error: "Too many OTP requests. Please try again later." });
+    }
+
+    const admin = getAdmin();
+    try {
+      await admin.auth().getUserByEmail(email);
+      return json(res, 400, { error: "An account already exists with this email" });
+    } catch (error) {
+      if (error?.code !== "auth/user-not-found") throw error;
+    }
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const db = admin.firestore();
+    const docId = encodeURIComponent(email);
+    const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + OTP_TTL_MS);
+
     await db.collection("otpRequests").doc(docId).set({
-      email: email.toLowerCase(),
-      code: otp,
+      email,
+      codeHash: hashOtp(otp),
+      attempts: 0,
+      maxAttempts: 5,
       expiresAt,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // create transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: process.env.OTP_EMAIL,
-        pass: process.env.OTP_PASS,
-      },
+      auth: { user: process.env.OTP_EMAIL, pass: process.env.OTP_PASS },
     });
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; padding:24px; background:#0b0b0b; color:#fff; border-radius:8px;">
-        <div style="max-width:600px;margin:0 auto;">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-            <img src="https://tournament-react.vercel.app/icon.jpg" alt="logo" style="width:48px;height:48px;border-radius:8px;object-fit:cover"/>
-            <div>
-              <h2 style="margin:0;color:#ffb347;">Imperial Esports — Account verification</h2>
-              <div style="color:#bfc7d1;font-size:14px;">Use the code below to finish registration. Expires in 10 minutes.</div>
-            </div>
-          </div>
-          <div style="background:#0f0f0f;padding:18px;border-radius:10px;text-align:center;margin-top:8px;">
-            <div style="font-size:36px;font-weight:700;letter-spacing:6px;color:#fff">${otp}</div>
-          </div>
-          <div style="margin-top:14px;color:#bfc7d1;font-size:13px;">
-            If you did not request this, you can safely ignore this email.
-          </div>
-        </div>
-      </div>
-    `;
 
     await transporter.sendMail({
       from: `"Imperial Esports" <${process.env.OTP_EMAIL}>`,
       to: email,
       subject: "Your verification OTP — Imperial Esports",
-      html,
+      text: `Your Imperial Esports verification code is ${otp}. It expires in 10 minutes. If you did not request this, ignore this email.`,
+      html: `<div style="font-family:Arial,sans-serif;padding:24px"><h2>Imperial Esports</h2><p>Your verification code:</p><p style="font-size:36px;font-weight:700;letter-spacing:8px">${otp}</p><p>This code expires in 10 minutes.</p></div>`,
     });
 
-    console.log(`[send-otp] OTP to ${email}: ${otp}`); // dev log
-    return res.status(200).json({ success: true, message: "OTP sent" });
-  } catch (err) {
-    console.error("send-otp error", err);
-    return res.status(500).json({ error: "Failed to send OTP" });
+    // Never log the OTP in production.
+    return json(res, 200, { success: true, message: "OTP sent" });
+  } catch (error) {
+    return handleError(res, error);
   }
 }
