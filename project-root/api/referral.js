@@ -16,14 +16,44 @@ export default async function handler(req, res) {
     const code = String(req.body?.referralCode || "").trim().toUpperCase();
     if (code && !REFERRAL_CODE.test(code)) return json(res, 400, { error: "Invalid referral code" });
 
-    const db = getAdmin().firestore();
+    const admin = getAdmin();
+    const db = admin.firestore();
     const userRef = db.collection("users").doc(user.uid);
 
     const result = await db.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) return { status: 404, error: "Profile not found" };
-      const current = userSnap.data();
-      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 409, error: "Welcome/referral reward already processed" };
+      let current;
+
+      if (!userSnap.exists) {
+        current = {
+          email: user.email || "",
+          displayName: user.name || "",
+          username: "",
+          coins: 0,
+          xp: 0,
+          level: 1,
+          referralCode: user.uid.substring(0, 8).toUpperCase(),
+          referral: code || null,
+          hasRedeemedReferral: false,
+          welcomeBonusGiven: false,
+          referralBonusGiven: false,
+          adsWatched: 0,
+          adsWatchedSinceReferral: 0,
+          referrerRewardGiven: false,
+          lastDaily: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        tx.create(userRef, current);
+      } else {
+        current = userSnap.data();
+      }
+
+      if (current.welcomeBonusGiven || current.hasRedeemedReferral) {
+        return { status: 200, alreadyProcessed: true, reward: 0 };
+      }
+
+      const coins = Number(current.coins || 0);
+      if (coins !== 0) return { status: 409, error: "Initial reward requires an untouched account" };
 
       let referrerId = null;
       if (code) {
@@ -34,35 +64,34 @@ export default async function handler(req, res) {
         if (referrerId === user.uid) return { status: 400, error: "Self-referrals are not allowed" };
       }
 
-      const coins = Number(current.coins || 0);
-      if (coins !== 0) return { status: 409, error: "Initial reward can only be claimed on an untouched account" };
-
       const reward = referrerId ? REFERRED_BONUS : WELCOME_BONUS;
-      tx.update(userRef, {
+      tx.set(userRef, {
+        ...current,
+        email: current.email || user.email || "",
+        displayName: current.displayName || user.name || "",
         coins: reward,
         welcomeBonusGiven: true,
         hasRedeemedReferral: Boolean(referrerId),
-        referral: code || null,
-        referrerId: referrerId || null,
+        referral: code || current.referral || null,
+        referrerId,
         referralBonusGiven: Boolean(referrerId),
         adsWatchedSinceReferral: 0,
         referrerRewardGiven: false,
-      });
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
       const eventId = crypto.createHash("sha256").update(`${user.uid}:${referrerId || "none"}:${reward}`).digest("hex");
-      tx.set(db.collection("economyLedger").doc(`welcome_${eventId}`), {
+      tx.create(db.collection("economyLedger").doc(`welcome_${eventId}`), {
         type: referrerId ? "referral_welcome" : "welcome_bonus",
         uid: user.uid,
         referrerId,
         amount: reward,
-        createdAt: getAdmin().firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return { status: 200, reward, referrerId };
     });
 
     return json(res, result.status, result.status >= 400 ? { error: result.error } : result);
-  } catch (error) {
-    return handleError(res, error);
-  }
+  } catch (error) { return handleError(res, error); }
 }
