@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { getAdmin, handleError, json, method, normalizeEmail, requireAppCheck } from "./_firebaseAdmin.js";
+import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
 import { rateLimit } from "./_rateLimit.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -12,9 +12,7 @@ const DISPOSABLE_DOMAINS = new Set([
   "getnada.com", "spamgourmet.com", "disposablemail.com", "mail-temporaire.com", "moakt.com",
 ]);
 
-function hashOtp(code) {
-  return crypto.createHash("sha256").update(String(code)).digest("hex");
-}
+function hashOtp(code) { return crypto.createHash("sha256").update(String(code)).digest("hex"); }
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
   return String(forwarded || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
@@ -23,15 +21,9 @@ function getClientIp(req) {
 export default async function handler(req, res) {
   try {
     method(req, "POST");
-    await requireAppCheck(req);
-
     const email = normalizeEmail(req.body?.email);
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return json(res, 400, { error: "A valid email is required" });
-    }
-    if (DISPOSABLE_DOMAINS.has(email.split("@")[1])) {
-      return json(res, 400, { error: "Disposable email addresses are not allowed" });
-    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: "A valid email is required" });
+    if (DISPOSABLE_DOMAINS.has(email.split("@")[1])) return json(res, 400, { error: "Disposable email addresses are not allowed" });
 
     const ip = getClientIp(req);
     const [ipAllowed, emailAllowed] = await Promise.all([
@@ -50,8 +42,7 @@ export default async function handler(req, res) {
 
     const otp = crypto.randomInt(100000, 1000000).toString();
     const db = admin.firestore();
-    const docId = encodeURIComponent(email);
-    await db.collection("otpRequests").doc(docId).set({
+    await db.collection("otpRequests").doc(encodeURIComponent(email)).set({
       email,
       codeHash: hashOtp(otp),
       attempts: 0,
