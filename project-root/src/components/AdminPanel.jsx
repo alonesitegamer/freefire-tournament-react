@@ -1,14 +1,7 @@
 import React, { useEffect, useState } from "react";
-import {
-  doc,
-  updateDoc,
-  serverTimestamp,
-  getDoc,
-  deleteDoc,
-  collection,
-  addDoc,
-} from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { secureApi } from "../utils/apiClient";
 import "./AdminPanel.css";
 
 const DEFAULT_MAP_POOL = ["Bermuda", "Purgatory", "Kalahari"];
@@ -19,387 +12,202 @@ export default function AdminPanel({
   createMatch = () => {},
   editMatch = () => {},
   deleteMatch = () => {},
+  requests = { topup: [], withdraw: [] },
+  onRefreshRequests = () => {},
 }) {
   const [localMatches, setLocalMatches] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [processingRequest, setProcessingRequest] = useState(null);
 
   const [form, setForm] = useState({
-    title: "",
-    type: "tournament",
-    mode: "Solo",
-    mapPool: DEFAULT_MAP_POOL,
-    maxPlayers: 4,
-    entryFee: 0,
-    reward: 0,
-    killReward: 75,
-    startTime: "",
-    revealDelayMinutes: 5,
-    roomID: "",
-    roomPassword: "",
-    imageUrls: [],
+    title: "", type: "tournament", mode: "Solo", mapPool: DEFAULT_MAP_POOL,
+    maxPlayers: 4, entryFee: 0, reward: 0, killReward: 75,
+    startTime: "", revealDelayMinutes: 5, roomID: "", roomPassword: "", imageUrls: [],
   });
 
-  useEffect(() => {
-    setLocalMatches(matches || []);
-  }, [matches]);
+  useEffect(() => setLocalMatches(matches || []), [matches]);
 
-  // -----------------------------
-  // OPEN CREATE
-  // -----------------------------
   function openCreate() {
     setEditing(null);
-    setForm({
-      title: "",
-      type: "tournament",
-      mode: "Solo",
-      mapPool: DEFAULT_MAP_POOL,
-      maxPlayers: 4,
-      entryFee: 0,
-      reward: 0,
-      killReward: 75,
-      startTime: "",
-      revealDelayMinutes: 5,
-      roomID: "",
-      roomPassword: "",
-      imageUrls: [],
-    });
+    setForm({ title: "", type: "tournament", mode: "Solo", mapPool: DEFAULT_MAP_POOL, maxPlayers: 4, entryFee: 0, reward: 0, killReward: 75, startTime: "", revealDelayMinutes: 5, roomID: "", roomPassword: "", imageUrls: [] });
     setShowCreate(true);
   }
 
-  // -----------------------------
-  // OPEN EDIT
-  // -----------------------------
   function openEdit(m) {
     setEditing(m);
     setForm({
-      title: m.title || "",
-      type: m.type || "tournament",
-      mode: m.mode || "Solo",
-      mapPool: m.mapPool || DEFAULT_MAP_POOL,
-      maxPlayers: m.maxPlayers || 4,
-      entryFee: m.entryFee || 0,
-      reward: m.reward || 0,
-      killReward: m.killReward ?? 75,
-      startTime: m.startTime
-        ? new Date(
-            m.startTime.seconds
-              ? m.startTime.toDate()
-              : m.startTime
-          )
-            .toISOString()
-            .slice(0, 16)
-        : "",
-      revealDelayMinutes: m.revealDelayMinutes || 5,
-      roomID: m.roomID || "",
-      roomPassword: m.roomPassword || "",
-      imageUrls: m.imageUrls || [],
+      title: m.title || "", type: m.type || "tournament", mode: m.mode || "Solo",
+      mapPool: m.mapPool || DEFAULT_MAP_POOL, maxPlayers: m.maxPlayers || 4,
+      entryFee: m.entryFee || 0, reward: m.reward || 0, killReward: m.killReward ?? 75,
+      startTime: m.startTime ? new Date(m.startTime.seconds ? m.startTime.toDate() : m.startTime).toISOString().slice(0, 16) : "",
+      revealDelayMinutes: m.revealDelayMinutes || 5, roomID: m.roomID || "", roomPassword: m.roomPassword || "", imageUrls: m.imageUrls || [],
     });
     setShowCreate(true);
   }
 
-  // -----------------------------
-  // SAVE MATCH
-  // -----------------------------
   async function handleSave() {
+    if (!form.title.trim()) return alert("Match title is required.");
+    if (Number(form.maxPlayers) < 2 || Number(form.maxPlayers) > 48) return alert("Max players must be between 2 and 48.");
     setSaving(true);
-
     try {
       const payload = {
-        title: form.title,
-        type: form.type,
-        mode: form.mode,
-        mapPool: form.mapPool,
-        maxPlayers: Number(form.maxPlayers),
-        entryFee: Number(form.entryFee),
-        reward: Number(form.reward),
-        killReward: Number(form.killReward),
-        roomID: form.roomID,
-        roomPassword: form.roomPassword,
-        imageUrls: form.imageUrls,
-        status: "upcoming",
-        playersJoined: [],
-        createdAt: serverTimestamp(),
+        title: form.title.trim(), type: form.type, mode: form.mode, mapPool: form.mapPool,
+        maxPlayers: Number(form.maxPlayers), entryFee: Number(form.entryFee), reward: Number(form.reward),
+        killReward: Number(form.killReward), roomID: form.roomID.trim(), roomPassword: form.roomPassword,
+        imageUrls: form.imageUrls, status: "upcoming", createdAt: serverTimestamp(),
       };
-
       if (form.startTime) {
         const start = new Date(form.startTime);
         payload.startTime = start;
         payload.revealDelayMinutes = Number(form.revealDelayMinutes);
-        payload.revealAt = new Date(
-          start.getTime() -
-            payload.revealDelayMinutes * 60 * 1000
-        );
+        payload.revealAt = new Date(start.getTime() - payload.revealDelayMinutes * 60000);
       }
 
       if (editing) {
         const ref = doc(db, "matches", editing.id);
-
-        // existing data
         const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          alert("Match not found");
-          return;
-        }
-
-        const existing = snap.data();
-
-        // merge payload + playersJoined
-        await updateDoc(ref, {
-          ...payload,
-          playersJoined: existing.playersJoined || [],
-        });
-        
+        if (!snap.exists()) return alert("Match not found");
+        await updateDoc(ref, { ...payload, playersJoined: snap.data().playersJoined || [] });
         await editMatch(editing.id, payload);
       } else {
         await createMatch(payload);
       }
-
       setShowCreate(false);
       alert("Match saved successfully!");
-    } catch (e) {
-      alert("Save failed: " + e.message);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Save failed");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
-  // -----------------------------
-  // UI
-  // -----------------------------
+  async function processRequest(type, requestId, approve) {
+    const key = `${type}:${requestId}:${approve}`;
+    setProcessingRequest(key);
+    try {
+      await secureApi("/api/economy", {
+        method: "POST",
+        body: JSON.stringify({ action: type === "topup" ? "admin_topup" : "admin_withdrawal", requestId, approve }),
+      });
+      await onRefreshRequests();
+      alert(approve ? "Request approved." : "Request rejected.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to process request.");
+    } finally {
+      setProcessingRequest(null);
+    }
+  }
+
   return (
     <section className="panel admin-panel">
       <div className="admin-header">
         <h3>Admin Panel</h3>
-        <button className="btn small" onClick={openCreate}>
-          Create Match
-        </button>
+        <button className="btn small" onClick={openCreate}>Create Match</button>
+      </div>
+
+      <h4>Financial Requests</h4>
+      <div className="admin-financial-queue">
+        {(requests.topup || []).length === 0 && (requests.withdraw || []).length === 0 ? (
+          <p className="muted-small">No pending financial requests.</p>
+        ) : (
+          <>
+            {(requests.topup || []).map((request) => {
+              const key = `topup:${request.id}:true`;
+              return (
+                <div className="admin-row" key={`topup-${request.id}`}>
+                  <div>
+                    <b>Top-up ₹{request.amount}</b>
+                    <div className="small-muted">{request.email || request.userId} • {request.coins} coins • UPI {request.upiId}</div>
+                  </div>
+                  <div className="admin-match-actions">
+                    <button className="btn small" disabled={!!processingRequest} onClick={() => processRequest("topup", request.id, true)}>{processingRequest === key ? "..." : "Approve"}</button>
+                    <button className="btn small ghost" disabled={!!processingRequest} onClick={() => processRequest("topup", request.id, false)}>Reject</button>
+                  </div>
+                </div>
+              );
+            })}
+            {(requests.withdraw || []).map((request) => {
+              const key = `withdraw:${request.id}:true`;
+              return (
+                <div className="admin-row" key={`withdraw-${request.id}`}>
+                  <div>
+                    <b>Withdrawal ₹{request.amount}</b>
+                    <div className="small-muted">{request.email || request.userId} • {request.type} • {request.upiId || "gift card"} • reserved {request.reservedCoins || request.amount * 10} coins</div>
+                  </div>
+                  <div className="admin-match-actions">
+                    <button className="btn small" disabled={!!processingRequest} onClick={() => processRequest("withdrawal", request.id, true)}>{processingRequest === key ? "..." : "Approve"}</button>
+                    <button className="btn small ghost" disabled={!!processingRequest} onClick={() => processRequest("withdrawal", request.id, false)}>Reject</button>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       <h4>Matches</h4>
-      {localMatches.length === 0 ? (
-        <p className="muted-small">No matches.</p>
-      ) : (
-        localMatches.map((m) => (
-          <div key={m.id} className="admin-row">
-            <div>
-              <b>{m.title}</b>
-              <div className="small-muted">
-                {m.type} • {m.mode} • {m.maxPlayers} players
-              </div>
-            </div>
-            <div className="admin-match-actions">
-              <button
-                className="btn small"
-                onClick={() => openEdit(m)}
-              >
-                Edit
-              </button>
-              <button
-                className="btn small ghost"
-                onClick={() => deleteMatch(m.id)}
-              >
-                Delete
-              </button>
-            </div>
+      {localMatches.length === 0 ? <p className="muted-small">No matches.</p> : localMatches.map((m) => (
+        <div key={m.id} className="admin-row">
+          <div><b>{m.title}</b><div className="small-muted">{m.type} • {m.mode} • {m.maxPlayers} players</div></div>
+          <div className="admin-match-actions">
+            <button className="btn small" onClick={() => openEdit(m)}>Edit</button>
+            <button className="btn small ghost" onClick={() => deleteMatch(m.id)}>Delete</button>
           </div>
-        ))
-      )}
+        </div>
+      ))}
 
       {showCreate && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowCreate(false)}
-        >
-          <div
-            className="modal-content admin-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal-content admin-modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? "Edit Match" : "Create Match"}</h3>
 
-            {/* IMAGE PICKER */}
             <label>Match Images</label>
             <div className="image-picker-grid">
               {AVAILABLE_IMAGES.map((name) => {
                 const src = `/match/${name}.jpeg`;
                 const selected = form.imageUrls.includes(src);
-
                 return (
-                  <div
-                    key={name}
-                    className={`image-picker-item ${
-                      selected ? "selected" : ""
-                    }`}
-                    onClick={() =>
-                      setForm((prev) => ({
-                        ...prev,
-                        imageUrls: selected
-                          ? prev.imageUrls.filter(
-                              (u) => u !== src
-                            )
-                          : [...prev.imageUrls, src],
-                      }))
-                    }
-                  >
-                    <img src={src} alt={name} />
-                    <span>{name}</span>
+                  <div key={name} className={`image-picker-item ${selected ? "selected" : ""}`} onClick={() => setForm((prev) => ({ ...prev, imageUrls: selected ? prev.imageUrls.filter((url) => url !== src) : [...prev.imageUrls, src] }))}>
+                    <img src={src} alt={name} /><span>{name}</span>
                   </div>
                 );
               })}
             </div>
 
             <label>Title</label>
-            <input
-              className="modern-input"
-              value={form.title}
-              onChange={(e) =>
-                setForm({ ...form, title: e.target.value })
-              }
-            />
-
+            <input className="modern-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             <label>Type</label>
-            <select
-              className="modern-input"
-              value={form.type}
-              onChange={(e) =>
-                setForm({ ...form, type: e.target.value })
-              }
-            >
-              <option value="tournament">Tournament (BR)</option>
-              <option value="custom">Custom</option>
+            <select className="modern-input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="tournament">Tournament (BR)</option><option value="custom">Custom</option>
             </select>
-
             <label>Mode</label>
-            <select
-              className="modern-input"
-              value={form.mode}
-              onChange={(e) =>
-                setForm({ ...form, mode: e.target.value })
-              }
-            >
-              <option>Solo</option>
-              <option>Duo</option>
-              <option>Squad</option>
+            <select className="modern-input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+              <option>Solo</option><option>Duo</option><option>Squad</option>
             </select>
-
             <label>Map Pool</label>
-            <input
-              className="modern-input"
-              value={form.mapPool.join(", ")}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  mapPool: e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                })
-              }
-            />
-
+            <input className="modern-input" value={form.mapPool.join(", ")} onChange={(e) => setForm({ ...form, mapPool: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
             <label>Max Players</label>
-            <input
-              type="number"
-              min="2"
-              max="48"
-              className="modern-input"
-              value={form.maxPlayers}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  maxPlayers: Number(e.target.value),
-                })
-              }
-            />
-
+            <input type="number" min="2" max="48" className="modern-input" value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })} />
             <label>Entry Fee</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.entryFee}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  entryFee: Number(e.target.value),
-                })
-              }
-            />
-
+            <input type="number" min="0" className="modern-input" value={form.entryFee} onChange={(e) => setForm({ ...form, entryFee: Number(e.target.value) })} />
             <label>Kill Reward</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.killReward}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  killReward: Number(e.target.value),
-                })
-              }
-            />
-
+            <input type="number" min="0" className="modern-input" value={form.killReward} onChange={(e) => setForm({ ...form, killReward: Number(e.target.value) })} />
             <label>Start Time</label>
-            <input
-              type="datetime-local"
-              className="modern-input"
-              value={form.startTime}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  startTime: e.target.value,
-                })
-              }
-            />
-
+            <input type="datetime-local" className="modern-input" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
             <label>Reveal Delay (minutes)</label>
-            <input
-              type="number"
-              className="modern-input"
-              value={form.revealDelayMinutes}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  revealDelayMinutes: Number(e.target.value),
-                })
-              }
-            />
-
+            <input type="number" min="0" className="modern-input" value={form.revealDelayMinutes} onChange={(e) => setForm({ ...form, revealDelayMinutes: Number(e.target.value) })} />
             <label>Room ID</label>
-            <input
-              className="modern-input"
-              value={form.roomID}
-              onChange={(e) =>
-                setForm({ ...form, roomID: e.target.value })
-              }
-            />
-
+            <input className="modern-input" value={form.roomID} onChange={(e) => setForm({ ...form, roomID: e.target.value })} />
             <label>Room Password</label>
-            <input
-              className="modern-input"
-              value={form.roomPassword}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  roomPassword: e.target.value,
-                })
-              }
-            />
+            <input className="modern-input" value={form.roomPassword} onChange={(e) => setForm({ ...form, roomPassword: e.target.value })} />
 
             <div className="admin-modal-actions">
-              <button
-                className="btn small ghost"
-                onClick={() => setShowCreate(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn small"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? "Saving..." : editing ? "Save" : "Create"}
-              </button>
+              <button className="btn small ghost" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button className="btn small" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : editing ? "Save" : "Create"}</button>
             </div>
           </div>
         </div>

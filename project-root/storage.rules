@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // No client uploads are currently required by the application.
+    // Keep Storage closed until a concrete upload path and validation rules
+    // (size, MIME type, ownership) are implemented.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

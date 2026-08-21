@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function unchanged(field) { return request.resource.data[field] == resource.data[field]; }
+
+    match /users/{uid} {
+      allow get, list: if signedIn();
+      allow create: if isOwner(uid)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.coins is int
+        && request.resource.data.coins >= 0
+        && request.resource.data.coins <= 20;
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'avatar', 'bio'])
+        && unchanged('email')
+        && unchanged('coins')
+        && unchanged('xp')
+        && unchanged('level')
+        && unchanged('admin')
+        && unchanged('referralCode')
+        && unchanged('referrerId')
+        && unchanged('referral')
+        && unchanged('hasRedeemedReferral')
+        && unchanged('welcomeBonusGiven')
+        && unchanged('referralBonusGiven')
+        && unchanged('referrerRewardGiven')
+        && unchanged('adsWatched')
+        && unchanged('lastDaily');
+      allow delete: if isAdmin();
+    }
+
+    match /matches/{matchId} {
+      allow get, list: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /topupRequests/{requestId} {
+      allow get, list: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    match /withdrawRequests/{requestId} {
+      allow get, list: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    match /matchHistory/{historyId} {
+      allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if false;
+      allow update, delete: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /otpRequests/{id} { allow read, write: if false; }
+    match /rateLimits/{id} { allow read, write: if false; }
+    match /adminActions/{id} { allow read, write: if isAdmin(); }
+    match /economyLedger/{id} { allow read: if isAdmin(); allow write: if false; }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
