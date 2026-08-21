@@ -13,16 +13,25 @@ function timestamp(value) {
   if (typeof value.toMillis === "function") return new Date(value.toMillis()).toISOString();
   return value;
 }
-function serialize(match) {
+
+function serialize(match, includePrivatePlayerIds = false) {
   const output = {};
   for (const field of PUBLIC_FIELDS) {
     if (match[field] !== undefined) output[field] = ["startTime", "revealAt", "createdAt"].includes(field) ? timestamp(match[field]) : match[field];
   }
   const players = Array.isArray(match.playersJoined) ? match.playersJoined : [];
-  output.playersJoined = players.map((player) => ({ uid: player.uid, username: player.username || "Player", joinedAt: timestamp(player.joinedAt) }));
+  output.playersJoined = players.map((player) => ({
+    ...(includePrivatePlayerIds ? { uid: player.uid } : {}),
+    username: player.username || "Player",
+    joinedAt: timestamp(player.joinedAt),
+  }));
   return output;
 }
-function isJoined(match, uid) { return Array.isArray(match.playersJoined) && match.playersJoined.some((player) => player?.uid === uid); }
+
+function isJoined(match, uid) {
+  return Array.isArray(match.playersJoined) && match.playersJoined.some((player) => player?.uid === uid);
+}
+
 function revealAllowed(match) {
   if (!match.revealAt) return false;
   const millis = typeof match.revealAt.toMillis === "function" ? match.revealAt.toMillis() : new Date(match.revealAt).getTime();
@@ -38,6 +47,7 @@ export default async function handler(req, res) {
 
     const db = getAdmin().firestore();
     const matchId = String(req.query?.matchId || "").trim();
+
     if (matchId) {
       const snap = await db.collection("matches").doc(matchId).get();
       if (!snap.exists) return json(res, 404, { error: "Match not found" });
@@ -49,10 +59,22 @@ export default async function handler(req, res) {
         const secretSnap = await db.collection("matchSecrets").doc(matchId).get();
         if (secretSnap.exists) room = secretSnap.data();
       }
-      return json(res, 200, { match: { id: snap.id, ...serialize(match), ...(room ? { roomID: room.roomID || "", roomPassword: room.roomPassword || "" } : {}) }, joined, privateVisible });
+      return json(res, 200, {
+        match: {
+          id: snap.id,
+          ...serialize(match, user.admin === true || joined),
+          ...(room ? { roomID: room.roomID || "", roomPassword: room.roomPassword || "" } : {}),
+        },
+        joined,
+        privateVisible,
+      });
     }
 
     const snap = await db.collection("matches").where("status", "==", "upcoming").orderBy("createdAt", "desc").limit(50).get();
-    return json(res, 200, { matches: snap.docs.map((doc) => ({ id: doc.id, ...serialize(doc.data()) })) });
-  } catch (error) { return handleError(res, error); }
+    return json(res, 200, {
+      matches: snap.docs.map((doc) => ({ id: doc.id, ...serialize(doc.data(), false) })),
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
 }
