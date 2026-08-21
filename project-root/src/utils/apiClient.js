@@ -1,14 +1,19 @@
 import { getIdToken } from "firebase/auth";
-import { getToken } from "firebase/app-check";
+import { getLimitedUseToken } from "firebase/app-check";
 import { auth, appCheckInstance } from "../firebase";
 
+/**
+ * Calls a protected custom backend endpoint.
+ * Limited-use App Check tokens are required because the server verifies
+ * replay protection for custom backend requests.
+ */
 export async function secureApi(path, options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in.");
 
   const [idToken, appCheckToken] = await Promise.all([
     getIdToken(user, true),
-    getToken(appCheckInstance, false),
+    getLimitedUseToken(appCheckInstance),
   ]);
 
   const response = await fetch(path, {
