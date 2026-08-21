@@ -6,16 +6,30 @@ service cloud.firestore {
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
     function unchanged(field) { return request.resource.data[field] == resource.data[field]; }
+    function validText(value, max) { return value is string && value.size() <= max; }
 
     match /users/{uid} {
-      allow get, list: if signedIn();
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+
       allow create: if isOwner(uid)
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.coins is int
         && request.resource.data.coins >= 0
-        && request.resource.data.coins <= 20;
+        && request.resource.data.coins <= 20
+        && request.resource.data.xp is int
+        && request.resource.data.xp >= 0
+        && request.resource.data.level is int
+        && request.resource.data.level >= 1
+        && request.resource.data.level <= 18;
+
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'avatar', 'bio'])
+        && validText(request.resource.data.get('username', ''), 32)
+        && validText(request.resource.data.get('displayName', ''), 80)
+        && validText(request.resource.data.get('bio', ''), 500)
+        && request.resource.data.get('avatar', '/avatars/default.jpg') is string
+        && request.resource.data.get('avatar', '/avatars/default.jpg').matches('^/avatars/[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$')
         && unchanged('email')
         && unchanged('coins')
         && unchanged('xp')
@@ -29,6 +43,7 @@ service cloud.firestore {
         && unchanged('referralBonusGiven')
         && unchanged('referrerRewardGiven')
         && unchanged('adsWatched')
+        && unchanged('adsWatchedSinceReferral')
         && unchanged('lastDaily');
       allow delete: if isAdmin();
     }
@@ -37,6 +52,8 @@ service cloud.firestore {
       allow get, list: if signedIn();
       allow create, update, delete: if isAdmin();
     }
+
+    match /matchSecrets/{matchId} { allow read, write: if false; }
 
     match /topupRequests/{requestId} {
       allow get, list: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
@@ -56,7 +73,10 @@ service cloud.firestore {
 
     match /feedback/{feedbackId} {
       allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 2000;
       allow update, delete: if isAdmin();
     }
 
