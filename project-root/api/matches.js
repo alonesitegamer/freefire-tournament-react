@@ -13,31 +13,19 @@ function timestamp(value) {
   if (typeof value.toMillis === "function") return new Date(value.toMillis()).toISOString();
   return value;
 }
-
-function serialize(match, includePrivate = false) {
+function serialize(match) {
   const output = {};
   for (const field of PUBLIC_FIELDS) {
-    if (match[field] !== undefined) output[field] = field.includes("At") || field === "startTime" || field === "createdAt" ? timestamp(match[field]) : match[field];
+    if (match[field] !== undefined) output[field] = ["startTime", "revealAt", "createdAt"].includes(field) ? timestamp(match[field]) : match[field];
   }
-
   const players = Array.isArray(match.playersJoined) ? match.playersJoined : [];
   output.playersJoined = players.map((player) => ({ uid: player.uid, username: player.username || "Player", joinedAt: timestamp(player.joinedAt) }));
-
-  if (includePrivate) {
-    output.roomID = match.roomID || "";
-    output.roomPassword = match.roomPassword || "";
-  }
   return output;
 }
-
-function isJoined(match, uid) {
-  return Array.isArray(match.playersJoined) && match.playersJoined.some((player) => player?.uid === uid);
-}
-
+function isJoined(match, uid) { return Array.isArray(match.playersJoined) && match.playersJoined.some((player) => player?.uid === uid); }
 function revealAllowed(match) {
-  const revealAt = match.revealAt;
-  if (!revealAt) return false;
-  const millis = typeof revealAt.toMillis === "function" ? revealAt.toMillis() : new Date(revealAt).getTime();
+  if (!match.revealAt) return false;
+  const millis = typeof match.revealAt.toMillis === "function" ? match.revealAt.toMillis() : new Date(match.revealAt).getTime();
   return Number.isFinite(millis) && Date.now() >= millis;
 }
 
@@ -50,19 +38,21 @@ export default async function handler(req, res) {
 
     const db = getAdmin().firestore();
     const matchId = String(req.query?.matchId || "").trim();
-
     if (matchId) {
       const snap = await db.collection("matches").doc(matchId).get();
       if (!snap.exists) return json(res, 404, { error: "Match not found" });
       const match = snap.data();
-      const privateVisible = user.admin === true || (isJoined(match, user.uid) && revealAllowed(match));
-      return json(res, 200, { match: { id: snap.id, ...serialize(match, privateVisible) }, joined: isJoined(match, user.uid), privateVisible });
+      const joined = isJoined(match, user.uid);
+      const privateVisible = user.admin === true || (joined && revealAllowed(match));
+      let room = null;
+      if (privateVisible) {
+        const secretSnap = await db.collection("matchSecrets").doc(matchId).get();
+        if (secretSnap.exists) room = secretSnap.data();
+      }
+      return json(res, 200, { match: { id: snap.id, ...serialize(match), ...(room ? { roomID: room.roomID || "", roomPassword: room.roomPassword || "" } : {}) }, joined, privateVisible });
     }
 
     const snap = await db.collection("matches").where("status", "==", "upcoming").orderBy("createdAt", "desc").limit(50).get();
-    const matches = snap.docs.map((doc) => ({ id: doc.id, ...serialize(doc.data(), false) }));
-    return json(res, 200, { matches });
-  } catch (error) {
-    return handleError(res, error);
-  }
+    return json(res, 200, { matches: snap.docs.map((doc) => ({ id: doc.id, ...serialize(doc.data()) })) });
+  } catch (error) { return handleError(res, error); }
 }
