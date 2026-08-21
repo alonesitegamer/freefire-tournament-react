@@ -1,14 +1,9 @@
 import { getAdmin, handleError, json, method } from "./_firebaseAdmin.js";
 
-const RESPONSE_HEADERS = {
-  "Cache-Control": "no-store, max-age=0",
-  "Content-Type": "application/json; charset=utf-8",
-};
-
 export default async function handler(req, res) {
   try {
     method(req, "GET");
-    Object.entries(RESPONSE_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "no-store, max-age=0");
 
     const missing = ["FIREBASE_SERVICE_ACCOUNT", "OTP_EMAIL", "OTP_PASS"].filter((name) => !process.env[name]);
     const checks = { firebaseAdmin: "unconfigured", firestore: "unconfigured", otp: "unconfigured" };
@@ -20,7 +15,7 @@ export default async function handler(req, res) {
         await admin.firestore().collection("_health").doc("readiness").get();
         checks.firestore = "reachable";
       } catch {
-        checks.firebaseAdmin = "invalid";
+        checks.firebaseAdmin = "invalid_or_unreachable";
         checks.firestore = "unreachable";
       }
     }
@@ -32,6 +27,7 @@ export default async function handler(req, res) {
       status: ready ? "ready" : "not_ready",
       service: "imperial-esports",
       commit: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+      environment: process.env.VERCEL_ENV || "unknown",
       checks,
       missing,
     });
