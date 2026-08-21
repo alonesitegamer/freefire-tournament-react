@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getAdmin, handleError, json, method, normalizeEmail, requireAppCheck } from "./_firebaseAdmin.js";
+import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
 import { rateLimit } from "./_rateLimit.js";
 
 const DISPOSABLE_DOMAINS = new Set([
@@ -7,7 +7,6 @@ const DISPOSABLE_DOMAINS = new Set([
   "maildrop.cc", "trashmail.com", "tempmail.net", "yopmail.com", "dispostable.com",
   "getnada.com", "spamgourmet.com", "disposablemail.com", "mail-temporaire.com", "moakt.com",
 ]);
-
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
   return String(forwarded || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
@@ -16,8 +15,6 @@ function getClientIp(req) {
 export default async function handler(req, res) {
   try {
     method(req, "POST");
-    await requireAppCheck(req);
-
     const email = normalizeEmail(req.body?.email);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: "A valid email is required" });
 
@@ -32,7 +29,6 @@ export default async function handler(req, res) {
     } catch (error) {
       if (error?.code !== "auth/user-not-found") throw error;
     }
-
     return json(res, 200, { existing, disposable });
   } catch (error) {
     return handleError(res, error);
