@@ -13,19 +13,27 @@ export default async function handler(req, res) {
     const allowed = await rateLimit({ key: `referral:${user.uid}`, limit: 10, windowSeconds: 3600 });
     if (!allowed) return json(res, 429, { error: "Too many referral attempts" });
 
-    const code = String(req.body?.referralCode || "").trim().toUpperCase();
-    if (code && !REFERRAL_CODE.test(code)) return json(res, 400, { error: "Invalid referral code" });
+    const requestedCode = String(req.body?.referralCode || "").trim().toUpperCase();
+    if (requestedCode && !REFERRAL_CODE.test(requestedCode)) return json(res, 400, { error: "Invalid referral code" });
 
     const admin = getAdmin();
     const db = admin.firestore();
     let referrerRef = null;
+    let referralAccepted = false;
+    let ignoredReferralReason = null;
 
-    if (code) {
-      const matches = await db.collection("users").where("referralCode", "==", code).limit(2).get();
-      if (matches.empty) return json(res, 400, { error: "Referral code not found" });
-      if (matches.size > 1) return json(res, 409, { error: "Referral code is ambiguous" });
-      referrerRef = matches.docs[0].ref;
-      if (referrerRef.id === user.uid) return json(res, 400, { error: "Self-referrals are not allowed" });
+    if (requestedCode) {
+      const matches = await db.collection("users").where("referralCode", "==", requestedCode).limit(2).get();
+      if (matches.size === 1 && matches.docs[0].id !== user.uid) {
+        referrerRef = matches.docs[0].ref;
+        referralAccepted = true;
+      } else if (matches.empty) {
+        ignoredReferralReason = "Referral code not found";
+      } else if (matches.size > 1) {
+        ignoredReferralReason = "Referral code is ambiguous";
+      } else {
+        ignoredReferralReason = "Self-referrals are not allowed";
+      }
     }
 
     const userRef = db.collection("users").doc(user.uid);
@@ -42,7 +50,7 @@ export default async function handler(req, res) {
           xp: 0,
           level: 1,
           referralCode: user.uid.substring(0, 8).toUpperCase(),
-          referral: code || null,
+          referral: null,
           hasRedeemedReferral: false,
           welcomeBonusGiven: false,
           referralBonusGiven: false,
@@ -55,7 +63,7 @@ export default async function handler(req, res) {
         tx.create(userRef, current);
       }
 
-      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 200, alreadyProcessed: true, reward: 0 };
+      if (current.welcomeBonusGiven || current.hasRedeemedReferral) return { status: 200, alreadyProcessed: true, reward: 0, referralAccepted: Boolean(current.referrerId) };
       if (Number(current.coins || 0) !== 0) return { status: 409, error: "Initial reward requires an untouched account" };
 
       const reward = referrerRef ? REFERRED_BONUS : WELCOME_BONUS;
@@ -66,7 +74,7 @@ export default async function handler(req, res) {
         coins: reward,
         welcomeBonusGiven: true,
         hasRedeemedReferral: Boolean(referrerRef),
-        referral: code || current.referral || null,
+        referral: referrerRef ? requestedCode : null,
         referrerId: referrerRef?.id || null,
         referralBonusGiven: Boolean(referrerRef),
         adsWatchedSinceReferral: 0,
@@ -82,9 +90,9 @@ export default async function handler(req, res) {
         amount: reward,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      return { status: 200, reward, referrerId: referrerRef?.id || null };
+      return { status: 200, reward, referrerId: referrerRef?.id || null, referralAccepted };
     });
 
-    return json(res, result.status, result.status >= 400 ? { error: result.error } : result);
+    return json(res, result.status, result.status >= 400 ? { error: result.error } : { ...result, ignoredReferralReason });
   } catch (error) { return handleError(res, error); }
 }
