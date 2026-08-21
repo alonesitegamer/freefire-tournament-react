@@ -1,12 +1,11 @@
 import crypto from "crypto";
-import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
+import { getAdmin, handleError, json, method, normalizeEmail, requireAppCheck } from "./_firebaseAdmin.js";
 import { rateLimit } from "./_rateLimit.js";
 
 const DISPOSABLE_DOMAINS = new Set([
   "10minutemail.com", "mailinator.com", "tempmail.com", "guerrillamail.com",
-  "maildrop.cc", "trashmail.com", "tempmail.net", "yopmail.com",
-  "dispostable.com", "getnada.com", "spamgourmet.com", "disposablemail.com",
-  "mail-temporaire.com", "moakt.com",
+  "maildrop.cc", "trashmail.com", "tempmail.net", "yopmail.com", "dispostable.com",
+  "getnada.com", "spamgourmet.com", "disposablemail.com", "mail-temporaire.com", "moakt.com",
 ]);
 
 function getClientIp(req) {
@@ -17,23 +16,16 @@ function getClientIp(req) {
 export default async function handler(req, res) {
   try {
     method(req, "POST");
+    await requireAppCheck(req);
 
     const email = normalizeEmail(req.body?.email);
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return json(res, 400, { error: "A valid email is required" });
-    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: "A valid email is required" });
 
-    const ip = getClientIp(req);
-    const allowed = await rateLimit({
-      key: `check-email:${crypto.createHash("sha256").update(ip).digest("hex")}`,
-      limit: 30,
-      windowSeconds: 3600,
-    });
+    const allowed = await rateLimit({ key: `check-email:${crypto.createHash("sha256").update(getClientIp(req)).digest("hex")}`, limit: 30, windowSeconds: 3600 });
     if (!allowed) return json(res, 429, { error: "Too many requests" });
 
     const disposable = DISPOSABLE_DOMAINS.has(email.split("@")[1]);
     let existing = false;
-
     try {
       await getAdmin().auth().getUserByEmail(email);
       existing = true;
