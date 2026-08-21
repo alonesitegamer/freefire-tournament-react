@@ -34,18 +34,10 @@ function validatePayload(body, existing = {}) {
   const startTime = body.startTime ? timestamp(body.startTime, "startTime") : existing.startTime || null;
   const revealDelayMinutes = integer(body.revealDelayMinutes ?? existing.revealDelayMinutes ?? 5, "revealDelayMinutes", 0, 1440);
   const revealAt = startTime ? getAdmin().firestore.Timestamp.fromMillis(startTime.toMillis() - revealDelayMinutes * 60000) : existing.revealAt || null;
-  return {
-    title, type, mode, mapPool, maxPlayers, entryFee, reward, killReward,
-    imageUrls, startTime, revealDelayMinutes, revealAt,
-    status: ["upcoming", "live", "completed", "cancelled"].includes(body.status) ? body.status : existing.status || "upcoming",
-    autoRotate: Boolean(body.autoRotate ?? existing.autoRotate ?? false),
-  };
+  return { title, type, mode, mapPool, maxPlayers, entryFee, reward, killReward, imageUrls, startTime, revealDelayMinutes, revealAt, status: ["upcoming", "live", "completed", "cancelled"].includes(body.status) ? body.status : existing.status || "upcoming", autoRotate: Boolean(body.autoRotate ?? existing.autoRotate ?? false) };
 }
 function secretPayload(body, existing = {}) {
-  return {
-    roomID: cleanString(body.roomID ?? existing.roomID, "roomID", 100),
-    roomPassword: cleanString(body.roomPassword ?? existing.roomPassword, "roomPassword", 100),
-  };
+  return { roomID: cleanString(body.roomID ?? existing.roomID, "roomID", 100), roomPassword: cleanString(body.roomPassword ?? existing.roomPassword, "roomPassword", 100) };
 }
 
 export default async function handler(req, res) {
@@ -53,7 +45,6 @@ export default async function handler(req, res) {
     const { user } = await requireAdminWithAppCheck(req);
     const allowed = await rateLimit({ key: `admin-matches:${user.uid}`, limit: 60, windowSeconds: 60 });
     if (!allowed) return json(res, 429, { error: "Too many requests" });
-
     const admin = getAdmin();
     const db = admin.firestore();
     const id = String(req.query?.matchId || req.body?.matchId || "").trim();
@@ -62,33 +53,31 @@ export default async function handler(req, res) {
       const snap = await db.collection("matches").orderBy("createdAt", "desc").limit(100).get();
       return json(res, 200, { matches: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) });
     }
-
     if (req.method === "POST") {
       const data = validatePayload(req.body || {});
       const secret = secretPayload(req.body || {});
       const ref = db.collection("matches").doc();
-      const secretRef = db.collection("matchSecrets").doc(ref.id);
       const batch = db.batch();
       batch.create(ref, { ...data, playersJoined: [], createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: user.uid });
-      batch.create(secretRef, { ...secret, matchId: ref.id, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid });
+      batch.create(db.collection("matchSecrets").doc(ref.id), { ...secret, matchId: ref.id, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid });
       await batch.commit();
       return json(res, 201, { id: ref.id });
     }
-
     if (req.method === "PATCH") {
       if (!id) return json(res, 400, { error: "matchId is required" });
       const ref = db.collection("matches").doc(id);
       const snap = await ref.get();
       if (!snap.exists) return json(res, 404, { error: "Match not found" });
+      const secretRef = db.collection("matchSecrets").doc(id);
+      const secretSnap = await secretRef.get();
       const data = validatePayload(req.body || {}, snap.data());
-      const secret = secretPayload(req.body || {}, {});
+      const secret = secretPayload(req.body || {}, secretSnap.exists ? secretSnap.data() : {});
       const batch = db.batch();
       batch.update(ref, { ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid });
-      batch.set(db.collection("matchSecrets").doc(id), { ...secret, matchId: id, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid }, { merge: true });
+      batch.set(secretRef, { ...secret, matchId: id, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid }, { merge: true });
       await batch.commit();
       return json(res, 200, { id });
     }
-
     if (req.method === "DELETE") {
       if (!id) return json(res, 400, { error: "matchId is required" });
       const ref = db.collection("matches").doc(id);
@@ -101,7 +90,6 @@ export default async function handler(req, res) {
       await batch.commit();
       return json(res, 200, { deleted: true });
     }
-
     return json(res, 405, { error: "Method not allowed", allow: "GET, POST, PATCH, DELETE" });
   } catch (error) { return handleError(res, error); }
 }
