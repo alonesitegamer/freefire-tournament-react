@@ -1,10 +1,8 @@
 import crypto from "crypto";
-import { getAdmin, handleError, json, method, normalizeEmail, requireAppCheck } from "./_firebaseAdmin.js";
+import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
 import { rateLimit } from "./_rateLimit.js";
 
-function hashOtp(code) {
-  return crypto.createHash("sha256").update(String(code)).digest("hex");
-}
+function hashOtp(code) { return crypto.createHash("sha256").update(String(code)).digest("hex"); }
 function safeEqualHex(a, b) {
   const left = Buffer.from(String(a), "hex");
   const right = Buffer.from(String(b), "hex");
@@ -18,8 +16,6 @@ function getClientIp(req) {
 export default async function handler(req, res) {
   try {
     method(req, "POST");
-    await requireAppCheck(req);
-
     const email = normalizeEmail(req.body?.email);
     const code = String(req.body?.code || "").trim();
     if (!email || !/^\d{6}$/.test(code)) return json(res, 400, { error: "Invalid OTP request" });
@@ -40,21 +36,18 @@ export default async function handler(req, res) {
         tx.delete(ref);
         return { status: 400, error: "OTP not found or expired" };
       }
-
       const attempts = Number(data.attempts || 0);
       const maxAttempts = Math.min(Number(data.maxAttempts || 5), 5);
       if (attempts >= maxAttempts) {
         tx.delete(ref);
         return { status: 429, error: "Too many incorrect OTP attempts" };
       }
-
       if (!safeEqualHex(data.codeHash, submittedHash)) {
         const nextAttempts = attempts + 1;
         if (nextAttempts >= maxAttempts) tx.delete(ref);
         else tx.update(ref, { attempts: nextAttempts });
         return { status: 400, error: "Incorrect OTP" };
       }
-
       tx.delete(ref);
       return { status: 200, success: true };
     });
