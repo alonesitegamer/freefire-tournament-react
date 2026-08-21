@@ -1,86 +1,77 @@
-// /api/verify-otp.js
-import admin from "firebase-admin";
-import fs from "fs";
+import crypto from "crypto";
+import { getAdmin, handleError, json, method, normalizeEmail } from "./_firebaseAdmin.js";
+import { rateLimit } from "./_rateLimit.js";
 
-const LOCAL_SA_PATH = "/mnt/data/imperial-esports-da816-firebase-adminsdk-fbsvc-bdfc7db5b4.json";
+function hashOtp(code) {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
+}
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
+function safeEqualHex(a, b) {
+  const left = Buffer.from(String(a), "hex");
+  const right = Buffer.from(String(b), "hex");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
 
-  let sa;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      if (sa.private_key && sa.private_key.includes("\\n")) {
-        sa.private_key = sa.private_key.replace(/\\n/g, "\n");
-      }
-    } catch (e) {
-      sa = null;
-    }
-  }
-
-  if (!sa) {
-    try {
-      if (fs.existsSync(LOCAL_SA_PATH)) {
-        const raw = fs.readFileSync(LOCAL_SA_PATH, "utf8");
-        sa = JSON.parse(raw);
-      }
-    } catch (err) {
-      console.error("Failed to load local service account:", err);
-    }
-  }
-
-  if (!sa) {
-    console.error("Missing Firebase service account configuration.");
-    return null;
-  }
-
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(sa),
-    });
-    return admin;
-  } catch (err) {
-    console.error("Failed to initialize Firebase Admin:", err);
-    return null;
-  }
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  return String(forwarded || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { email, code } = req.body;
-  if (!email || !code) return res.status(400).json({ error: "Missing email or code" });
-
-  const adminApp = initAdmin();
-  if (!adminApp) return res.status(500).json({ error: "Server configuration error" });
-
-  const db = admin.firestore();
-  const docId = encodeURIComponent(email.toLowerCase());
-
   try {
-    const docRef = db.collection("otpRequests").doc(docId);
-    const snap = await docRef.get();
-    if (!snap.exists) return res.status(400).json({ error: "OTP not found" });
+    method(req, "POST");
 
-    const data = snap.data();
-    if (!data.code) return res.status(400).json({ error: "Invalid OTP record" });
-
-    const now = admin.firestore.Timestamp.now();
-    if (data.expiresAt && data.expiresAt.toMillis() < now.toMillis()) {
-      await docRef.delete().catch(() => {});
-      return res.status(400).json({ error: "OTP expired" });
+    const email = normalizeEmail(req.body?.email);
+    const code = String(req.body?.code || "").trim();
+    if (!email || !/^\d{6}$/.test(code)) {
+      return json(res, 400, { error: "Invalid OTP request" });
     }
 
-    if (data.code !== String(code)) {
-      return res.status(400).json({ error: "Incorrect OTP" });
-    }
+    const ip = getClientIp(req);
+    const allowed = await rateLimit({
+      key: `otp-verify:ip:${crypto.createHash("sha256").update(ip).digest("hex")}`,
+      limit: 30,
+      windowSeconds: 3600,
+    });
+    if (!allowed) return json(res, 429, { error: "Too many verification attempts" });
 
-    // success - delete OTP record
-    await docRef.delete().catch(() => {});
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("verify-otp error", err);
-    return res.status(500).json({ error: "Failed to verify OTP" });
+    const admin = getAdmin();
+    const db = admin.firestore();
+    const ref = db.collection("otpRequests").doc(encodeURIComponent(email));
+    const submittedHash = hashOtp(code);
+
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return { status: 400, error: "OTP not found or expired" };
+
+      const data = snap.data();
+      const expiresAt = data.expiresAt?.toMillis?.() ?? 0;
+      if (!expiresAt || expiresAt < Date.now()) {
+        tx.delete(ref);
+        return { status: 400, error: "OTP not found or expired" };
+      }
+
+      const attempts = Number(data.attempts || 0);
+      const maxAttempts = Math.min(Number(data.maxAttempts || 5), 5);
+      if (attempts >= maxAttempts) {
+        tx.delete(ref);
+        return { status: 429, error: "Too many incorrect OTP attempts" };
+      }
+
+      if (!safeEqualHex(data.codeHash, submittedHash)) {
+        const nextAttempts = attempts + 1;
+        if (nextAttempts >= maxAttempts) tx.delete(ref);
+        else tx.update(ref, { attempts: nextAttempts });
+        return { status: 400, error: "Incorrect OTP" };
+      }
+
+      // One-time use. The registration flow can proceed only after this record is consumed.
+      tx.delete(ref);
+      return { status: 200, success: true };
+    });
+
+    return json(res, result.status, result.success ? { success: true } : { error: result.error });
+  } catch (error) {
+    return handleError(res, error);
   }
 }
